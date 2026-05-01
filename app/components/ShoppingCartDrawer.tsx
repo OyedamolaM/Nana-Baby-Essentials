@@ -5,6 +5,8 @@ import { Button } from "./ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetFooter } from "./ui/sheet";
 import { Separator } from "./ui/separator";
 import { Product } from "./ProductCard";
+import { ImageWithFallback } from "./figma/ImageWithFallback";
+import { formatNaira, formatNairaAmount, toNairaAmount } from "../../lib/commerce";
 
 interface CartItem extends Product {
   quantity: number;
@@ -12,23 +14,28 @@ interface CartItem extends Product {
 
 interface ShoppingCartDrawerProps {
   open: boolean;
-  onClose: () => void;
+  onOpenChange: (open: boolean) => void;
   cartItems: CartItem[];
   onRemoveItem: (productId: number) => void;
   onUpdateQuantity: (productId: number, quantity: number) => void;
+  onCheckout: () => void;
 }
 
 export function ShoppingCartDrawer({
   open,
-  onClose,
+  onOpenChange,
   cartItems,
   onRemoveItem,
-  onUpdateQuantity
+  onUpdateQuantity,
+  onCheckout,
 }: ShoppingCartDrawerProps) {
-  const total = cartItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
+  const total = cartItems.reduce(
+    (sum, item) => sum + toNairaAmount(item.price) * item.quantity,
+    0,
+  );
 
   return (
-    <Sheet open={open} onOpenChange={onClose}>
+    <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent className="flex flex-col">
         <SheetHeader>
           <SheetTitle className="flex items-center gap-2">
@@ -47,18 +54,19 @@ export function ShoppingCartDrawer({
             <div className="space-y-4">
               {cartItems.map((item) => (
                 <div key={item.id} className="flex gap-4 pb-4 border-b">
-                  <img
+                  <ImageWithFallback
                     src={item.image}
                     alt={item.name}
                     className="h-20 w-20 rounded object-cover"
                   />
                   <div className="flex-1">
                     <h4 className="font-semibold text-sm">{item.name}</h4>
-                    <p className="text-sm text-gray-600">${item.price.toFixed(2)}</p>
+                    <p className="text-sm text-gray-600">{formatNaira(item.price)}</p>
                     <div className="flex items-center gap-2 mt-2">
                       <Button
                         variant="outline"
                         size="sm"
+                        type="button"
                         onClick={() => onUpdateQuantity(item.id, Math.max(1, item.quantity - 1))}
                         className="h-7 w-7 p-0"
                       >
@@ -68,6 +76,7 @@ export function ShoppingCartDrawer({
                       <Button
                         variant="outline"
                         size="sm"
+                        type="button"
                         onClick={() => onUpdateQuantity(item.id, item.quantity + 1)}
                         className="h-7 w-7 p-0"
                       >
@@ -78,6 +87,7 @@ export function ShoppingCartDrawer({
                   <Button
                     variant="ghost"
                     size="icon"
+                    type="button"
                     onClick={() => onRemoveItem(item.id)}
                     className="h-8 w-8"
                   >
@@ -95,9 +105,9 @@ export function ShoppingCartDrawer({
             <SheetFooter className="flex-col gap-4">
               <div className="flex justify-between items-center w-full">
                 <span className="text-lg font-semibold">Total:</span>
-                <span className="text-2xl font-bold">${total.toFixed(2)}</span>
+                <span className="text-2xl font-bold">{formatNairaAmount(total)}</span>
               </div>
-              <Button className="w-full" size="lg">
+              <Button className="w-full" size="lg" type="button" onClick={onCheckout}>
                 Checkout
               </Button>
             </SheetFooter>

@@ -2,7 +2,13 @@ import { Gift, Share2, Heart, CheckCircle } from "lucide-react";
 import { Button } from "./ui/button";
 import { Card, CardContent } from "./ui/card";
 
-export function BabyRegistryHighlight() {
+interface BabyRegistryHighlightProps {
+  onCreateRegistry: () => void;
+}
+
+export function BabyRegistryHighlight({
+  onCreateRegistry,
+}: BabyRegistryHighlightProps) {
   const features = [
     {
       icon: Gift,
@@ -57,7 +63,7 @@ export function BabyRegistryHighlight() {
         </div>
 
         <div className="text-center">
-          <Button size="lg" className="text-lg px-8">
+          <Button size="lg" className="text-lg px-8" onClick={onCreateRegistry}>
             Create Your Registry
           </Button>
         </div>

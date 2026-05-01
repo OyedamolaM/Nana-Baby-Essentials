@@ -13,6 +13,7 @@ export function CategoryFilter({ categories, selectedCategory, onSelectCategory 
       {categories.map((category) => (
         <Button
           key={category}
+          type="button"
           variant={selectedCategory === category ? "default" : "outline"}
           onClick={() => onSelectCategory(category)}
           className="rounded-full"

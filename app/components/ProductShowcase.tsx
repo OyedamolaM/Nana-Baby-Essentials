@@ -6,11 +6,17 @@ import { ArrowRight } from "lucide-react";
 
 interface ProductShowcaseProps {
   products: Product[];
-  onAddToCart: (product: Product) => void;
+  onAddToCart: (product: Product, quantity?: number) => void;
+  onViewProduct: (product: Product) => void;
   onViewAll: () => void;
 }
 
-export function ProductShowcase({ products, onAddToCart, onViewAll }: ProductShowcaseProps) {
+export function ProductShowcase({
+  products,
+  onAddToCart,
+  onViewProduct,
+  onViewAll,
+}: ProductShowcaseProps) {
   const featuredProducts = products.slice(0, 4);
 
   return (
@@ -37,6 +43,7 @@ export function ProductShowcase({ products, onAddToCart, onViewAll }: ProductSho
               key={product.id}
               product={product}
               onAddToCart={onAddToCart}
+              onViewDetails={onViewProduct}
             />
           ))}
         </div>
