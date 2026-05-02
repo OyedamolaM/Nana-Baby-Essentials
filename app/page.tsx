@@ -31,6 +31,9 @@ import {
 type AppView = "store" | "dashboard" | "admin";
 type AuthTab = "login" | "signup";
 
+// const { data, error } = await supabase.from("products").select("*");
+// console.log(data, error);
+
 interface CartItem extends Product {
   quantity: number;
 }
