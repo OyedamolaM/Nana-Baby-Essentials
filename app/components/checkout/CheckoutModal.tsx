@@ -146,7 +146,6 @@ export function CheckoutModal({
         throw error;
       }
 
-            // Create a plain function for the callback to ensure Paystack recognizes it
       const onPaymentSuccess = async (response: { reference: string }) => {
         try {
           await supabase
@@ -170,7 +169,7 @@ export function CheckoutModal({
       const handler = window.PaystackPop.setup({
         key: paystackKey,
         email: user.email || shippingName,
-        amount: Math.round(totalAmount * 100), // Ensure it's an integer
+        amount: Math.round(totalAmount * 100),
         currency: "NGN",
         ref: `NBE-${order.id}-${Date.now()}`,
         metadata: {
@@ -181,17 +180,16 @@ export function CheckoutModal({
               value: String(order.id),
             },
           ],
-        },
-        // Use standard function declarations for maximum compatibility
-        callback: function(response: { reference: string }) {
-          onPaymentSuccess(response);
-        },
         onClose: function() {
           toast.info("Payment cancelled.");
           setLoading(false);
         },
+        },
+        callback: function(response: { reference: string }) {
+          onPaymentSuccess(response);
+        },
       });
-
+      onClose();
       handler.openIframe();
 
 
