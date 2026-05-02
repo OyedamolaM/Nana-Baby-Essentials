@@ -16,7 +16,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "Nana Baby Essentials| Baby Store, Baby Registry",
-  description: "Get Items for your baby fro Nana Essentials or Create your Baby Registry",
+  description: "Get Items for your baby from Nana Essentials or Create your Baby Registry",
 };
 
 export default function RootLayout({
