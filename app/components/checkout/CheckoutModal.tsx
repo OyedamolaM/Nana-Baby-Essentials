@@ -146,26 +146,9 @@ export function CheckoutModal({
         throw error;
       }
 
-      const handler = window.PaystackPop.setup({
-        key: paystackKey,
-        email: user.email ?? shippingName,
-        amount: totalAmount * 100,
-        currency: "NGN",
-        ref: `NBE-${order.id}-${Date.now()}`,
-        metadata: {
-          custom_fields: [
-            {
-              display_name: "Order ID",
-              variable_name: "order_id",
-              value: String(order.id),
-            },
-          ],
-        },
-        onClose: () => {
-          toast.info("Payment cancelled.");
-          setLoading(false);
-        },
-        callback: async (response: { reference: string }) => {
+            // Create a plain function for the callback to ensure Paystack recognizes it
+      const onPaymentSuccess = async (response: { reference: string }) => {
+        try {
           await supabase
             .from("orders")
             .update({
@@ -177,9 +160,40 @@ export function CheckoutModal({
           toast.success("Payment successful. Your order has been placed.");
           onCheckoutComplete();
           onClose();
+        } catch (err) {
+          toast.error("Order updated failed, but payment was successful. Please contact support.");
+        } finally {
+          setLoading(false);
+        }
+      };
+
+      const handler = window.PaystackPop.setup({
+        key: paystackKey,
+        email: user.email || shippingName,
+        amount: Math.round(totalAmount * 100), // Ensure it's an integer
+        currency: "NGN",
+        ref: `NBE-${order.id}-${Date.now()}`,
+        metadata: {
+          custom_fields: [
+            {
+              display_name: "Order ID",
+              variable_name: "order_id",
+              value: String(order.id),
+            },
+          ],
+        },
+        // Use standard function declarations for maximum compatibility
+        callback: function(response: { reference: string }) {
+          onPaymentSuccess(response);
+        },
+        onClose: function() {
+          toast.info("Payment cancelled.");
           setLoading(false);
         },
       });
+
+      handler.openIframe();
+
 
       handler.openIframe();
     } catch (error) {
