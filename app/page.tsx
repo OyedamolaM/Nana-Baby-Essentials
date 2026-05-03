@@ -268,6 +268,10 @@ export default function App() {
               />
             </section>
 
+            <section id="registry">
+              <BabyRegistryHighlight onCreateRegistry={handleCreateRegistry} />
+            </section>
+
             <ProductShowcase
               products={products}
               onAddToCart={handleAddToCart}
@@ -279,11 +283,6 @@ export default function App() {
               onAddToCart={(product) => handleAddToCart(product)}
               onViewDetails={handleViewProduct}
             />
-
-            <section id="registry">
-              <BabyRegistryHighlight onCreateRegistry={handleCreateRegistry} />
-            </section>
-
             <section id="about">
               <About />
             </section>
