@@ -786,3 +786,77 @@ create index if not exists idx_collections_active_sort_order on public.collectio
 create index if not exists idx_collection_products_collection_sort_order on public.collection_products (collection_id, sort_order);
 create index if not exists idx_blog_posts_publish_order on public.blog_posts (is_published, published_at desc);
 create index if not exists idx_registry_orders_registry_id_created_at on public.registry_orders (registry_id, created_at desc);
+
+create table if not exists public.newsletter_subscribers (
+  id uuid primary key default gen_random_uuid(),
+  email text not null unique check (email = lower(email)),
+  source text,
+  is_active boolean not null default true,
+  last_sent_at timestamptz,
+  created_at timestamptz not null default now()
+);
+
+alter table public.newsletter_subscribers enable row level security;
+
+drop policy if exists "Admins can view newsletter subscribers" on public.newsletter_subscribers;
+create policy "Admins can view newsletter subscribers" on public.newsletter_subscribers
+  for select using (
+    exists (
+      select 1
+      from public.user_profiles
+      where id = auth.uid() and is_admin = true
+    )
+  );
+
+drop policy if exists "Anyone can subscribe to newsletter" on public.newsletter_subscribers;
+create policy "Anyone can subscribe to newsletter" on public.newsletter_subscribers
+  for insert with check (true);
+
+drop policy if exists "Admins can update newsletter subscribers" on public.newsletter_subscribers;
+create policy "Admins can update newsletter subscribers" on public.newsletter_subscribers
+  for update using (
+    exists (
+      select 1
+      from public.user_profiles
+      where id = auth.uid() and is_admin = true
+    )
+  );
+
+create table if not exists public.newsletter_campaigns (
+  id uuid primary key default gen_random_uuid(),
+  subject text not null,
+  body text not null,
+  status text not null default 'draft' check (status in ('draft', 'sent', 'failed')),
+  recipient_count integer not null default 0,
+  sent_at timestamptz,
+  created_by uuid references auth.users(id) on delete set null,
+  created_at timestamptz not null default now()
+);
+
+alter table public.newsletter_campaigns enable row level security;
+
+drop policy if exists "Admins can view newsletter campaigns" on public.newsletter_campaigns;
+create policy "Admins can view newsletter campaigns" on public.newsletter_campaigns
+  for select using (
+    exists (
+      select 1
+      from public.user_profiles
+      where id = auth.uid() and is_admin = true
+    )
+  );
+
+drop policy if exists "Admins can insert newsletter campaigns" on public.newsletter_campaigns;
+create policy "Admins can insert newsletter campaigns" on public.newsletter_campaigns
+  for insert with check (
+    exists (
+      select 1
+      from public.user_profiles
+      where id = auth.uid() and is_admin = true
+    )
+  );
+
+create index if not exists idx_newsletter_subscribers_active_created_at
+  on public.newsletter_subscribers (created_at desc)
+  where is_active = true;
+create index if not exists idx_newsletter_campaigns_created_at
+  on public.newsletter_campaigns (created_at desc);

@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Baby, Mail, Phone, MapPin } from "lucide-react";
 import { FaTiktok, FaWhatsapp } from "react-icons/fa";
 import { Separator } from "./ui/separator";
@@ -13,8 +14,8 @@ export function Footer() {
   return (
     <footer className="bg-gray-900 text-gray-300">
       <div className="container mx-auto px-4 py-12">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8 mb-8">
-          <div>
+        <div className="mb-8 grid grid-cols-2 gap-x-8 gap-y-10 md:grid-cols-2 lg:grid-cols-4">
+          <div className="col-span-2 lg:col-span-1">
             <div className="flex items-center gap-2 mb-4">
               <Baby className="h-8 w-8 text-pink-500" />
               <h3 className="text-xl font-semibold text-white">Nana&apos;s Baby Essentials</h3>
@@ -35,12 +36,12 @@ export function Footer() {
           <div>
             <h4 className="text-white font-semibold mb-4">Shop</h4>
             <ul className="space-y-2 text-sm">
-              <li><a href="#" className="hover:text-pink-400 transition-colors">All Products</a></li>
-              <li><a href="#" className="hover:text-pink-400 transition-colors">Toys</a></li>
-              <li><a href="#" className="hover:text-pink-400 transition-colors">Clothing</a></li>
-              <li><a href="#" className="hover:text-pink-400 transition-colors">Accessories</a></li>
-              <li><a href="#" className="hover:text-pink-400 transition-colors">New Arrivals</a></li>
-              <li><a href="#" className="hover:text-pink-400 transition-colors">Best Sellers</a></li>
+              <li><Link href="/products" className="hover:text-pink-400 transition-colors">All Products</Link></li>
+              <li><Link href="/products" className="hover:text-pink-400 transition-colors">Toys</Link></li>
+              <li><Link href="/products" className="hover:text-pink-400 transition-colors">Clothing</Link></li>
+              <li><Link href="/products" className="hover:text-pink-400 transition-colors">Accessories</Link></li>
+              <li><Link href="/products" className="hover:text-pink-400 transition-colors">New Arrivals</Link></li>
+              <li><Link href="/products" className="hover:text-pink-400 transition-colors">Best Sellers</Link></li>
             </ul>
           </div>
 
@@ -56,7 +57,7 @@ export function Footer() {
             </ul>
           </div>
 
-          <div>
+          <div className="col-span-2 lg:col-span-1">
             <h4 className="text-white font-semibold mb-4">Contact Info</h4>
             <ul className="space-y-3 text-sm">
               <li className="flex items-start gap-2">
@@ -68,18 +69,18 @@ export function Footer() {
                 <span>Island Store - Block A4 Shop 844/845 HFP Eastline Shopping Complex Abraham Adesanya Bustop Ajah</span>
               </li>
               <li className="flex items-center gap-2">
-                <a href="https://" target="_blank" rel="noopener noreferrer" className="flex items-center gap-2">
+                <a href="https://wa.me/2348024740159" target="_blank" rel="noopener noreferrer" className="flex items-center gap-2">
                   <FaWhatsapp className="h-5 w-5 flex-shrink-0 text-pink-400" />
                   <span>+23408024740159</span>
                 </a>
               </li>
               <li className="flex items-center gap-2">
-                <a href="https://" target="_blank" rel="noopener noreferrer"className="flex items-center gap-2">
+                <a href="tel:+2348024740159" className="flex items-center gap-2">
                 <Phone className="h-5 w-5 flex-shrink-0 text-pink-400" />
                 <span>+23408024740159</span></a>
               </li>
               <li className="flex items-center gap-2"> 
-                <a href="http://" target="_blank" rel="noopener noreferrer" className="flex items-center gap-2">
+                <a href="mailto:nanasbabyessentials@gmail.com" className="flex items-center gap-2">
                 <Mail className="h-5 w-5 flex-shrink-0 text-pink-400" />
                 <span>nanasbabyessentials@gmail.com</span>
                 </a>

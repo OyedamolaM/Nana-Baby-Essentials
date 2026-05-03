@@ -7,6 +7,7 @@ import {
   Edit,
   ExternalLink,
   LayoutGrid,
+  Mail,
   Package,
   Plus,
   ShoppingBag,
@@ -104,6 +105,24 @@ type CollectionProductRow = {
   sort_order: number;
 };
 
+type NewsletterSubscriber = {
+  id: string;
+  email: string;
+  source?: string | null;
+  is_active: boolean;
+  created_at: string;
+  last_sent_at?: string | null;
+};
+
+type NewsletterCampaign = {
+  id: string;
+  subject: string;
+  status: string;
+  recipient_count: number;
+  created_at: string;
+  sent_at?: string | null;
+};
+
 function formatDueMonth(dueMonth?: string | null) {
   if (!dueMonth) {
     return "N/A";
@@ -147,6 +166,25 @@ function formatDate(value?: string | null) {
   });
 }
 
+function formatDateTime(value?: string | null) {
+  if (!value) {
+    return "N/A";
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return date.toLocaleString("en-NG", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
 function toDatetimeLocalValue(value?: string | null) {
   if (!value) {
     return "";
@@ -178,6 +216,12 @@ export function AdminDashboard() {
     CollectionProductRow[]
   >([]);
   const [blogPosts, setBlogPosts] = useState<BlogPostRecord[]>([]);
+  const [newsletterSubscribers, setNewsletterSubscribers] = useState<
+    NewsletterSubscriber[]
+  >([]);
+  const [newsletterCampaigns, setNewsletterCampaigns] = useState<
+    NewsletterCampaign[]
+  >([]);
 
   const [showProductModal, setShowProductModal] = useState(false);
   const [editingProduct, setEditingProduct] = useState<ProductRecord | null>(null);
@@ -226,6 +270,9 @@ export function AdminDashboard() {
   const [blogBodyMarkdown, setBlogBodyMarkdown] = useState("");
   const [blogPublishedAt, setBlogPublishedAt] = useState("");
   const [blogIsPublished, setBlogIsPublished] = useState(true);
+  const [newsletterSubject, setNewsletterSubject] = useState("");
+  const [newsletterBody, setNewsletterBody] = useState("");
+  const [sendingNewsletter, setSendingNewsletter] = useState(false);
 
   const loadAdminData = useCallback(async () => {
     setLoading(true);
@@ -240,6 +287,8 @@ export function AdminDashboard() {
       collectionsResult,
       collectionAssignmentsResult,
       blogPostsResult,
+      newsletterSubscribersResult,
+      newsletterCampaignsResult,
     ] = await Promise.all([
       supabase.from("orders").select("*").order("created_at", { ascending: false }),
       supabase
@@ -265,6 +314,14 @@ export function AdminDashboard() {
         .from("blog_posts")
         .select("*")
         .order("created_at", { ascending: false }),
+      supabase
+        .from("newsletter_subscribers")
+        .select("*")
+        .order("created_at", { ascending: false }),
+      supabase
+        .from("newsletter_campaigns")
+        .select("*")
+        .order("created_at", { ascending: false }),
     ]);
 
     setOrders(((ordersResult.error ? [] : ordersResult.data) ?? []) as AdminOrder[]);
@@ -288,6 +345,16 @@ export function AdminDashboard() {
     );
     setBlogPosts(
       ((blogPostsResult.error ? [] : blogPostsResult.data) ?? []) as BlogPostRecord[],
+    );
+    setNewsletterSubscribers(
+      ((newsletterSubscribersResult.error
+        ? []
+        : newsletterSubscribersResult.data) ?? []) as NewsletterSubscriber[],
+    );
+    setNewsletterCampaigns(
+      ((newsletterCampaignsResult.error
+        ? []
+        : newsletterCampaignsResult.data) ?? []) as NewsletterCampaign[],
     );
 
     const registrySummaryRows = ((registryItemsResult.error
@@ -378,6 +445,18 @@ export function AdminDashboard() {
   const monthlyRevenue = monthlyOrders
     .filter((order) => order.status === "paid")
     .reduce((sum, order) => sum + Number(order.total), 0);
+  const unfinishedOrders = useMemo(
+    () => orders.filter((order) => order.status !== "paid"),
+    [orders],
+  );
+  const paidOrders = useMemo(
+    () => orders.filter((order) => order.status === "paid"),
+    [orders],
+  );
+  const activeSubscribers = useMemo(
+    () => newsletterSubscribers.filter((subscriber) => subscriber.is_active),
+    [newsletterSubscribers],
+  );
 
   const toggleProductCollection = (collectionId: string) => {
     setProductCollectionIds((current) =>
@@ -713,6 +792,95 @@ export function AdminDashboard() {
     void loadAdminData();
   };
 
+  const handleSendNewsletter = async (event: React.FormEvent) => {
+    event.preventDefault();
+
+    if (!newsletterSubject.trim() || !newsletterBody.trim()) {
+      toast.error("Add a subject and message before sending.");
+      return;
+    }
+
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+
+    if (!session?.access_token) {
+      toast.error("Sign in again to send newsletters.");
+      return;
+    }
+
+    setSendingNewsletter(true);
+
+    try {
+      const response = await fetch("/api/newsletter/send", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          subject: newsletterSubject,
+          body: newsletterBody,
+        }),
+      });
+
+      const result = (await response.json()) as {
+        message?: string;
+        recipientCount?: number;
+      };
+
+      if (!response.ok) {
+        toast.error(result.message ?? "Failed to send newsletter.");
+        return;
+      }
+
+      toast.success(
+        `Newsletter sent to ${result.recipientCount ?? activeSubscribers.length} subscribers.`,
+      );
+      setNewsletterSubject("");
+      setNewsletterBody("");
+      void loadAdminData();
+    } catch (error) {
+      console.error("Failed to send newsletter.", error);
+      toast.error("Failed to send newsletter.");
+    } finally {
+      setSendingNewsletter(false);
+    }
+  };
+
+  const renderOrderTable = (items: AdminOrder[], emptyMessage: string) => {
+    if (items.length === 0) {
+      return <p className="text-sm text-gray-500">{emptyMessage}</p>;
+    }
+
+    return (
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Order ID</TableHead>
+            <TableHead>Customer</TableHead>
+            <TableHead>Date</TableHead>
+            <TableHead>Total</TableHead>
+            <TableHead>Status</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {items.map((order) => (
+            <TableRow key={order.id}>
+              <TableCell className="font-mono text-sm">
+                {order.id.substring(0, 8)}
+              </TableCell>
+              <TableCell>{order.shipping_address?.name ?? "N/A"}</TableCell>
+              <TableCell>{formatDate(order.created_at)}</TableCell>
+              <TableCell>{formatNairaAmount(Number(order.total))}</TableCell>
+              <TableCell>{order.status}</TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    );
+  };
+
   if (!isAdmin) {
     return (
       <div className="container mx-auto px-4 py-8">
@@ -748,7 +916,7 @@ export function AdminDashboard() {
             <Package className="h-4 w-4 text-gray-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats.totalOrders}</div>
+            <div className="text-2xl font-bold">{paidOrders.length}</div>
             <p className="text-xs text-gray-500">{monthlyOrders.length} this month</p>
           </CardContent>
         </Card>
@@ -798,6 +966,7 @@ export function AdminDashboard() {
           <TabsTrigger value="orders">Orders</TabsTrigger>
           <TabsTrigger value="registries">Registries</TabsTrigger>
           <TabsTrigger value="customers">Customers</TabsTrigger>
+          <TabsTrigger value="newsletter">Newsletter</TabsTrigger>
           <TabsTrigger value="products">Products</TabsTrigger>
           <TabsTrigger value="deals">Deals</TabsTrigger>
           <TabsTrigger value="collections">Collections</TabsTrigger>
@@ -810,30 +979,29 @@ export function AdminDashboard() {
               <CardTitle>Recent Orders</CardTitle>
             </CardHeader>
             <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Order ID</TableHead>
-                    <TableHead>Customer</TableHead>
-                    <TableHead>Date</TableHead>
-                    <TableHead>Total</TableHead>
-                    <TableHead>Status</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {orders.map((order) => (
-                    <TableRow key={order.id}>
-                      <TableCell className="font-mono text-sm">
-                        {order.id.substring(0, 8)}
-                      </TableCell>
-                      <TableCell>{order.shipping_address?.name ?? "N/A"}</TableCell>
-                      <TableCell>{formatDate(order.created_at)}</TableCell>
-                      <TableCell>{formatNairaAmount(Number(order.total))}</TableCell>
-                      <TableCell>{order.status}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+              <Tabs
+                defaultValue={paidOrders.length > 0 ? "paid" : "unfinished"}
+                className="space-y-4"
+              >
+                <TabsList className="grid w-full grid-cols-2">
+                  <TabsTrigger value="paid">
+                    Paid Orders ({paidOrders.length})
+                  </TabsTrigger>
+                  <TabsTrigger value="unfinished">
+                    Unfinished ({unfinishedOrders.length})
+                  </TabsTrigger>
+                  
+                </TabsList>
+                  <TabsContent value="paid">
+                    {renderOrderTable(paidOrders, "No paid orders yet.")}
+                  </TabsContent>
+                  <TabsContent value="unfinished">
+                    {renderOrderTable(
+                      unfinishedOrders,
+                      "No unfinished orders right now.",
+                    )}
+                  </TabsContent>
+              </Tabs>
             </CardContent>
           </Card>
         </TabsContent>
@@ -915,6 +1083,129 @@ export function AdminDashboard() {
               </Table>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="newsletter">
+          <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
+            <Card>
+              <CardHeader>
+                <CardTitle>Send Newsletter</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="rounded-lg border p-4">
+                    <div className="text-sm text-gray-500">Active Subscribers</div>
+                    <div className="mt-2 text-3xl font-bold">
+                      {activeSubscribers.length}
+                    </div>
+                  </div>
+                  <div className="rounded-lg border p-4">
+                    <div className="text-sm text-gray-500">Campaigns Sent</div>
+                    <div className="mt-2 text-3xl font-bold">
+                      {newsletterCampaigns.filter((campaign) => campaign.status === "sent").length}
+                    </div>
+                  </div>
+                </div>
+
+                <form onSubmit={handleSendNewsletter} className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="newsletter-subject">Subject</Label>
+                    <Input
+                      id="newsletter-subject"
+                      value={newsletterSubject}
+                      onChange={(event) => setNewsletterSubject(event.target.value)}
+                      placeholder="New arrivals for your little one"
+                      required
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="newsletter-body">Message</Label>
+                    <Textarea
+                      id="newsletter-body"
+                      value={newsletterBody}
+                      onChange={(event) => setNewsletterBody(event.target.value)}
+                      placeholder={"Write the newsletter here.\n\nYou can use line breaks and short paragraphs."}
+                      className="min-h-56"
+                      required
+                    />
+                  </div>
+                  <Button type="submit" disabled={sendingNewsletter || activeSubscribers.length === 0}>
+                    <Mail className="mr-2 h-4 w-4" />
+                    {sendingNewsletter ? "Sending..." : "Send Newsletter"}
+                  </Button>
+                  {activeSubscribers.length === 0 ? (
+                    <p className="text-sm text-gray-500">
+                      No subscribers yet. Once someone subscribes from the blog page, they will show here.
+                    </p>
+                  ) : null}
+                </form>
+              </CardContent>
+            </Card>
+
+            <div className="space-y-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Recent Subscribers</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {newsletterSubscribers.length === 0 ? (
+                    <p className="text-sm text-gray-500">No subscribers yet.</p>
+                  ) : (
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Email</TableHead>
+                          <TableHead>Source</TableHead>
+                          <TableHead>Subscribed</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {newsletterSubscribers.slice(0, 8).map((subscriber) => (
+                          <TableRow key={subscriber.id}>
+                            <TableCell>{subscriber.email}</TableCell>
+                            <TableCell>{subscriber.source ?? "Website"}</TableCell>
+                            <TableCell>{formatDate(subscriber.created_at)}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  )}
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Campaign History</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {newsletterCampaigns.length === 0 ? (
+                    <p className="text-sm text-gray-500">No newsletter campaigns sent yet.</p>
+                  ) : (
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Subject</TableHead>
+                          <TableHead>Status</TableHead>
+                          <TableHead>Recipients</TableHead>
+                          <TableHead>Sent</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {newsletterCampaigns.slice(0, 6).map((campaign) => (
+                          <TableRow key={campaign.id}>
+                            <TableCell>{campaign.subject}</TableCell>
+                            <TableCell>{campaign.status}</TableCell>
+                            <TableCell>{campaign.recipient_count}</TableCell>
+                            <TableCell>{formatDateTime(campaign.sent_at ?? campaign.created_at)}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+          </div>
         </TabsContent>
 
         <TabsContent value="products">

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Gift, Lock, MapPin, Package, Share2, Trash2, User } from "lucide-react";
 import { toast } from "sonner";
 import { formatNairaAmount } from "../../lib/commerce";
@@ -104,6 +104,15 @@ export function UserDashboard() {
 
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+
+  const unfinishedOrders = useMemo(
+    () => orders.filter((order) => order.status !== "paid"),
+    [orders],
+  );
+  const paidOrders = useMemo(
+    () => orders.filter((order) => order.status === "paid"),
+    [orders],
+  );
 
   const loadUserData = useCallback(async () => {
     if (!user) {
@@ -288,6 +297,59 @@ export function UserDashboard() {
     }
   };
 
+  const renderOrders = (items: UserOrder[], emptyMessage: string) => {
+    if (items.length === 0) {
+      return <p className="text-gray-500">{emptyMessage}</p>;
+    }
+
+    return (
+      <div className="space-y-4">
+        {items.map((order) => (
+          <div key={order.id} className="rounded-lg border p-4">
+            <div className="mb-2 flex items-start justify-between">
+              <div>
+                <p className="font-semibold">Order #{order.id.substring(0, 8)}</p>
+                <p className="text-sm text-gray-500">
+                  {new Date(order.created_at).toLocaleDateString()}
+                </p>
+              </div>
+              <span
+                className={`rounded-full px-3 py-1 text-sm ${
+                  order.status === "paid"
+                    ? "bg-green-100 text-green-700"
+                    : order.status === "pending" || order.status === "awaiting_payment"
+                      ? "bg-yellow-100 text-yellow-700"
+                      : "bg-gray-100 text-gray-700"
+                }`}
+              >
+                {order.status}
+              </span>
+            </div>
+            <Separator className="my-2" />
+            <div className="space-y-1">
+              {order.items?.map((item, index) => (
+                <div
+                  key={`${order.id}-${index}`}
+                  className="flex justify-between text-sm"
+                >
+                  <span>
+                    {item.name} x {item.quantity}
+                  </span>
+                  <span>{formatNairaAmount(item.price * item.quantity)}</span>
+                </div>
+              ))}
+            </div>
+            <Separator className="my-2" />
+            <div className="flex justify-between font-semibold">
+              <span>Total</span>
+              <span>{formatNairaAmount(order.total)}</span>
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  };
+
   if (!user) {
     return (
       <div className="container mx-auto px-4 py-8">
@@ -319,25 +381,40 @@ export function UserDashboard() {
         <h1 className="mb-8 text-3xl font-bold">My Dashboard</h1>
 
         <Tabs defaultValue="orders" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-5">
-            <TabsTrigger value="orders">
-              <Package className="mr-2 h-4 w-4" />
+          <TabsList className="flex w-full overflow-x-auto gap-2 justify-start no-scrollbar h-14 items-center px-2">
+            <TabsTrigger
+              value="orders"
+              className="flex items-center gap-2 whitespace-nowrap px-4 py-3 text-sm h-10"
+            >
+              <Package className="h-4 w-4" />
               Orders
             </TabsTrigger>
-            <TabsTrigger value="registries">
-              <Gift className="mr-2 h-4 w-4" />
+            <TabsTrigger 
+              value="registries"
+              className="flex items-center gap-2 whitespace-nowrap px-4 py-3 text-sm h-10"
+            >
+              <Gift className="h-4 w-4" />
               Registries
             </TabsTrigger>
-            <TabsTrigger value="profile">
-              <User className="mr-2 h-4 w-4" />
+            <TabsTrigger 
+              value="profile"
+              className="flex items-center gap-2 whitespace-nowrap px-4 py-3 text-sm h-10"
+            >
+              <User className="h-4 w-4" />
               Profile
             </TabsTrigger>
-            <TabsTrigger value="address">
-              <MapPin className="mr-2 h-4 w-4" />
+            <TabsTrigger 
+              value="address"
+              className="flex items-center gap-2 whitespace-nowrap px-4 py-3 text-sm h-10"
+            >
+              <MapPin className="h-4 w-4" />
               Address
             </TabsTrigger>
-            <TabsTrigger value="security">
-              <Lock className="mr-2 h-4 w-4" />
+            <TabsTrigger 
+              value="security"
+              className="flex items-center gap-2 whitespace-nowrap px-4 py-3 text-sm h-10"
+            >
+              <Lock className="h-4 w-4" />
               Security
             </TabsTrigger>
           </TabsList>
@@ -348,59 +425,30 @@ export function UserDashboard() {
                 <CardTitle>Order History</CardTitle>
               </CardHeader>
               <CardContent>
-                {orders.length === 0 ? (
-                  <p className="text-gray-500">No orders yet.</p>
-                ) : (
-                  <div className="space-y-4">
-                    {orders.map((order) => (
-                      <div key={order.id} className="rounded-lg border p-4">
-                        <div className="mb-2 flex items-start justify-between">
-                          <div>
-                            <p className="font-semibold">
-                              Order #{order.id.substring(0, 8)}
-                            </p>
-                            <p className="text-sm text-gray-500">
-                              {new Date(order.created_at).toLocaleDateString()}
-                            </p>
-                          </div>
-                          <span
-                            className={`rounded-full px-3 py-1 text-sm ${
-                              order.status === "paid"
-                                ? "bg-green-100 text-green-700"
-                                : order.status === "pending" ||
-                                    order.status === "awaiting_payment"
-                                  ? "bg-yellow-100 text-yellow-700"
-                                  : "bg-gray-100 text-gray-700"
-                            }`}
-                          >
-                            {order.status}
-                          </span>
-                        </div>
-                        <Separator className="my-2" />
-                        <div className="space-y-1">
-                          {order.items?.map((item, index) => (
-                            <div
-                              key={`${order.id}-${index}`}
-                              className="flex justify-between text-sm"
-                            >
-                              <span>
-                                {item.name} x {item.quantity}
-                              </span>
-                              <span>
-                                {formatNairaAmount(item.price * item.quantity)}
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                        <Separator className="my-2" />
-                        <div className="flex justify-between font-semibold">
-                          <span>Total</span>
-                          <span>{formatNairaAmount(order.total)}</span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                <Tabs
+                  defaultValue={paidOrders.length > 0 ? "paid" : "unfinished"}
+                  className="space-y-4"
+                >
+                  <TabsList className="grid w-full grid-cols-2">
+                    <TabsTrigger value="paid">
+                      Paid Orders ({paidOrders.length})
+                    </TabsTrigger>
+                    <TabsTrigger value="unfinished">
+                      Unfinished ({unfinishedOrders.length})
+                    </TabsTrigger>
+                  </TabsList>
+
+                  <TabsContent value="unfinished">
+                    {renderOrders(
+                      unfinishedOrders,
+                      "No unfinished orders right now.",
+                    )}
+                  </TabsContent>
+
+                  <TabsContent value="paid">
+                    {renderOrders(paidOrders, "No paid orders yet.")}
+                  </TabsContent>
+                </Tabs>
               </CardContent>
             </Card>
           </TabsContent>

@@ -13,6 +13,7 @@ import { hasSupabaseEnv, supabase } from "../lib/supabase";
 interface UsePaginatedProductsOptions {
   onlyInStock?: boolean;
   pageSize?: number;
+  collectionId?: string | null;
 }
 
 function filterSeedProducts(
@@ -35,6 +36,7 @@ function filterSeedProducts(
 export function usePaginatedProducts({
   onlyInStock = false,
   pageSize = 16,
+  collectionId = null,
 }: UsePaginatedProductsOptions = {}) {
   const [products, setProducts] = useState<StoreProduct[]>(
     onlyInStock ? SEED_PRODUCTS.filter((product) => product.inStock) : SEED_PRODUCTS,
@@ -77,6 +79,80 @@ export function usePaginatedProducts({
 
     setLoading(true);
 
+    const from = (page - 1) * pageSize;
+    const to = from + pageSize - 1;
+
+    if (collectionId) {
+      const { data: collectionRows, error: collectionError } = await supabase
+        .from("collection_products")
+        .select("product_id, sort_order")
+        .eq("collection_id", collectionId)
+        .order("sort_order", { ascending: true });
+
+      if (collectionError || !collectionRows) {
+        setProducts([]);
+        setTotalCount(0);
+        setLoading(false);
+        return;
+      }
+
+      const orderedProductIds = collectionRows.map((row) => Number(row.product_id));
+
+      if (orderedProductIds.length === 0) {
+        setProducts([]);
+        setTotalCount(0);
+        setLoading(false);
+        return;
+      }
+
+      let productsQuery = supabase
+        .from("products")
+        .select("*")
+        .in("id", orderedProductIds);
+
+      if (onlyInStock) {
+        productsQuery = productsQuery.eq("in_stock", true);
+      }
+
+      if (selectedCategory !== "All") {
+        productsQuery = productsQuery.eq("category", selectedCategory);
+      }
+
+      const { data, error } = await productsQuery;
+
+      if (error || !data) {
+        setProducts([]);
+        setTotalCount(0);
+        setLoading(false);
+        return;
+      }
+
+      const matchingProducts = (data as ProductRecord[]).filter((product) => {
+        if (!searchQuery.trim()) {
+          return true;
+        }
+
+        const queryText = searchQuery.trim().toLowerCase();
+        return (
+          product.name.toLowerCase().includes(queryText) ||
+          product.description.toLowerCase().includes(queryText)
+        );
+      });
+
+      const orderedProducts = orderedProductIds
+        .map((productId) =>
+          matchingProducts.find((product) => Number(product.id) === productId),
+        )
+        .filter((product): product is ProductRecord => Boolean(product));
+
+      setProducts(
+        orderedProducts.slice(from, to + 1).map(mapProductRecord),
+      );
+      setTotalCount(orderedProducts.length);
+      setLoading(false);
+      return;
+    }
+
     let query = supabase
       .from("products")
       .select("*", { count: "exact" })
@@ -97,8 +173,6 @@ export function usePaginatedProducts({
       );
     }
 
-    const from = (page - 1) * pageSize;
-    const to = from + pageSize - 1;
     const { data, error, count } = await query.range(from, to);
 
     if (error || !data) {
@@ -115,7 +189,7 @@ export function usePaginatedProducts({
     setProducts((data as ProductRecord[]).map(mapProductRecord));
     setTotalCount(count ?? data.length);
     setLoading(false);
-  }, [onlyInStock, page, pageSize, searchQuery, selectedCategory]);
+  }, [collectionId, onlyInStock, page, pageSize, searchQuery, selectedCategory]);
 
   useEffect(() => {
     queueMicrotask(() => {

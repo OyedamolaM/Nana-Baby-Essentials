@@ -12,6 +12,7 @@ import {
   PartyPopper,
   Search,
   Share2,
+  User,
 } from "lucide-react";
 import { toast } from "sonner";
 import { CATEGORIES } from "../../lib/commerce";
@@ -43,6 +44,12 @@ import {
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card, CardContent } from "../components/ui/card";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "../components/ui/dropdown-menu";
 import { Input } from "../components/ui/input";
 import {
   Pagination,
@@ -363,7 +370,7 @@ export function RegistryLandingPage() {
   return (
     <div className="min-h-screen bg-white">
       <header className="sticky top-0 z-50 w-full border-b bg-white/95 shadow-sm backdrop-blur">
-        <div className="container mx-auto px-4">
+        <div className="relative container mx-auto px-4">
           <div className="flex h-16 items-center justify-between gap-3">
             <Link href="/" className="flex items-center gap-2">
               <Baby className="h-8 w-8 text-pink-500" />
@@ -400,6 +407,24 @@ export function RegistryLandingPage() {
             </nav>
 
             <div className="flex items-center gap-2">
+              {!user ? (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="icon" className="md:hidden">
+                      <User className="h-5 w-5" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onClick={() => openAuth("login")}>
+                      Sign In
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => openAuth("signup")}>
+                      Sign Up
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              ) : null}
+
               <Button
                 variant="outline"
                 size="sm"
@@ -436,7 +461,7 @@ export function RegistryLandingPage() {
           </div>
 
           {mobileMenuOpen && (
-            <div className="border-t py-4 md:hidden">
+            <div className="absolute inset-x-0 top-full z-50 border-t bg-white px-4 py-4 shadow-xl md:hidden">
               <nav className="flex flex-col gap-3">
                 <Link
                   href="/"

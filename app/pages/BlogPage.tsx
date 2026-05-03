@@ -31,6 +31,7 @@ function formatPublishedDate(value?: string | null) {
 export function BlogPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [newsletterEmail, setNewsletterEmail] = useState("");
+  const [newsletterSubmitting, setNewsletterSubmitting] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const { loading, posts } = usePublishedBlogPosts();
 
@@ -45,14 +46,41 @@ export function BlogPage() {
     });
   }, [posts, searchQuery]);
 
-  const handleSubscribe = () => {
+  const handleSubscribe = async () => {
     if (!newsletterEmail.trim()) {
       toast.error("Enter your email to subscribe.");
       return;
     }
 
-    toast.success("Thanks for subscribing to Nana's newsletter!");
-    setNewsletterEmail("");
+    setNewsletterSubmitting(true);
+
+    try {
+      const response = await fetch("/api/newsletter/subscribe", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          email: newsletterEmail,
+          source: "Blog Page",
+        }),
+      });
+
+      const result = (await response.json()) as { message?: string };
+
+      if (!response.ok) {
+        toast.error(result.message ?? "Could not subscribe right now.");
+        return;
+      }
+
+      toast.success(result.message ?? "Thanks for subscribing to Nana's newsletter!");
+      setNewsletterEmail("");
+    } catch (error) {
+      console.error("Failed to subscribe to newsletter.", error);
+      toast.error("Could not subscribe right now.");
+    } finally {
+      setNewsletterSubmitting(false);
+    }
   };
 
   return (
@@ -226,7 +254,13 @@ export function BlogPage() {
             Get the latest parenting tips, product recommendations, and
             exclusive offers delivered to your inbox.
           </p>
-          <div className="mx-auto flex max-w-md flex-col gap-2 sm:flex-row">
+          <form
+            className="mx-auto flex max-w-md flex-col gap-2 sm:flex-row"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void handleSubscribe();
+            }}
+          >
             <Input
               type="email"
               placeholder="Enter your email"
@@ -235,13 +269,13 @@ export function BlogPage() {
               className="bg-white text-gray-900"
             />
             <Button
-              type="button"
+              type="submit"
               variant="secondary"
-              onClick={handleSubscribe}
+              disabled={newsletterSubmitting}
             >
-              Subscribe
+              {newsletterSubmitting ? "Subscribing..." : "Subscribe"}
             </Button>
-          </div>
+          </form>
         </div>
       </section>
     </div>

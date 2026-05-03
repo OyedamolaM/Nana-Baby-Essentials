@@ -51,120 +51,136 @@ export function DealOfTheWeek({
 
   return (
     <section className="bg-gradient-to-r from-orange-50 to-red-50 py-16">
-      <div className="container mx-auto px-4">
+      <div className="w-full px-3 sm:px-4">
         <div className="mb-8 flex items-center justify-center gap-2 text-center">
-          <Zap className="h-8 w-8 fill-orange-600 text-orange-600" />
-          <h2 className="text-4xl font-bold text-gray-900">Deals of the Week</h2>
-          <Zap className="h-8 w-8 fill-orange-600 text-orange-600" />
+          <Zap className="h-7 w-7 sm:h-8 sm:w-8 fill-orange-600 text-orange-600" />
+          <h2 className="text-3xl sm:text-4xl font-bold text-gray-900">
+            Deals of the Week
+          </h2>
+          <Zap className="h-7 w-7 sm:h-8 sm:w-8 fill-orange-600 text-orange-600" />
         </div>
 
-        <div className="mx-auto max-w-6xl px-10 md:px-14">
-          <Carousel opts={{ loop: deals.length > 1 }}>
+        <div className="w-full lg:max-w-6xl lg:mx-auto sm:px-6 md:px-10">
+          <Carousel className="px-1 sm:px-0" opts={{ loop: deals.length > 1 }}>
             <CarouselContent>
               {deals.map((deal) => {
                 const displayProduct: Product = {
                   ...deal.product,
                   price: deal.salePrice,
                 };
+
                 const compareAtPrice = Math.max(deal.compareAtPrice, deal.salePrice);
                 const savings = toNairaAmount(compareAtPrice - deal.salePrice);
                 const discount = Math.round(
-                  ((compareAtPrice - deal.salePrice) / compareAtPrice) * 100,
+                  ((compareAtPrice - deal.salePrice) / compareAtPrice) * 100
                 );
+
                 const endsAt = deal.endsAt
                   ? new Date(deal.endsAt).getTime()
                   : now + 3 * 24 * 60 * 60 * 1000;
+
                 const timeLeft = getTimeLeft(endsAt);
 
                 return (
                   <CarouselItem key={deal.id}>
                     <Card className="overflow-hidden border-4 border-orange-400 shadow-2xl">
-                      <div className="grid gap-6 p-6 md:grid-cols-2 md:p-8">
+                      <div className="grid gap-5 p-4 sm:p-6 md:grid-cols-2 md:p-8">
+                        
+                        {/* Image */}
                         <div className="relative">
-                          <Badge className="absolute left-4 top-4 z-10 px-4 py-2 text-lg text-white">
+                          <Badge className="absolute left-3 top-3 z-10 px-3 py-1 text-sm text-white">
                             {deal.badgeText}
                           </Badge>
                           <ImageWithFallback
                             src={deal.image}
                             alt={deal.title}
-                            className="h-full w-full rounded-lg object-cover"
+                            className="h-56 w-full rounded-lg object-cover sm:h-full"
                           />
                         </div>
 
-                        <div className="flex flex-col justify-center space-y-4">
+                        {/* Content */}
+                        <div className="flex flex-col justify-center space-y-3">
                           <div>
-                            <Badge variant="secondary" className="mb-2">
+                            <Badge variant="secondary" className="mb-2 text-xs">
                               {displayProduct.category}
                             </Badge>
-                            <h3 className="mb-2 text-3xl font-bold text-gray-900">
+                            <h3 className="mb-1 text-xl sm:text-3xl font-bold text-gray-900">
                               {deal.title}
                             </h3>
-                            <p className="leading-relaxed text-gray-600">
+                            <p className="text-sm text-gray-600">
                               {deal.subtitle}
                             </p>
                           </div>
 
-                          <div className="space-y-2">
-                            <div className="flex items-baseline gap-3">
-                              <span className="text-4xl font-bold text-orange-600">
+                          {/* Price */}
+                          <div className="space-y-1">
+                            <div className="flex flex-wrap items-baseline gap-2">
+                              <span className="text-2xl sm:text-4xl font-bold text-orange-600">
                                 {formatNaira(deal.salePrice)}
                               </span>
-                              <span className="text-2xl text-gray-400 line-through">
+                              <span className="text-sm sm:text-2xl text-gray-400 line-through">
                                 {formatNaira(compareAtPrice)}
                               </span>
-                              <span className="rounded-full bg-orange-100 px-3 py-1 text-sm font-semibold text-orange-700">
+                              <span className="rounded-full bg-orange-100 px-2 py-0.5 text-xs font-semibold text-orange-700">
                                 {discount}% OFF
                               </span>
                             </div>
-                            <p className="text-sm text-gray-500">
-                              You save {formatNairaAmount(savings)}.
+                            <p className="text-xs text-gray-500">
+                              Save {formatNairaAmount(savings)}
                             </p>
                           </div>
 
-                          <div className="rounded-lg bg-gray-100 p-4">
-                            <div className="mb-2 flex items-center gap-2">
-                              <Clock className="h-5 w-5 text-orange-600" />
-                              <span className="font-semibold text-gray-900">
-                                Deal ends in:
+                          {/* Countdown */}
+                          <div className="rounded-lg bg-gray-100 p-3">
+                            <div className="mb-1 flex items-center gap-2">
+                              <Clock className="h-4 w-4 text-orange-600" />
+                              <span className="text-sm font-semibold text-gray-900">
+                                Ends in:
                               </span>
                             </div>
-                            <div className="grid grid-cols-4 gap-2 text-center">
+
+                            <div className="grid grid-cols-4 gap-1 text-center">
                               {[
-                                { label: "Days", value: timeLeft.days },
-                                { label: "Hours", value: timeLeft.hours },
-                                { label: "Minutes", value: timeLeft.minutes },
-                                { label: "Seconds", value: timeLeft.seconds },
+                                { label: "D", value: timeLeft.days },
+                                { label: "H", value: timeLeft.hours },
+                                { label: "M", value: timeLeft.minutes },
+                                { label: "S", value: timeLeft.seconds },
                               ].map((unit) => (
                                 <div key={`${deal.id}-${unit.label}`}>
-                                  <div className="text-2xl font-bold text-orange-600">
+                                  <div className="text-base sm:text-xl font-bold text-orange-600">
                                     {String(unit.value).padStart(2, "0")}
                                   </div>
-                                  <div className="text-xs text-gray-600">{unit.label}</div>
+                                  <div className="text-[10px] text-gray-600">
+                                    {unit.label}
+                                  </div>
                                 </div>
                               ))}
                             </div>
                           </div>
 
-                          <div className="flex flex-col gap-3 sm:flex-row">
+                          {/* Buttons */}
+                          <div className="flex flex-col gap-2 sm:flex-row">
                             <Button
                               size="lg"
-                              className="flex-1 bg-orange-600 hover:bg-orange-700"
+                              className="min-h-11 flex-1 bg-orange-600 hover:bg-orange-700 text-sm"
                               onClick={() => onAddToCart(displayProduct)}
                             >
-                              <ShoppingCart className="mr-2 h-5 w-5" />
-                              Add to Cart
+                              <ShoppingCart className="mr-1 h-4 w-4" />
+                              Add
                             </Button>
+
                             <Button
                               size="lg"
                               variant="outline"
+                              className="min-h-11 text-sm"
                               onClick={() => onViewDetails(displayProduct)}
                             >
-                              View Details
+                              Details
                             </Button>
                           </div>
 
-                          <p className="text-center text-xs text-gray-500">
-                            Limited stock available. Deal valid while supplies last.
+                          <p className="text-center text-[10px] text-gray-500">
+                            Limited stock
                           </p>
                         </div>
                       </div>
@@ -173,12 +189,13 @@ export function DealOfTheWeek({
                 );
               })}
             </CarouselContent>
-            {deals.length > 1 ? (
+
+            {/* Smaller mobile arrows */}
+            {deals.length > 1 && (
               <>
-                <CarouselPrevious className="left-2 border-orange-200 bg-white text-orange-700 hover:bg-orange-50 md:-left-12" />
-                <CarouselNext className="right-2 border-orange-200 bg-white text-orange-700 hover:bg-orange-50 md:-right-12" />
-              </>
-            ) : null}
+                <CarouselPrevious className="-left-3 sm:-left-5 md:-left-12 size-8 sm:size-10 border-orange-200 bg-white text-orange-700 shadow-sm hover:bg-orange-50" />
+                <CarouselNext className="-right-3 sm:-right-5 md:-right-12 size-8 sm:size-10 border-orange-200 bg-white text-orange-700 shadow-sm hover:bg-orange-50" /></>
+            )}
           </Carousel>
         </div>
       </div>

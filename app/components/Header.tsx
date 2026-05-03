@@ -7,7 +7,6 @@ import {
   LayoutDashboard,
   LogOut,
   Menu,
-  Search,
   Shield,
   ShoppingCart,
   User,
@@ -21,7 +20,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
-import { Input } from "./ui/input";
 
 type StoreView = "store" | "dashboard" | "admin";
 type NavSection = "home" | "products" | "about" | "faq";
@@ -31,11 +29,10 @@ interface HeaderProps {
   cartItemCount: number;
   isAuthenticated: boolean;
   isAdmin: boolean;
-  showSearch?: boolean;
   onCartClick: () => void;
-  onSearch: (query: string) => void;
   onNavigate: (section: NavSection) => void;
   onSignIn: () => void;
+  onSignUp: () => void;
   onOpenDashboard: () => void;
   onOpenAdmin: () => void;
   onSignOut: () => void;
@@ -53,22 +50,15 @@ export function Header({
   cartItemCount,
   isAuthenticated,
   isAdmin,
-  showSearch = true,
   onCartClick,
-  onSearch,
   onNavigate,
   onSignIn,
+  onSignUp,
   onOpenDashboard,
   onOpenAdmin,
   onSignOut,
 }: HeaderProps) {
-  const [searchQuery, setSearchQuery] = useState("");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-
-  const handleSearch = (event: React.FormEvent) => {
-    event.preventDefault();
-    onSearch(searchQuery);
-  };
 
   const handleNavigate = (section: NavSection) => {
     setMobileMenuOpen(false);
@@ -77,29 +67,29 @@ export function Header({
 
   return (
     <header className="sticky top-0 z-50 w-full border-b bg-white/95 shadow-sm backdrop-blur">
-      <div className="container mx-auto px-4">
-        <div className="flex h-16 items-center justify-between gap-4">
+<     div className="relative w-full px-4 lg:px-6">
+        <div className="flex min-h-16 items-center justify-between">
+
+          {/* LEFT: Brand */}
           <button
             type="button"
-            className="flex items-center gap-2 text-left"
+            className="flex items-center gap-2 text-left z-10"
             onClick={() => handleNavigate("home")}
           >
-            <Baby className="h-8 w-8 text-pink-500" />
-            <div>
-              <p className="text-lg font-semibold text-gray-900">
-                Nana&apos;s Baby Essentials
+            <Baby className="h-7 w-7 sm:h-8 sm:w-8 text-pink-500 shrink-0" />
+
+            <div className="flex flex-col leading-tight">
+              <p className="text-sm sm:text-lg font-semibold text-gray-900 leading-tight">
+                Nana&apos;s Baby
               </p>
-              <p className="text-xs text-gray-500">
-                {activeView === "store"
-                  ? "Storefront"
-                  : activeView === "admin"
-                    ? "Admin"
-                    : "My Account"}
+              <p className="text-xs sm:text-sm text-gray-700 leading-tight">
+                Essentials
               </p>
             </div>
           </button>
 
-          <nav className="hidden items-center gap-6 lg:flex">
+          {/* CENTER: Nav (absolute centered) */}
+          <nav className="hidden lg:flex absolute left-1/2 -translate-x-1/2 items-center gap-8">
             {navItems.map((item) => (
               <button
                 key={item.id}
@@ -110,12 +100,14 @@ export function Header({
                 {item.label}
               </button>
             ))}
+
             <Link
               href="/registry"
               className="text-sm font-medium transition-colors hover:text-pink-600"
             >
               Baby Registry
             </Link>
+
             <Link
               href="/blog"
               className="text-sm font-medium transition-colors hover:text-pink-600"
@@ -124,27 +116,8 @@ export function Header({
             </Link>
           </nav>
 
-          {showSearch ? (
-            <form
-              onSubmit={handleSearch}
-              className="hidden max-w-sm flex-1 items-center md:flex"
-            >
-              <div className="relative w-full">
-                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-                <Input
-                  type="text"
-                  placeholder="Search products..."
-                  value={searchQuery}
-                  onChange={(event) => setSearchQuery(event.target.value)}
-                  className="pl-10"
-                />
-              </div>
-            </form>
-          ) : (
-            <div className="hidden flex-1 md:block" />
-          )}
-
-          <div className="flex items-center gap-2">
+          {/* RIGHT: Actions */}
+          <div className="flex items-center gap-2 shrink-0 z-10">
             {isAuthenticated ? (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -157,13 +130,16 @@ export function Header({
                     <LayoutDashboard className="mr-2 h-4 w-4" />
                     My Dashboard
                   </DropdownMenuItem>
+
                   {isAdmin && (
                     <DropdownMenuItem onClick={onOpenAdmin}>
                       <Shield className="mr-2 h-4 w-4" />
                       Admin Panel
                     </DropdownMenuItem>
                   )}
+
                   <DropdownMenuSeparator />
+
                   <DropdownMenuItem onClick={onSignOut}>
                     <LogOut className="mr-2 h-4 w-4" />
                     Sign Out
@@ -171,16 +147,40 @@ export function Header({
                 </DropdownMenuContent>
               </DropdownMenu>
             ) : (
-              <Button
-                variant="outline"
-                type="button"
-                className="hidden md:inline-flex"
-                onClick={onSignIn}
-              >
-                Sign In
-              </Button>
+              <>
+                <Button
+                  variant="outline"
+                  type="button"
+                  className="hidden md:inline-flex"
+                  onClick={onSignIn}
+                >
+                  Sign In
+                </Button>
+
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      type="button"
+                      className="md:hidden"
+                    >
+                      <User className="h-5 w-5" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onClick={onSignIn}>
+                      Sign In
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={onSignUp}>
+                      Sign Up
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </>
             )}
 
+            {/* Cart */}
             <Button
               variant="outline"
               size="icon"
@@ -199,6 +199,7 @@ export function Header({
               )}
             </Button>
 
+            {/* Mobile Menu */}
             <Button
               variant="ghost"
               size="icon"
@@ -211,71 +212,29 @@ export function Header({
           </div>
         </div>
 
+        {/* Mobile Menu */}
         {mobileMenuOpen && (
-          <div className="border-t py-4 lg:hidden">
+          <div className="absolute inset-x-0 top-full z-50 border-t bg-white px-4 py-4 shadow-xl lg:hidden">
             <nav className="flex flex-col gap-3">
               {navItems.map((item) => (
                 <button
                   key={item.id}
                   type="button"
-                  className="text-left text-sm font-medium transition-colors hover:text-pink-600"
+                  className="text-left text-sm font-medium hover:text-pink-600"
                   onClick={() => handleNavigate(item.id)}
                 >
                   {item.label}
                 </button>
               ))}
-              <Link
-                href="/registry"
-                className="text-left text-sm font-medium transition-colors hover:text-pink-600"
-                onClick={() => setMobileMenuOpen(false)}
-              >
+
+              <Link href="/registry" onClick={() => setMobileMenuOpen(false)}>
                 Baby Registry
               </Link>
-              <Link
-                href="/blog"
-                className="text-left text-sm font-medium transition-colors hover:text-pink-600"
-                onClick={() => setMobileMenuOpen(false)}
-              >
+
+              <Link href="/blog" onClick={() => setMobileMenuOpen(false)}>
                 Blog
               </Link>
             </nav>
-
-            {showSearch && (
-              <form onSubmit={handleSearch} className="mt-4 md:hidden">
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-                  <Input
-                    type="text"
-                    placeholder="Search products..."
-                    value={searchQuery}
-                    onChange={(event) => setSearchQuery(event.target.value)}
-                    className="pl-10"
-                  />
-                </div>
-              </form>
-            )}
-
-            <div className="mt-4 flex flex-wrap gap-2">
-              {isAuthenticated ? (
-                <>
-                  <Button type="button" variant="outline" onClick={onOpenDashboard}>
-                    Dashboard
-                  </Button>
-                  {isAdmin && (
-                    <Button type="button" variant="outline" onClick={onOpenAdmin}>
-                      Admin
-                    </Button>
-                  )}
-                  <Button type="button" variant="ghost" onClick={onSignOut}>
-                    Sign Out
-                  </Button>
-                </>
-              ) : (
-                <Button type="button" variant="outline" onClick={onSignIn}>
-                  Sign In
-                </Button>
-              )}
-            </div>
           </div>
         )}
       </div>

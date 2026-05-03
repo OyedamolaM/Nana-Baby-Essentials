@@ -24,8 +24,25 @@ Both files are idempotent, so they are safe to run more than once.
 - Registry tables: `registries`, `registry_items`, `registry_orders`, `registry_order_items`
 - Store cart tables: `shopping_carts`, `shopping_cart_items`
 - Homepage content tables: `homepage_deals`, `collections`, `collection_products`, `blog_posts`
+- Newsletter tables: `newsletter_subscribers`, `newsletter_campaigns`
 - Product pricing columns: `cost_price` and `selling_price`
 - Profile backfill for existing auth users, so admin can see customers created before the trigger existed
+
+## Newsletter Mail Settings
+
+To send newsletters from the admin dashboard, add these environment variables where Next.js runs:
+
+```env
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=465
+SMTP_USER=your-email@gmail.com
+SMTP_PASSWORD=your-app-password
+SMTP_FROM_EMAIL=your-email@gmail.com
+SMTP_FROM_NAME=Nana's Baby Essentials
+SMTP_REPLY_TO=your-email@gmail.com
+```
+
+If you use Gmail, create an App Password and use that value as `SMTP_PASSWORD`.
 
 ## Make Your Account Admin
 
@@ -48,6 +65,8 @@ where schemaname = 'public'
   and tablename in (
     'collections',
     'homepage_deals',
+    'newsletter_campaigns',
+    'newsletter_subscribers',
     'shopping_carts',
     'shopping_cart_items',
     'blog_posts'

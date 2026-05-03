@@ -21,6 +21,7 @@ You now have a fully functional e-commerce baby store with:
 3. If your project was already initialized from the older setup guide, open `supabase/migrations/20260503_schema_recovery.sql`
 4. Copy the full contents of the correct file into the SQL Editor and run it
 5. After creating your account through the app, run the admin update query from `DATABASE_SETUP.md`
+6. Re-run the same SQL file any time you pull a newer idempotent schema update from this repo
 
 ### 2. Enable Google OAuth
 
@@ -45,7 +46,23 @@ You now have a fully functional e-commerce baby store with:
    - **Reset password**: Password reset email
 3. For order confirmation emails, you'll need to set up a Supabase Edge Function (see below)
 
-### 5. Deploy Edge Function for Payment Verification (Optional but Recommended)
+### 5. Configure Newsletter Mail Sending
+
+Add these environment variables to the app where Next.js runs:
+
+```env
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=465
+SMTP_USER=your-email@gmail.com
+SMTP_PASSWORD=your-app-password
+SMTP_FROM_EMAIL=your-email@gmail.com
+SMTP_FROM_NAME=Nana's Baby Essentials
+SMTP_REPLY_TO=your-email@gmail.com
+```
+
+If you use Gmail, generate an App Password and use it for `SMTP_PASSWORD`.
+
+### 6. Deploy Edge Function for Payment Verification (Optional but Recommended)
 
 Create a new edge function to verify Paystack payments:
 
@@ -131,6 +148,10 @@ Supabase handles:
 - Welcome emails (when users sign up)
 - Password reset emails
 
+The app now also supports:
+- Newsletter subscriptions from the blog page
+- Newsletter sending from the admin dashboard through your SMTP mailbox
+
 For order confirmation emails, you can:
 1. Use Supabase Edge Functions with Resend/SendGrid
 2. Set up a webhook from Paystack to trigger emails
@@ -170,7 +191,7 @@ The app is fully responsive and works on:
 - **Solution**: Check Paystack public key is correct and you're using test credentials
 
 **Issue**: Not receiving emails
-- **Solution**: Check Supabase email settings and templates
+- **Solution**: Check Supabase email settings and templates. For newsletters, also confirm your SMTP variables are set in the Next.js app.
 
 **Issue**: Admin dashboard showing "Access denied"
 - **Solution**: Run SQL to set your user as admin: `UPDATE user_profiles SET is_admin = true WHERE email = 'your@email.com'`

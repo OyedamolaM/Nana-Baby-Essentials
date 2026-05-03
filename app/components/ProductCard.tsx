@@ -6,6 +6,7 @@ import { Card, CardContent, CardFooter } from "./ui/card";
 import { Badge } from "./ui/badge";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
 import { type StoreProduct, formatNaira } from "../../lib/commerce";
+import { cn } from "./ui/utils";
 
 export type Product = StoreProduct;
 
@@ -22,8 +23,10 @@ export function ProductCard({
   onViewDetails,
   addLabel = "Add to Cart",
 }: ProductCardProps) {
+  const useCompactAddButton = addLabel.length > 12;
+
   return (
-    <Card className="overflow-hidden transition-all hover:shadow-lg">
+    <Card className="flex h-full flex-col overflow-hidden transition-all hover:shadow-lg">
       <button
         type="button"
         className="aspect-square w-full overflow-hidden bg-gray-100 text-left"
@@ -35,7 +38,7 @@ export function ProductCard({
           className="h-full w-full object-cover transition-transform hover:scale-105"
         />
       </button>
-      <CardContent className="p-4">
+      <CardContent className="flex flex-1 flex-col p-3 sm:p-4">
         <div className="mb-2">
           <Badge variant="secondary" className="text-xs">
             {product.category}
@@ -48,23 +51,33 @@ export function ProductCard({
         >
           {product.name}
         </button>
-        <p className="text-sm text-gray-600 line-clamp-2">{product.description}</p>
-        <p className="mt-2 text-xl font-bold text-gray-900">{formatNaira(product.price)}</p>
+        <p className="min-h-[3.5rem] text-sm leading-7 text-gray-600 line-clamp-2 sm:min-h-[3.25rem] sm:leading-6">
+          {product.description}
+        </p>
+        <p className="mt-auto pt-3 text-xl font-bold text-gray-900">
+          {formatNaira(product.price)}
+        </p>
       </CardContent>
-      <CardFooter className="grid gap-2 p-4 pt-0">
+      <CardFooter className="mt-auto grid gap-2 p-3 pt-0 sm:p-4 sm:pt-0">
         <Button
           type="button"
-          className="w-full"
+          className={cn(
+            "min-h-11 w-full sm:min-h-12",
+            useCompactAddButton &&
+              "gap-1 px-2 text-[13px] sm:gap-2 sm:px-4 sm:text-sm",
+          )}
           onClick={() => onAddToCart(product)}
           disabled={!product.inStock}
         >
-          <ShoppingCart className="mr-2 h-4 w-4" />
+          <ShoppingCart
+            className={cn("h-4 w-4", useCompactAddButton && "h-3.5 w-3.5 sm:h-4 sm:w-4")}
+          />
           {product.inStock ? addLabel : "Out of Stock"}
         </Button>
         <Button
           type="button"
           variant="outline"
-          className="w-full"
+          className="min-h-11 w-full sm:min-h-12"
           onClick={() => onViewDetails?.(product)}
         >
           View Details

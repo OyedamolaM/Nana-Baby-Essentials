@@ -1,18 +1,17 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { About } from "./components/About";
 import { BabyRegistryHighlight } from "./components/BabyRegistryHighlight";
-import { CategoryFilter } from "./components/CategoryFilter";
 import { CollectionShowcase } from "./components/CollectionShowcase";
 import { DealOfTheWeek } from "./components/DealOfTheWeek";
 import { Footer } from "./components/Footer";
 import { FAQ } from "./components/FAQ";
 import { Header } from "./components/Header";
 import { Hero } from "./components/Hero";
-import { ProductCard, type Product } from "./components/ProductCard";
+import { type Product } from "./components/ProductCard";
 import { ProductDetailModal } from "./components/ProductDetailModal";
 import { ProductShowcase } from "./components/ProductShowcase";
 import { ShoppingCartDrawer } from "./components/ShoppingCartDrawer";
@@ -22,40 +21,12 @@ import { CreateRegistryModal } from "./components/registry/CreateRegistryModal";
 import { useAuth } from "./contexts/AuthContext";
 import { useStoreCart } from "./contexts/StoreCartContext";
 import { useActiveCollections } from "./hooks/useContentData";
-import { useFeaturedProducts, usePaginatedProducts } from "./hooks/usePaginatedProducts";
+import { useFeaturedProducts } from "./hooks/usePaginatedProducts";
 import { AdminDashboard } from "./pages/AdminDashboard";
 import { UserDashboard } from "./pages/UserDashboard";
-import {
-  CATEGORIES,
-} from "../lib/commerce";
-import {
-  Pagination,
-  PaginationContent,
-  PaginationEllipsis,
-  PaginationItem,
-  PaginationLink,
-  PaginationNext,
-  PaginationPrevious,
-} from "./components/ui/pagination";
 
 type AppView = "store" | "dashboard" | "admin";
 type AuthTab = "login" | "signup";
-
-function buildPagination(currentPage: number, totalPages: number) {
-  if (totalPages <= 5) {
-    return Array.from({ length: totalPages }, (_, index) => index + 1);
-  }
-
-  if (currentPage <= 3) {
-    return [1, 2, 3, 4, "ellipsis", totalPages] as const;
-  }
-
-  if (currentPage >= totalPages - 2) {
-    return [1, "ellipsis", totalPages - 3, totalPages - 2, totalPages - 1, totalPages] as const;
-  }
-
-  return [1, "ellipsis", currentPage - 1, currentPage, currentPage + 1, "ellipsis", totalPages] as const;
-}
 
 export default function App() {
   const router = useRouter();
@@ -76,23 +47,8 @@ export default function App() {
   const [productDetailOpen, setProductDetailOpen] = useState(false);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [registryOpen, setRegistryOpen] = useState(false);
-  const productsRef = useRef<HTMLElement>(null);
   const featuredProducts = useFeaturedProducts({ onlyInStock: false, limit: 4 });
   const collections = useActiveCollections(4);
-  const {
-    loading: productsLoading,
-    page,
-    products,
-    searchQuery,
-    selectedCategory,
-    setPage,
-    setSearchQuery,
-    setSelectedCategory,
-    totalCount,
-    totalPages,
-  } = usePaginatedProducts({ pageSize: 16 });
-
-  const paginationItems = buildPagination(page, totalPages);
 
   const runAfterStoreRender = (callback: () => void) => {
     setActiveView("store");
@@ -108,10 +64,6 @@ export default function App() {
     }
 
     document.getElementById(sectionId)?.scrollIntoView({ behavior: "smooth" });
-  };
-
-  const scrollToProducts = () => {
-    productsRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
   const openAuth = (tab: AuthTab) => {
@@ -137,14 +89,18 @@ export default function App() {
     updateQuantity(productId, quantity);
   };
 
-  const handleSearch = (query: string) => {
-    setSearchQuery(query);
-    runAfterStoreRender(scrollToProducts);
+  const openProductsPage = () => {
+    router.push("/products");
   };
 
   const handleNavigate = (
     section: "home" | "products" | "about" | "faq",
   ) => {
+    if (section === "products") {
+      openProductsPage();
+      return;
+    }
+
     runAfterStoreRender(() => scrollToSection(section));
   };
 
@@ -210,11 +166,6 @@ export default function App() {
     toast.success("Signed out.");
   };
 
-  const clearFilters = () => {
-    setSearchQuery("");
-    setSelectedCategory("All");
-  };
-
   return (
     <div className="min-h-screen bg-white">
       <Header
@@ -222,11 +173,10 @@ export default function App() {
         cartItemCount={distinctItemCount}
         isAuthenticated={Boolean(user)}
         isAdmin={isAdmin}
-        showSearch={activeView === "store"}
         onCartClick={() => setCartOpen(true)}
-        onSearch={handleSearch}
         onNavigate={handleNavigate}
         onSignIn={() => openAuth("login")}
+        onSignUp={() => openAuth("signup")}
         onOpenDashboard={handleOpenDashboard}
         onOpenAdmin={handleOpenAdmin}
         onSignOut={handleSignOut}
@@ -237,7 +187,7 @@ export default function App() {
           <>
             <section id="home">
               <Hero
-                onShopNow={scrollToProducts}
+                onShopNow={openProductsPage}
                 onCreateRegistry={handleCreateRegistry}
               />
             </section>
@@ -253,7 +203,7 @@ export default function App() {
               products={featuredProducts}
               onAddToCart={handleAddToCart}
               onViewProduct={handleViewProduct}
-              onViewAll={scrollToProducts}
+              onViewAll={openProductsPage}
             />
 
             <DealOfTheWeek
@@ -270,131 +220,6 @@ export default function App() {
             
             <section id="about">
               <About />
-            </section>
-
-            <section
-              id="products"
-              ref={productsRef}
-              className="bg-gradient-to-b from-white to-gray-50 py-20"
-            >
-              <div className="container mx-auto px-4">
-                <div className="mb-8 text-center">
-                  <h2 className="mb-2 text-4xl font-bold text-gray-900">
-                    {searchQuery
-                      ? `Search Results for "${searchQuery}"`
-                      : "All Products"}
-                  </h2>
-                  <p className="text-gray-600">
-                    {searchQuery
-                      ? `${totalCount} products found`
-                      : "Browse our complete collection"}
-                  </p>
-                </div>
-
-                <CategoryFilter
-                  categories={[...CATEGORIES]}
-                  selectedCategory={selectedCategory}
-                  onSelectCategory={setSelectedCategory}
-                />
-
-                {(searchQuery || selectedCategory !== "All") && (
-                  <div className="mb-6 flex flex-wrap items-center gap-3 text-sm text-gray-600">
-                    <span>
-                      Active filters:
-                      {searchQuery ? ` search "${searchQuery}"` : ""}
-                      {searchQuery && selectedCategory !== "All" ? " and" : ""}
-                      {selectedCategory !== "All"
-                        ? ` category "${selectedCategory}"`
-                        : ""}
-                    </span>
-                    <button
-                      type="button"
-                      className="font-medium text-pink-600"
-                      onClick={clearFilters}
-                    >
-                      Clear filters
-                    </button>
-                  </div>
-                )}
-
-                {productsLoading ? (
-                  <div className="py-16 text-center">
-                    <p className="text-xl text-gray-500">Loading products...</p>
-                  </div>
-                ) : products.length === 0 ? (
-                  <div className="py-16 text-center">
-                    <p className="text-xl text-gray-500">
-                      No products found. Try a different search or category.
-                    </p>
-                  </div>
-                ) : (
-                  <>
-                    <div className="grid grid-cols-2 gap-4 sm:gap-6 lg:grid-cols-3 xl:grid-cols-4">
-                      {products.map((product) => (
-                        <ProductCard
-                          key={product.id}
-                          product={product}
-                          onAddToCart={handleAddToCart}
-                          onViewDetails={handleViewProduct}
-                        />
-                      ))}
-                    </div>
-
-                    <Pagination className="mt-10">
-                      <PaginationContent>
-                        <PaginationItem>
-                          <PaginationPrevious
-                            href="#products"
-                            onClick={(event) => {
-                              event.preventDefault();
-                              if (page > 1) {
-                                setPage(page - 1);
-                              }
-                            }}
-                            aria-disabled={page === 1}
-                            className={page === 1 ? "pointer-events-none opacity-50" : ""}
-                          />
-                        </PaginationItem>
-
-                        {paginationItems.map((item, index) => (
-                          <PaginationItem key={`${item}-${index}`}>
-                            {item === "ellipsis" ? (
-                              <PaginationEllipsis />
-                            ) : (
-                              <PaginationLink
-                                href="#products"
-                                isActive={item === page}
-                                onClick={(event) => {
-                                  event.preventDefault();
-                                  setPage(Number(item));
-                                }}
-                              >
-                                {item}
-                              </PaginationLink>
-                            )}
-                          </PaginationItem>
-                        ))}
-
-                        <PaginationItem>
-                          <PaginationNext
-                            href="#products"
-                            onClick={(event) => {
-                              event.preventDefault();
-                              if (page < totalPages) {
-                                setPage(page + 1);
-                              }
-                            }}
-                            aria-disabled={page === totalPages}
-                            className={
-                              page === totalPages ? "pointer-events-none opacity-50" : ""
-                            }
-                          />
-                        </PaginationItem>
-                      </PaginationContent>
-                    </Pagination>
-                  </>
-                )}
-              </div>
             </section>
 
             <section id="faq">
