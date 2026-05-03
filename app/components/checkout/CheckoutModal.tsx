@@ -128,7 +128,7 @@ export function CheckoutModal({
         .insert({
           user_id: user.id,
           total: totalAmount,
-          status: "pending",
+          status: "awaiting_payment",
           shipping_address: shippingAddressData,
           billing_address: shippingAddressData,
           items: cartItems.map((item) => ({
@@ -180,10 +180,10 @@ export function CheckoutModal({
               value: String(order.id),
             },
           ],
+        },
         onClose: function() {
           toast.info("Payment cancelled.");
           setLoading(false);
-        },
         },
         callback: function(response: { reference: string }) {
           onPaymentSuccess(response);

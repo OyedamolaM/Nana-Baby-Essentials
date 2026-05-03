@@ -1,4 +1,5 @@
-import { Baby, Mail, Phone, MapPin, XIcon } from "lucide-react";
+import { Baby, Mail, Phone, MapPin } from "lucide-react";
+import { FaTiktok, FaWhatsapp } from "react-icons/fa";
 import { Separator } from "./ui/separator";
 import { LucideProps } from "lucide-react";
 
@@ -27,14 +28,11 @@ export function Footer() {
               Your trusted partner for premium baby products in Nigeria. Quality, safety, and love in every product.
             </p>
             <div className="flex gap-4">
-              <a href="#" className="hover:text-pink-400 transition-colors">
-                <Facebook className="h-5 w-5" />
-              </a>
-              <a href="#" className="hover:text-pink-400 transition-colors">
+              <a href="https://www.instagram.com/nanasbabyessentials" target="_blank" rel="noopener noreferrer" className="hover:text-pink-400 transition-colors">
                 <Instagram className="h-5 w-5" />
               </a>
-              <a href="#" className="hover:text-pink-400 transition-colors">
-                <XIcon className="h-5 w-5" />
+              <a href="https://www.tiktok.com/nanasbabyshop" target="_blank" rel="noopener noreferrer" className="hover:text-pink-400 transition-colors">
+                <FaTiktok className="h-5 w-5" />
               </a>
             </div>
           </div>
@@ -68,22 +66,38 @@ export function Footer() {
             <ul className="space-y-3 text-sm">
               <li className="flex items-start gap-2">
                 <MapPin className="h-5 w-5 flex-shrink-0 text-pink-400" />
-                <span>Ogunlana Drive, Surulere, Lagos, Nigeria</span>
+                <span>Mainland Store - 71 Ogunlana Drive Surulere Lagos</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <MapPin className="h-5 w-5 flex-shrink-0 text-pink-400" />
+                <span>Island Store - Block A4 Shop 844/845 HFP Eastline Shopping Complex Abraham Adesanya Bustop Ajah</span>
               </li>
               <li className="flex items-center gap-2">
+                <a href="https://" target="_blank" rel="noopener noreferrer" className="flex items-center gap-2">
+                  <FaWhatsapp className="h-5 w-5 flex-shrink-0 text-pink-400" />
+                  <span>+23408024740159</span>
+                </a>
+              </li>
+              <li className="flex items-center gap-2">
+                <a href="https://" target="_blank" rel="noopener noreferrer"className="flex items-center gap-2">
                 <Phone className="h-5 w-5 flex-shrink-0 text-pink-400" />
-                <span>+234 801 234 5678</span>
+                <span>+23408024740159</span></a>
               </li>
-              <li className="flex items-center gap-2">
+              <li className="flex items-center gap-2"> 
+                <a href="http://" target="_blank" rel="noopener noreferrer" className="flex items-center gap-2">
                 <Mail className="h-5 w-5 flex-shrink-0 text-pink-400" />
-                <span>hello@babybliss.ng</span>
+                <span>nanasbabyessentials@gmail.com</span>
+                </a>
               </li>
             </ul>
-            <p className="text-sm mt-4">
-              <strong className="text-white">Hours:</strong><br />
-              Mon - Sat: 9:00 AM - 6:00 PM<br />
-              Sunday: Closed
-            </p>
+            <div className="text-sm mt-4 flex items-start gap-2">
+              <p>
+              <strong className="text-white">Hours: </strong>
+              </p>
+              <p>Mon - Sat: 9:00 AM - 6:00 PM<br />
+                 Sunday: Closed
+              </p>
+            </div>
           </div>
         </div>
 

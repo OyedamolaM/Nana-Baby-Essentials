@@ -101,20 +101,24 @@ export function AdminDashboard() {
     const [{ data: ordersData }, { data: customersData }, { data: productsData }] =
       await Promise.all([
         supabase.from("orders").select("*").order("created_at", { ascending: false }),
-        supabase
-          .from("user_profiles")
-          .select("*")
-          .eq("is_admin", false),
+        supabase.from("user_profiles").select("*"),
+
         supabase
           .from("products")
           .select("*")
           .order("created_at", { ascending: false }),
       ]);
 
+      const test = await supabase.from("user_profiles").select("count");
+      console.log("Total rows in profiles table:", test.count);
+
+
     setOrders((ordersData as AdminOrder[] | null) ?? []);
     setCustomers((customersData as Customer[] | null) ?? []);
     setProducts((productsData as ProductRecord[] | null) ?? []);
     setLoading(false);
+
+    console.log("Customers from DB:", customersData);
   }, []);
 
   useEffect(() => {
@@ -128,21 +132,23 @@ export function AdminDashboard() {
   }, [isAdmin, loadAdminData]);
 
   const stats = useMemo(() => {
-    const totalOrders = orders.length;
-    const totalRevenue = orders.reduce(
-      (sum, order) => sum + Number(order.total),
-      0,
-    );
-    const totalCustomers = customers.length;
-    const totalProducts = products.length;
+  const totalRevenue = orders
+  .filter(o => o.status === "paid")
+  .reduce((sum, order) => sum + Number(order.total), 0);
 
-    return {
-      totalOrders,
-      totalRevenue,
-      totalCustomers,
-      totalProducts,
-    };
-  }, [customers.length, orders, products.length]);
+  const paidOrders = orders.filter(order => order.status === "paid");
+  
+  return {
+    totalOrders: paidOrders.length,
+    totalRevenue: totalRevenue,
+    totalCustomers: customers.length,
+    totalProducts: products.length,
+  };
+}, [customers.length, orders, products.length]);
+
+const paidOrdersList = orders.filter(o => o.status === "paid");
+const unfinishedOrdersList = orders.filter(o => o.status !== "paid");
+
 
   const handleSaveProduct = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -247,10 +253,12 @@ export function AdminDashboard() {
   const monthlyOrders = orders.filter((order) => {
     const orderDate = new Date(order.created_at);
     return (
+      order.status === "paid" &&
       orderDate.getMonth() === currentMonth &&
       orderDate.getFullYear() === currentYear
     );
   });
+
   const monthlyRevenue = monthlyOrders.reduce(
     (sum, order) => sum + Number(order.total),
     0,
@@ -324,50 +332,37 @@ export function AdminDashboard() {
         <TabsContent value="orders">
           <Card>
             <CardHeader>
-              <CardTitle>Recent Orders</CardTitle>
+              <CardTitle>Order Management</CardTitle>
             </CardHeader>
             <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Order ID</TableHead>
-                    <TableHead>Customer</TableHead>
-                    <TableHead>Date</TableHead>
-                    <TableHead>Total</TableHead>
-                    <TableHead>Status</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {orders.map((order) => (
-                    <TableRow key={order.id}>
-                      <TableCell className="font-mono text-sm">
-                        {order.id.substring(0, 8)}
-                      </TableCell>
-                      <TableCell>{order.shipping_address?.name ?? "N/A"}</TableCell>
-                      <TableCell>
-                        {new Date(order.created_at).toLocaleDateString()}
-                      </TableCell>
-                      <TableCell>{formatNairaAmount(Number(order.total))}</TableCell>
-                      <TableCell>
-                        <span
-                          className={`rounded-full px-2 py-1 text-xs ${
-                            order.status === "paid"
-                              ? "bg-green-100 text-green-700"
-                              : order.status === "pending"
-                                ? "bg-yellow-100 text-yellow-700"
-                                : "bg-gray-100 text-gray-700"
-                          }`}
-                        >
-                          {order.status}
-                        </span>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+
+              <Tabs defaultValue="paid_only">
+                <TabsList className="mb-4 grid w-[400px] grid-cols-2">
+                  <TabsTrigger value="paid_only" className="data-[state=active]:bg-green-600 data-[state=active]:text-white">
+                    Paid Orders ({paidOrdersList.length})
+                  </TabsTrigger>
+                  <TabsTrigger value="unfinished_only" className="data-[state=active]:bg-yellow-600 data-[state=active]:text-white">
+                    Unfinished ({unfinishedOrdersList.length})
+                  </TabsTrigger>
+                </TabsList>
+
+                <TabsContent value="paid_only">
+                  <div className="rounded-md border border-green-200">
+                    <OrderTable data={paidOrdersList} />
+                  </div>
+                </TabsContent>
+
+                {/* Tab 2: Only Unfinished Orders */}
+                <TabsContent value="unfinished_only">
+                  <div className="rounded-md border border-yellow-200">
+                    <OrderTable data={unfinishedOrdersList} />
+                  </div>
+                </TabsContent>
+              </Tabs>
             </CardContent>
           </Card>
         </TabsContent>
+
 
         <TabsContent value="customers">
           <Card>
@@ -549,5 +544,46 @@ export function AdminDashboard() {
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+function OrderTable({ data }: { data: AdminOrder[] }) {
+  return (
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHead>Order ID</TableHead>
+          <TableHead>Customer</TableHead>
+          <TableHead>Date</TableHead>
+          <TableHead>Total</TableHead>
+          <TableHead>Status</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {data.length === 0 ? (
+          <TableRow>
+            <TableCell colSpan={5} className="py-8 text-center text-gray-500">
+              No orders found in this category.
+            </TableCell>
+          </TableRow>
+        ) : (
+          data.map((order) => (
+            <TableRow key={order.id}>
+              <TableCell className="font-mono text-xs">#{order.id.substring(0, 8)}</TableCell>
+              <TableCell>{order.shipping_address?.name ?? "N/A"}</TableCell>
+              <TableCell>{new Date(order.created_at).toLocaleDateString()}</TableCell>
+              <TableCell>{formatNairaAmount(Number(order.total))}</TableCell>
+              <TableCell>
+                <span className={`rounded-full px-2 py-1 text-[10px] font-bold uppercase ${
+                  order.status === "paid" ? "bg-green-100 text-green-700" : "bg-yellow-100 text-yellow-700"
+                }`}>
+                  {order.status}
+                </span>
+              </TableCell>
+            </TableRow>
+          ))
+        )}
+      </TableBody>
+    </Table>
   );
 }

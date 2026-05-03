@@ -267,6 +267,9 @@ export default function App() {
                 onCreateRegistry={handleCreateRegistry}
               />
             </section>
+            <section id="registry">
+              <BabyRegistryHighlight onCreateRegistry={handleCreateRegistry} />
+            </section>
 
             <ProductShowcase
               products={products}
@@ -274,10 +277,6 @@ export default function App() {
               onViewProduct={handleViewProduct}
               onViewAll={scrollToProducts}
             />
-
-            <section id="registry">
-              <BabyRegistryHighlight onCreateRegistry={handleCreateRegistry} />
-            </section>
 
             <section id="about">
               <About />
