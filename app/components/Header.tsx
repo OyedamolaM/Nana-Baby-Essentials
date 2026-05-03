@@ -1,21 +1,30 @@
 'use client'
 
+import Link from "next/link";
 import { useState } from "react";
 import {
   Baby,
+  LayoutDashboard,
   LogOut,
   Menu,
   Search,
-  ShieldCheck,
+  Shield,
   ShoppingCart,
-  UserRound,
+  User,
 } from "lucide-react";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "./ui/dropdown-menu";
 import { Input } from "./ui/input";
 
 type StoreView = "store" | "dashboard" | "admin";
-type NavSection = "home" | "products" | "registry" | "about" | "faq";
+type NavSection = "home" | "products" | "about" | "faq";
 
 interface HeaderProps {
   activeView: StoreView;
@@ -35,7 +44,6 @@ interface HeaderProps {
 const navItems: { id: NavSection; label: string }[] = [
   { id: "home", label: "Home" },
   { id: "products", label: "Products" },
-  { id: "registry", label: "Registry" },
   { id: "about", label: "About" },
   { id: "faq", label: "FAQ" },
 ];
@@ -102,6 +110,18 @@ export function Header({
                 {item.label}
               </button>
             ))}
+            <Link
+              href="/registry"
+              className="text-sm font-medium transition-colors hover:text-pink-600"
+            >
+              Baby Registry
+            </Link>
+            <Link
+              href="/blog"
+              className="text-sm font-medium transition-colors hover:text-pink-600"
+            >
+              Blog
+            </Link>
           </nav>
 
           {showSearch ? (
@@ -126,39 +146,30 @@ export function Header({
 
           <div className="flex items-center gap-2">
             {isAuthenticated ? (
-              <>
-                <Button
-                  variant={activeView === "dashboard" ? "default" : "ghost"}
-                  size="icon"
-                  type="button"
-                  className="hidden md:flex"
-                  onClick={onOpenDashboard}
-                >
-                  <UserRound className="h-5 w-5" />
-                </Button>
-
-                {isAdmin && (
-                  <Button
-                    variant={activeView === "admin" ? "default" : "ghost"}
-                    size="icon"
-                    type="button"
-                    className="hidden md:flex"
-                    onClick={onOpenAdmin}
-                  >
-                    <ShieldCheck className="h-5 w-5" />
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="icon" type="button">
+                    <User className="h-5 w-5" />
                   </Button>
-                )}
-
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  type="button"
-                  className="hidden md:flex"
-                  onClick={onSignOut}
-                >
-                  <LogOut className="h-5 w-5" />
-                </Button>
-              </>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={onOpenDashboard}>
+                    <LayoutDashboard className="mr-2 h-4 w-4" />
+                    My Dashboard
+                  </DropdownMenuItem>
+                  {isAdmin && (
+                    <DropdownMenuItem onClick={onOpenAdmin}>
+                      <Shield className="mr-2 h-4 w-4" />
+                      Admin Panel
+                    </DropdownMenuItem>
+                  )}
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={onSignOut}>
+                    <LogOut className="mr-2 h-4 w-4" />
+                    Sign Out
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             ) : (
               <Button
                 variant="outline"
@@ -213,6 +224,20 @@ export function Header({
                   {item.label}
                 </button>
               ))}
+              <Link
+                href="/registry"
+                className="text-left text-sm font-medium transition-colors hover:text-pink-600"
+                onClick={() => setMobileMenuOpen(false)}
+              >
+                Baby Registry
+              </Link>
+              <Link
+                href="/blog"
+                className="text-left text-sm font-medium transition-colors hover:text-pink-600"
+                onClick={() => setMobileMenuOpen(false)}
+              >
+                Blog
+              </Link>
             </nav>
 
             {showSearch && (

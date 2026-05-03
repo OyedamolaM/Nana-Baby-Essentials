@@ -159,7 +159,7 @@ export function CheckoutModal({
           toast.success("Payment successful. Your order has been placed.");
           onCheckoutComplete();
           onClose();
-        } catch (err) {
+        } catch {
           toast.error("Order updated failed, but payment was successful. Please contact support.");
         } finally {
           setLoading(false);
@@ -190,9 +190,6 @@ export function CheckoutModal({
         },
       });
       onClose();
-      handler.openIframe();
-
-
       handler.openIframe();
     } catch (error) {
       const message =

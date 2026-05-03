@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { About } from "./components/About";
 import { BabyRegistryHighlight } from "./components/BabyRegistryHighlight";
 import { CategoryFilter } from "./components/CategoryFilter";
+import { DealOfTheWeek } from "./components/DealOfTheWeek";
 import { Footer } from "./components/Footer";
 import { FAQ } from "./components/FAQ";
 import { Header } from "./components/Header";
@@ -16,7 +17,6 @@ import { ShoppingCartDrawer } from "./components/ShoppingCartDrawer";
 import { AuthModal } from "./components/auth/AuthModal";
 import { CheckoutModal } from "./components/checkout/CheckoutModal";
 import { CreateRegistryModal } from "./components/registry/CreateRegistryModal";
-import { Toaster } from "./components/ui/sonner";
 import { useAuth } from "./contexts/AuthContext";
 import { hasSupabaseEnv, supabase } from "./lib/supabase";
 import { AdminDashboard } from "./pages/AdminDashboard";
@@ -164,7 +164,7 @@ export default function App() {
   };
 
   const handleNavigate = (
-    section: "home" | "products" | "registry" | "about" | "faq",
+    section: "home" | "products" | "about" | "faq",
   ) => {
     runAfterStoreRender(() => scrollToSection(section));
   };
@@ -267,9 +267,6 @@ export default function App() {
                 onCreateRegistry={handleCreateRegistry}
               />
             </section>
-            <section id="registry">
-              <BabyRegistryHighlight onCreateRegistry={handleCreateRegistry} />
-            </section>
 
             <ProductShowcase
               products={products}
@@ -277,6 +274,15 @@ export default function App() {
               onViewProduct={handleViewProduct}
               onViewAll={scrollToProducts}
             />
+
+            <DealOfTheWeek
+              onAddToCart={(product) => handleAddToCart(product)}
+              onViewDetails={handleViewProduct}
+            />
+
+            <section id="registry">
+              <BabyRegistryHighlight onCreateRegistry={handleCreateRegistry} />
+            </section>
 
             <section id="about">
               <About />
@@ -363,7 +369,7 @@ export default function App() {
         )}
       </main>
 
-      {activeView === "store" && <Footer />}
+      <Footer />
 
       <ShoppingCartDrawer
         open={cartOpen}
@@ -401,12 +407,10 @@ export default function App() {
       <CreateRegistryModal
         open={registryOpen}
         onClose={() => setRegistryOpen(false)}
-        onCreated={() => {
-          toast.success("Your registry is ready to share.");
+        onCreated={(shareCode) => {
+          toast.success(`Your registry code ${shareCode} is ready to share.`);
         }}
       />
-
-      <Toaster />
     </div>
   );
 }

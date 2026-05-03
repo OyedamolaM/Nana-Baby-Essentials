@@ -1,11 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Lock, MapPin, Package, Trash2, User } from "lucide-react";
+import { Gift, Lock, MapPin, Package, Share2, Trash2, User } from "lucide-react";
 import { toast } from "sonner";
+import { formatNairaAmount } from "../../lib/commerce";
 import { useAuth } from "../contexts/AuthContext";
 import { hasSupabaseEnv, supabase } from "../lib/supabase";
-import { formatNairaAmount } from "../../lib/commerce";
+import { CreateRegistryModal } from "../components/registry/CreateRegistryModal";
 import { Button } from "../components/ui/button";
 import {
   Card,
@@ -42,10 +43,47 @@ type UserProfile = {
   } | null;
 };
 
+type RegistryRecord = {
+  id: string;
+  name: string;
+  share_code: string;
+  due_month?: string | null;
+  baby_gender?: string | null;
+  created_at: string;
+};
+
+function formatDueMonth(dueMonth?: string | null) {
+  if (!dueMonth) {
+    return "N/A";
+  }
+
+  const date = new Date(`${dueMonth}-01T00:00:00`);
+  return Number.isNaN(date.getTime())
+    ? dueMonth
+    : date.toLocaleDateString("en-NG", {
+        month: "long",
+        year: "numeric",
+      });
+}
+
+function formatBabyGender(value?: string | null) {
+  if (!value) {
+    return "N/A";
+  }
+
+  if (value === "neutral") {
+    return "Surprise / Neutral";
+  }
+
+  return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
 export function UserDashboard() {
   const { user, signOut, updateProfile } = useAuth();
   const [orders, setOrders] = useState<UserOrder[]>([]);
+  const [registries, setRegistries] = useState<RegistryRecord[]>([]);
   const [loading, setLoading] = useState(Boolean(user && hasSupabaseEnv));
+  const [showCreateRegistryModal, setShowCreateRegistryModal] = useState(false);
 
   const [fullName, setFullName] = useState("");
   const [phone, setPhone] = useState("");
@@ -64,13 +102,22 @@ export function UserDashboard() {
 
     setLoading(true);
 
-    const { data: profileData } = await supabase
-      .from("user_profiles")
-      .select("*")
-      .eq("id", user.id)
-      .maybeSingle();
+    const [{ data: profileData }, { data: ordersData }, { data: registriesData }] =
+      await Promise.all([
+        supabase.from("user_profiles").select("*").eq("id", user.id).maybeSingle(),
+        supabase
+          .from("orders")
+          .select("*")
+          .eq("user_id", user.id)
+          .order("created_at", { ascending: false }),
+        supabase
+          .from("registries")
+          .select("*")
+          .eq("user_id", user.id)
+          .order("created_at", { ascending: false }),
+      ]);
 
-    const typedProfile = profileData as UserProfile | null;
+    const typedProfile = (profileData as UserProfile | null) ?? null;
 
     if (typedProfile) {
       setFullName(typedProfile.full_name ?? "");
@@ -82,13 +129,8 @@ export function UserDashboard() {
       }
     }
 
-    const { data: ordersData } = await supabase
-      .from("orders")
-      .select("*")
-      .eq("user_id", user.id)
-      .order("created_at", { ascending: false });
-
     setOrders((ordersData as UserOrder[] | null) ?? []);
+    setRegistries((registriesData as RegistryRecord[] | null) ?? []);
     setLoading(false);
   }, [user]);
 
@@ -101,6 +143,26 @@ export function UserDashboard() {
       void loadUserData();
     });
   }, [loadUserData, user]);
+
+  const handleShareRegistry = async (registry: RegistryRecord) => {
+    const shareUrl = `${window.location.origin}/registry/${registry.share_code}`;
+
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: registry.name,
+          text: "Check out my baby registry!",
+          url: shareUrl,
+        });
+        return;
+      } catch {
+        // Fall back to clipboard below.
+      }
+    }
+
+    await navigator.clipboard.writeText(shareUrl);
+    toast.success("Registry link copied to clipboard!");
+  };
 
   const handleUpdateProfile = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -192,7 +254,9 @@ export function UserDashboard() {
   if (!user) {
     return (
       <div className="container mx-auto px-4 py-8">
-        <p className="text-center text-gray-500">Please sign in to view your dashboard.</p>
+        <p className="text-center text-gray-500">
+          Please sign in to view your dashboard.
+        </p>
       </div>
     );
   }
@@ -201,7 +265,8 @@ export function UserDashboard() {
     return (
       <div className="container mx-auto px-4 py-8">
         <p className="text-center text-gray-500">
-          Connect Supabase to enable orders, profile updates, and saved addresses.
+          Connect Supabase to enable orders, registries, profile updates, and
+          saved addresses.
         </p>
       </div>
     );
@@ -217,10 +282,14 @@ export function UserDashboard() {
         <h1 className="mb-8 text-3xl font-bold">My Dashboard</h1>
 
         <Tabs defaultValue="orders" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-4">
+          <TabsList className="grid w-full grid-cols-5">
             <TabsTrigger value="orders">
               <Package className="mr-2 h-4 w-4" />
               Orders
+            </TabsTrigger>
+            <TabsTrigger value="registries">
+              <Gift className="mr-2 h-4 w-4" />
+              Registries
             </TabsTrigger>
             <TabsTrigger value="profile">
               <User className="mr-2 h-4 w-4" />
@@ -261,7 +330,8 @@ export function UserDashboard() {
                             className={`rounded-full px-3 py-1 text-sm ${
                               order.status === "paid"
                                 ? "bg-green-100 text-green-700"
-                                : order.status === "pending"
+                                : order.status === "pending" ||
+                                    order.status === "awaiting_payment"
                                   ? "bg-yellow-100 text-yellow-700"
                                   : "bg-gray-100 text-gray-700"
                             }`}
@@ -272,7 +342,10 @@ export function UserDashboard() {
                         <Separator className="my-2" />
                         <div className="space-y-1">
                           {order.items?.map((item, index) => (
-                            <div key={`${order.id}-${index}`} className="flex justify-between text-sm">
+                            <div
+                              key={`${order.id}-${index}`}
+                              className="flex justify-between text-sm"
+                            >
                               <span>
                                 {item.name} x {item.quantity}
                               </span>
@@ -286,6 +359,67 @@ export function UserDashboard() {
                         <div className="flex justify-between font-semibold">
                           <span>Total</span>
                           <span>{formatNairaAmount(order.total)}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="registries">
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between">
+                <CardTitle>My Registries</CardTitle>
+                <Button onClick={() => setShowCreateRegistryModal(true)}>
+                  <Gift className="mr-2 h-4 w-4" />
+                  Create New Registry
+                </Button>
+              </CardHeader>
+              <CardContent>
+                {registries.length === 0 ? (
+                  <div className="py-8 text-center">
+                    <p className="mb-4 text-gray-500">No registries yet.</p>
+                    <Button onClick={() => setShowCreateRegistryModal(true)}>
+                      Create Your First Registry
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {registries.map((registry) => (
+                      <div key={registry.id} className="rounded-lg border p-4">
+                        <div className="mb-2 flex items-start justify-between gap-4">
+                          <div>
+                            <p className="text-lg font-semibold">
+                              {registry.name}
+                            </p>
+                            <p className="text-sm text-gray-500">
+                              Due: {formatDueMonth(registry.due_month)} and
+                              gender: {formatBabyGender(registry.baby_gender)}
+                            </p>
+                            <p className="text-sm text-gray-500">
+                              Created:{" "}
+                              {new Date(registry.created_at).toLocaleDateString()}
+                            </p>
+                          </div>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleShareRegistry(registry)}
+                          >
+                            <Share2 className="mr-2 h-4 w-4" />
+                            Share
+                          </Button>
+                        </div>
+                        <Separator className="my-2" />
+                        <div className="rounded bg-gray-50 p-3">
+                          <p className="text-sm font-medium text-gray-700">
+                            Registry Code:
+                          </p>
+                          <p className="font-mono text-lg font-bold text-pink-600">
+                            {registry.share_code}
+                          </p>
                         </div>
                       </div>
                     ))}
@@ -414,7 +548,8 @@ export function UserDashboard() {
               </CardHeader>
               <CardContent>
                 <p className="mb-4 text-sm text-gray-600">
-                  Once you delete your account, there is no going back. Please be certain.
+                  Once you delete your account, there is no going back. Please
+                  be certain.
                 </p>
                 <Button variant="destructive" onClick={handleDeleteAccount}>
                   <Trash2 className="mr-2 h-4 w-4" />
@@ -425,6 +560,14 @@ export function UserDashboard() {
           </TabsContent>
         </Tabs>
       </div>
+
+      <CreateRegistryModal
+        open={showCreateRegistryModal}
+        onClose={() => setShowCreateRegistryModal(false)}
+        onCreated={() => {
+          void loadUserData();
+        }}
+      />
     </div>
   );
 }

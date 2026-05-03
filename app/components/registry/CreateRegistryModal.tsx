@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { PartyPopper } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "../../contexts/AuthContext";
 import { hasSupabaseEnv, supabase } from "../../lib/supabase";
@@ -8,16 +9,25 @@ import { Button } from "../ui/button";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from "../ui/dialog";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../ui/select";
+import { Textarea } from "../ui/textarea";
 
 interface CreateRegistryModalProps {
   open: boolean;
   onClose: () => void;
-  onCreated: () => void;
+  onCreated: (shareCode: string) => void;
 }
 
 export function CreateRegistryModal({
@@ -28,7 +38,10 @@ export function CreateRegistryModal({
   const { user } = useAuth();
   const [loading, setLoading] = useState(false);
   const [registryName, setRegistryName] = useState("");
-  const [eventDate, setEventDate] = useState("");
+  const [whatsapp, setWhatsapp] = useState("");
+  const [dueMonth, setDueMonth] = useState("");
+  const [babyGender, setBabyGender] = useState("neutral");
+  const [additionalInfo, setAdditionalInfo] = useState("");
 
   const generateShareCode = () => {
     return Math.random().toString(36).substring(2, 10).toUpperCase();
@@ -55,7 +68,10 @@ export function CreateRegistryModal({
       const { error } = await supabase.from("registries").insert({
         user_id: user.id,
         name: registryName,
-        event_date: eventDate,
+        whatsapp,
+        due_month: dueMonth,
+        baby_gender: babyGender,
+        additional_info: additionalInfo,
         share_code: shareCode,
       });
 
@@ -63,11 +79,26 @@ export function CreateRegistryModal({
         throw error;
       }
 
-      toast.success("Registry created successfully.");
-      onCreated();
+      toast.success(
+        <div className="flex flex-col gap-2">
+          <p className="flex items-center gap-2 font-semibold">
+            <PartyPopper className="h-4 w-4" />
+            We got your registry request!
+          </p>
+          <p className="text-sm">
+            Our registry rep will call you within 24h to confirm your list.
+          </p>
+        </div>,
+        { duration: 6000 },
+      );
+
+      onCreated(shareCode);
       onClose();
       setRegistryName("");
-      setEventDate("");
+      setWhatsapp("");
+      setDueMonth("");
+      setBabyGender("neutral");
+      setAdditionalInfo("");
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Failed to create registry.";
@@ -79,17 +110,21 @@ export function CreateRegistryModal({
 
   return (
     <Dialog open={open} onOpenChange={(nextOpen) => !nextOpen && onClose()}>
-      <DialogContent>
+      <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Create Baby Registry</DialogTitle>
+          <DialogTitle>Create Your Baby Registry</DialogTitle>
+          <DialogDescription>
+            Fill in the details below and we&apos;ll help you create the
+            perfect registry for your little one.
+          </DialogDescription>
         </DialogHeader>
 
         <form onSubmit={handleCreate} className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="registry-name">Registry Name</Label>
+            <Label htmlFor="registry-name">Registry Name *</Label>
             <Input
               id="registry-name"
-              placeholder="Our Baby's Registry"
+              placeholder="e.g., Sarah's Baby Registry"
               value={registryName}
               onChange={(event) => setRegistryName(event.target.value)}
               required
@@ -97,18 +132,70 @@ export function CreateRegistryModal({
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="event-date">Expected Due Date / Event Date</Label>
+            <Label htmlFor="whatsapp">WhatsApp Number *</Label>
             <Input
-              id="event-date"
-              type="date"
-              value={eventDate}
-              onChange={(event) => setEventDate(event.target.value)}
+              id="whatsapp"
+              type="tel"
+              placeholder="+234 801 234 5678"
+              value={whatsapp}
+              onChange={(event) => setWhatsapp(event.target.value)}
               required
             />
           </div>
 
+          <div className="space-y-2">
+            <Label htmlFor="due-month">Expected Due Month *</Label>
+            <Input
+              id="due-month"
+              type="month"
+              value={dueMonth}
+              onChange={(event) => setDueMonth(event.target.value)}
+              required
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="baby-gender">Baby&apos;s Gender *</Label>
+            <Select value={babyGender} onValueChange={setBabyGender}>
+              <SelectTrigger id="baby-gender">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="male">Boy</SelectItem>
+                <SelectItem value="female">Girl</SelectItem>
+                <SelectItem value="neutral">Surprise / Neutral</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="additional-info">
+              Additional Information (Optional)
+            </Label>
+            <Textarea
+              id="additional-info"
+              placeholder="Any special requests, preferences, or information we should know..."
+              value={additionalInfo}
+              onChange={(event) => setAdditionalInfo(event.target.value)}
+              rows={3}
+            />
+          </div>
+
+          <div className="rounded-lg bg-pink-50 p-4 text-sm">
+            <p className="mb-2 font-semibold text-pink-900">Special Offers:</p>
+            <ul className="space-y-1 text-pink-800">
+              <li>
+                Get a box of lactation cookies when your registry orders hit
+                N500,000
+              </li>
+              <li>
+                Get 5% cashback when your registry orders hit N1,000,000
+              </li>
+            </ul>
+          </div>
+
           <Button type="submit" className="w-full" disabled={loading}>
-            {loading ? "Creating..." : "Create Registry"}
+            {loading ? "Creating..." : "Create My Registry"}
           </Button>
         </form>
       </DialogContent>

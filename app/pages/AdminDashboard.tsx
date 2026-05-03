@@ -79,12 +79,49 @@ type ProductRecord = {
   created_at?: string;
 };
 
+type RegistryRecord = {
+  id: string;
+  user_id: string;
+  name: string;
+  due_month?: string | null;
+  baby_gender?: string | null;
+  share_code: string;
+  created_at: string;
+};
+
+function formatDueMonth(dueMonth?: string | null) {
+  if (!dueMonth) {
+    return "N/A";
+  }
+
+  const date = new Date(`${dueMonth}-01T00:00:00`);
+  return Number.isNaN(date.getTime())
+    ? dueMonth
+    : date.toLocaleDateString("en-NG", {
+        month: "long",
+        year: "numeric",
+      });
+}
+
+function formatBabyGender(value?: string | null) {
+  if (!value) {
+    return "N/A";
+  }
+
+  if (value === "neutral") {
+    return "Surprise / Neutral";
+  }
+
+  return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
 export function AdminDashboard() {
   const { isAdmin } = useAuth();
   const [loading, setLoading] = useState(Boolean(isAdmin && hasSupabaseEnv));
   const [orders, setOrders] = useState<AdminOrder[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [products, setProducts] = useState<ProductRecord[]>([]);
+  const [registries, setRegistries] = useState<RegistryRecord[]>([]);
 
   const [showProductModal, setShowProductModal] = useState(false);
   const [editingProduct, setEditingProduct] = useState<ProductRecord | null>(null);
@@ -98,27 +135,32 @@ export function AdminDashboard() {
   const loadAdminData = useCallback(async () => {
     setLoading(true);
 
-    const [{ data: ordersData }, { data: customersData }, { data: productsData }] =
-      await Promise.all([
-        supabase.from("orders").select("*").order("created_at", { ascending: false }),
-        supabase.from("user_profiles").select("*"),
-
-        supabase
-          .from("products")
-          .select("*")
-          .order("created_at", { ascending: false }),
-      ]);
-
-      const test = await supabase.from("user_profiles").select("count");
-      console.log("Total rows in profiles table:", test.count);
-
+    const [
+      { data: ordersData },
+      { data: customersData },
+      { data: productsData },
+      { data: registriesData },
+    ] = await Promise.all([
+      supabase.from("orders").select("*").order("created_at", { ascending: false }),
+      supabase
+        .from("user_profiles")
+        .select("*")
+        .eq("is_admin", false),
+      supabase
+        .from("products")
+        .select("*")
+        .order("created_at", { ascending: false }),
+      supabase
+        .from("registries")
+        .select("*")
+        .order("created_at", { ascending: false }),
+    ]);
 
     setOrders((ordersData as AdminOrder[] | null) ?? []);
     setCustomers((customersData as Customer[] | null) ?? []);
     setProducts((productsData as ProductRecord[] | null) ?? []);
+    setRegistries((registriesData as RegistryRecord[] | null) ?? []);
     setLoading(false);
-
-    console.log("Customers from DB:", customersData);
   }, []);
 
   useEffect(() => {
@@ -131,24 +173,39 @@ export function AdminDashboard() {
     });
   }, [isAdmin, loadAdminData]);
 
+  const customerLookup = useMemo(() => {
+    return Object.fromEntries(
+      customers.map((customer) => [customer.id, customer]),
+    ) as Record<string, Customer>;
+  }, [customers]);
+
   const stats = useMemo(() => {
-  const totalRevenue = orders
-  .filter(o => o.status === "paid")
-  .reduce((sum, order) => sum + Number(order.total), 0);
+    const paidOrders = orders.filter((order) => order.status === "paid");
 
-  const paidOrders = orders.filter(order => order.status === "paid");
-  
-  return {
-    totalOrders: paidOrders.length,
-    totalRevenue: totalRevenue,
-    totalCustomers: customers.length,
-    totalProducts: products.length,
-  };
-}, [customers.length, orders, products.length]);
+    return {
+      totalOrders: orders.length,
+      totalRevenue: paidOrders.reduce(
+        (sum, order) => sum + Number(order.total),
+        0,
+      ),
+      totalCustomers: customers.length,
+      totalProducts: products.length,
+    };
+  }, [customers.length, orders, products.length]);
 
-const paidOrdersList = orders.filter(o => o.status === "paid");
-const unfinishedOrdersList = orders.filter(o => o.status !== "paid");
+  const currentMonth = new Date().getMonth();
+  const currentYear = new Date().getFullYear();
+  const monthlyOrders = orders.filter((order) => {
+    const orderDate = new Date(order.created_at);
+    return (
+      orderDate.getMonth() === currentMonth &&
+      orderDate.getFullYear() === currentYear
+    );
+  });
 
+  const monthlyRevenue = monthlyOrders
+    .filter((order) => order.status === "paid")
+    .reduce((sum, order) => sum + Number(order.total), 0);
 
   const handleSaveProduct = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -238,7 +295,8 @@ const unfinishedOrdersList = orders.filter(o => o.status !== "paid");
     return (
       <div className="container mx-auto px-4 py-8">
         <p className="text-center text-gray-500">
-          Connect Supabase to enable product, customer, and order management.
+          Connect Supabase to enable product, customer, registry, and order
+          management.
         </p>
       </div>
     );
@@ -247,22 +305,6 @@ const unfinishedOrdersList = orders.filter(o => o.status !== "paid");
   if (loading) {
     return <div className="container mx-auto px-4 py-8">Loading...</div>;
   }
-
-  const currentMonth = new Date().getMonth();
-  const currentYear = new Date().getFullYear();
-  const monthlyOrders = orders.filter((order) => {
-    const orderDate = new Date(order.created_at);
-    return (
-      order.status === "paid" &&
-      orderDate.getMonth() === currentMonth &&
-      orderDate.getFullYear() === currentYear
-    );
-  });
-
-  const monthlyRevenue = monthlyOrders.reduce(
-    (sum, order) => sum + Number(order.total),
-    0,
-  );
 
   return (
     <div className="container mx-auto px-4 py-8">
@@ -278,7 +320,9 @@ const unfinishedOrdersList = orders.filter(o => o.status !== "paid");
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{stats.totalOrders}</div>
-            <p className="text-xs text-gray-500">{monthlyOrders.length} this month</p>
+            <p className="text-xs text-gray-500">
+              {monthlyOrders.length} this month
+            </p>
           </CardContent>
         </Card>
 
@@ -325,6 +369,7 @@ const unfinishedOrdersList = orders.filter(o => o.status !== "paid");
       <Tabs defaultValue="orders" className="space-y-6">
         <TabsList>
           <TabsTrigger value="orders">Orders</TabsTrigger>
+          <TabsTrigger value="registries">Registries</TabsTrigger>
           <TabsTrigger value="customers">Customers</TabsTrigger>
           <TabsTrigger value="products">Products</TabsTrigger>
         </TabsList>
@@ -332,37 +377,99 @@ const unfinishedOrdersList = orders.filter(o => o.status !== "paid");
         <TabsContent value="orders">
           <Card>
             <CardHeader>
-              <CardTitle>Order Management</CardTitle>
+              <CardTitle>Recent Orders</CardTitle>
             </CardHeader>
             <CardContent>
-
-              <Tabs defaultValue="paid_only">
-                <TabsList className="mb-4 grid w-[400px] grid-cols-2">
-                  <TabsTrigger value="paid_only" className="data-[state=active]:bg-green-600 data-[state=active]:text-white">
-                    Paid Orders ({paidOrdersList.length})
-                  </TabsTrigger>
-                  <TabsTrigger value="unfinished_only" className="data-[state=active]:bg-yellow-600 data-[state=active]:text-white">
-                    Unfinished ({unfinishedOrdersList.length})
-                  </TabsTrigger>
-                </TabsList>
-
-                <TabsContent value="paid_only">
-                  <div className="rounded-md border border-green-200">
-                    <OrderTable data={paidOrdersList} />
-                  </div>
-                </TabsContent>
-
-                {/* Tab 2: Only Unfinished Orders */}
-                <TabsContent value="unfinished_only">
-                  <div className="rounded-md border border-yellow-200">
-                    <OrderTable data={unfinishedOrdersList} />
-                  </div>
-                </TabsContent>
-              </Tabs>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Order ID</TableHead>
+                    <TableHead>Customer</TableHead>
+                    <TableHead>Date</TableHead>
+                    <TableHead>Total</TableHead>
+                    <TableHead>Status</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {orders.map((order) => (
+                    <TableRow key={order.id}>
+                      <TableCell className="font-mono text-sm">
+                        {order.id.substring(0, 8)}
+                      </TableCell>
+                      <TableCell>{order.shipping_address?.name ?? "N/A"}</TableCell>
+                      <TableCell>
+                        {new Date(order.created_at).toLocaleDateString()}
+                      </TableCell>
+                      <TableCell>{formatNairaAmount(Number(order.total))}</TableCell>
+                      <TableCell>
+                        <span
+                          className={`rounded-full px-2 py-1 text-xs ${
+                            order.status === "paid"
+                              ? "bg-green-100 text-green-700"
+                              : order.status === "pending" ||
+                                  order.status === "awaiting_payment"
+                                ? "bg-yellow-100 text-yellow-700"
+                                : "bg-gray-100 text-gray-700"
+                          }`}
+                        >
+                          {order.status}
+                        </span>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
             </CardContent>
           </Card>
         </TabsContent>
 
+        <TabsContent value="registries">
+          <Card>
+            <CardHeader>
+              <CardTitle>Baby Registries</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Registry Name</TableHead>
+                    <TableHead>Parent</TableHead>
+                    <TableHead>Due Month</TableHead>
+                    <TableHead>Gender</TableHead>
+                    <TableHead>Share Code</TableHead>
+                    <TableHead>Created</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {registries.map((registry) => {
+                    const owner = customerLookup[registry.user_id];
+
+                    return (
+                      <TableRow key={registry.id}>
+                        <TableCell className="font-medium">
+                          {registry.name}
+                        </TableCell>
+                        <TableCell>
+                          {owner?.full_name || owner?.email || "N/A"}
+                        </TableCell>
+                        <TableCell>{formatDueMonth(registry.due_month)}</TableCell>
+                        <TableCell>
+                          {formatBabyGender(registry.baby_gender)}
+                        </TableCell>
+                        <TableCell className="font-mono text-sm">
+                          {registry.share_code}
+                        </TableCell>
+                        <TableCell>
+                          {new Date(registry.created_at).toLocaleDateString()}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        </TabsContent>
 
         <TabsContent value="customers">
           <Card>
@@ -428,7 +535,11 @@ const unfinishedOrdersList = orders.filter(o => o.status !== "paid");
                       <TableCell>{product.category}</TableCell>
                       <TableCell>{formatNaira(Number(product.price))}</TableCell>
                       <TableCell>
-                        <span className={product.in_stock ? "text-green-600" : "text-red-600"}>
+                        <span
+                          className={
+                            product.in_stock ? "text-green-600" : "text-red-600"
+                          }
+                        >
                           {product.in_stock ? "In Stock" : "Out of Stock"}
                         </span>
                       </TableCell>
@@ -544,46 +655,5 @@ const unfinishedOrdersList = orders.filter(o => o.status !== "paid");
         </DialogContent>
       </Dialog>
     </div>
-  );
-}
-
-function OrderTable({ data }: { data: AdminOrder[] }) {
-  return (
-    <Table>
-      <TableHeader>
-        <TableRow>
-          <TableHead>Order ID</TableHead>
-          <TableHead>Customer</TableHead>
-          <TableHead>Date</TableHead>
-          <TableHead>Total</TableHead>
-          <TableHead>Status</TableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {data.length === 0 ? (
-          <TableRow>
-            <TableCell colSpan={5} className="py-8 text-center text-gray-500">
-              No orders found in this category.
-            </TableCell>
-          </TableRow>
-        ) : (
-          data.map((order) => (
-            <TableRow key={order.id}>
-              <TableCell className="font-mono text-xs">#{order.id.substring(0, 8)}</TableCell>
-              <TableCell>{order.shipping_address?.name ?? "N/A"}</TableCell>
-              <TableCell>{new Date(order.created_at).toLocaleDateString()}</TableCell>
-              <TableCell>{formatNairaAmount(Number(order.total))}</TableCell>
-              <TableCell>
-                <span className={`rounded-full px-2 py-1 text-[10px] font-bold uppercase ${
-                  order.status === "paid" ? "bg-green-100 text-green-700" : "bg-yellow-100 text-yellow-700"
-                }`}>
-                  {order.status}
-                </span>
-              </TableCell>
-            </TableRow>
-          ))
-        )}
-      </TableBody>
-    </Table>
   );
 }
