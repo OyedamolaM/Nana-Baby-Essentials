@@ -1,1 +1,5 @@
-export { hasSupabaseEnv, supabase } from "../../lib/supabaseClient";
+export {
+  hasSupabaseEnv,
+  isSupabaseMissingRelationError,
+  supabase,
+} from "../../lib/supabaseClient";

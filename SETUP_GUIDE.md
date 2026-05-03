@@ -17,9 +17,10 @@ You now have a fully functional e-commerce baby store with:
 ### 1. Database Setup
 
 1. Go to your Supabase SQL Editor: https://supabase.com/dashboard/project/wvaquxifumwjphlvdbgb/sql/new
-2. Open the `DATABASE_SETUP.md` file in this project
-3. Copy and run all SQL commands in order (steps 1-7)
-4. After creating your account through the app, run step 7 to make yourself an admin
+2. For a brand-new project, open `supabase/setup.sql`
+3. If your project was already initialized from the older setup guide, open `supabase/migrations/20260503_schema_recovery.sql`
+4. Copy the full contents of the correct file into the SQL Editor and run it
+5. After creating your account through the app, run the admin update query from `DATABASE_SETUP.md`
 
 ### 2. Enable Google OAuth
 
@@ -157,7 +158,10 @@ The app is fully responsive and works on:
 ## 🐛 Troubleshooting
 
 **Issue**: Can't see products
-- **Solution**: Run the database setup SQL, especially step 6 (insert sample products)
+- **Solution**: Run `supabase/setup.sql`. If the project already used the older setup guide, run `supabase/migrations/20260503_schema_recovery.sql` instead.
+
+**Issue**: Console shows `PGRST205` for `collections`, `homepage_deals`, `shopping_carts`, or `blog_posts`
+- **Solution**: Your database is missing newer tables. Run `supabase/migrations/20260503_schema_recovery.sql`, then refresh the app.
 
 **Issue**: Google sign-in not working
 - **Solution**: Configure Google OAuth in Supabase auth settings
@@ -170,6 +174,9 @@ The app is fully responsive and works on:
 
 **Issue**: Admin dashboard showing "Access denied"
 - **Solution**: Run SQL to set your user as admin: `UPDATE user_profiles SET is_admin = true WHERE email = 'your@email.com'`
+
+**Issue**: Admin dashboard does not show customers
+- **Solution**: Run the latest SQL so existing `auth.users` are backfilled into `public.user_profiles`
 
 ## 🚢 Deployment
 

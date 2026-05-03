@@ -11,7 +11,11 @@ import {
   type ReactNode,
 } from "react";
 import { useAuth } from "./AuthContext";
-import { hasSupabaseEnv, supabase } from "../lib/supabase";
+import {
+  hasSupabaseEnv,
+  isSupabaseMissingRelationError,
+  supabase,
+} from "../lib/supabase";
 import { mapProductRecord, type ProductRecord, type StoreProduct } from "../../lib/commerce";
 
 const STORE_CART_STORAGE_KEY = "nbe_store_cart_v1";
@@ -253,7 +257,13 @@ export function StoreCartProvider({ children }: { children: ReactNode }) {
       setItems(mergedItems);
       setRemoteReady(true);
     } catch (error) {
-      console.error("Store cart sync is unavailable.", error);
+      if (isSupabaseMissingRelationError(error)) {
+        console.warn(
+          "Store cart sync is disabled until the shopping cart tables are migrated.",
+        );
+      } else {
+        console.error("Store cart sync is unavailable.", error);
+      }
       setRemoteCartSupported(false);
       setRemoteReady(false);
       cartIdRef.current = null;
@@ -302,7 +312,13 @@ export function StoreCartProvider({ children }: { children: ReactNode }) {
           cartIdRef.current = cartId;
         })
         .catch((error) => {
-          console.error("Failed to persist store cart remotely.", error);
+          if (isSupabaseMissingRelationError(error)) {
+            console.warn(
+              "Store cart sync is disabled until the shopping cart tables are migrated.",
+            );
+          } else {
+            console.error("Failed to persist store cart remotely.", error);
+          }
           setRemoteCartSupported(false);
           setRemoteReady(false);
         })

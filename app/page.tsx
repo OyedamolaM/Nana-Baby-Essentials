@@ -267,6 +267,7 @@ export default function App() {
               onViewProduct={handleViewProduct}
               sectionSubtitle="Admin-managed collections let you highlight seasonal edits, gifting picks, or any new merchandising story."
             />
+            
             <section id="about">
               <About />
             </section>

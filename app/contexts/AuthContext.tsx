@@ -39,14 +39,40 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(hasSupabaseEnv);
   const [isAdmin, setIsAdmin] = useState(false);
 
-  const checkAdminStatus = useCallback(async (userId: string) => {
-    const { data } = await supabase
+  const syncUserProfile = useCallback(async (nextUser: User) => {
+    const profilePayload: {
+      id: string;
+      email: string;
+      full_name?: string;
+    } = {
+      id: nextUser.id,
+      email: nextUser.email ?? "",
+    };
+
+    const fullName =
+      nextUser.user_metadata?.full_name ?? nextUser.user_metadata?.name;
+    if (typeof fullName === "string" && fullName.trim()) {
+      profilePayload.full_name = fullName.trim();
+    }
+
+    const { data, error } = await supabase
       .from("user_profiles")
+      .upsert(profilePayload, { onConflict: "id" })
       .select("is_admin")
-      .eq("id", userId)
       .maybeSingle();
 
-    setIsAdmin(data?.is_admin ?? false);
+    if (!error) {
+      setIsAdmin(data?.is_admin ?? false);
+      return;
+    }
+
+    const { data: fallbackData } = await supabase
+      .from("user_profiles")
+      .select("is_admin")
+      .eq("id", nextUser.id)
+      .maybeSingle();
+
+    setIsAdmin(fallbackData?.is_admin ?? false);
   }, []);
 
   useEffect(() => {
@@ -59,7 +85,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setSession(session);
       setUser(session?.user ?? null);
       if (session?.user) {
-        checkAdminStatus(session.user.id);
+        void syncUserProfile(session.user);
       }
       setLoading(false);
     });
@@ -71,14 +97,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setSession(session);
       setUser(session?.user ?? null);
       if (session?.user) {
-        checkAdminStatus(session.user.id);
+        void syncUserProfile(session.user);
       } else {
         setIsAdmin(false);
       }
     });
 
     return () => subscription.unsubscribe();
-  }, [checkAdminStatus]);
+  }, [syncUserProfile]);
 
   const signUp = async (email: string, password: string, fullName: string) => {
     if (!hasSupabaseEnv) {

@@ -1,4 +1,9 @@
-import { mapProductRecord, type ProductRecord, type StoreProduct } from "./commerce";
+import {
+  getProductSellingPrice,
+  mapProductRecord,
+  type ProductRecord,
+  type StoreProduct,
+} from "./commerce";
 
 export interface RegistryRecord {
   id: string;
@@ -52,6 +57,9 @@ export interface RegistryOrderRecord {
 
 export function mapRegistryItemRecord(record: RegistryItemRecord): RegistryItem {
   const product = record.products ? mapProductRecord(record.products) : null;
+  const fallbackUnitPrice = record.products
+    ? getProductSellingPrice(record.products)
+    : 0;
 
   return {
     id: record.id,
@@ -59,9 +67,7 @@ export function mapRegistryItemRecord(record: RegistryItemRecord): RegistryItem 
     productId: Number(record.product_id),
     requestedQuantity: Math.max(1, Number(record.requested_quantity ?? 1)),
     purchasedQuantity: Math.max(0, Number(record.purchased_quantity ?? 0)),
-    unitPriceSnapshot: Number(
-      record.unit_price_snapshot ?? record.products?.price ?? 0,
-    ),
+    unitPriceSnapshot: Number(record.unit_price_snapshot ?? fallbackUnitPrice),
     note: record.note ?? "",
     createdAt: record.created_at,
     product,

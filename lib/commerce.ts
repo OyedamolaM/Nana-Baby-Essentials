@@ -2,6 +2,8 @@ export interface StoreProduct {
   id: number;
   name: string;
   price: number;
+  sellingPrice?: number;
+  costPrice?: number;
   category: string;
   image: string;
   description: string;
@@ -11,11 +13,14 @@ export interface StoreProduct {
 export interface ProductRecord {
   id: number;
   name: string;
-  price: number;
+  price?: number | null;
+  cost_price?: number | null;
+  selling_price?: number | null;
   category: string;
   image: string;
   description: string;
   in_stock: boolean;
+  created_at?: string;
 }
 
 export const SEED_PRODUCTS: StoreProduct[] = [
@@ -23,6 +28,8 @@ export const SEED_PRODUCTS: StoreProduct[] = [
     id: 1,
     name: "Soft Plush Teddy Bear",
     price: 24.99,
+    sellingPrice: 24.99,
+    costPrice: 16.99,
     category: "Toys",
     image:
       "https://images.unsplash.com/photo-1684577753340-de97c66fa6fd?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxiYWJ5JTIwcHJvZHVjdHMlMjB0b3lzfGVufDF8fHx8MTc3NzUzMDQ5OHww&ixlib=rb-4.1.0&q=80&w=1080",
@@ -34,6 +41,8 @@ export const SEED_PRODUCTS: StoreProduct[] = [
     id: 2,
     name: "Organic Cotton Onesie",
     price: 18.99,
+    sellingPrice: 18.99,
+    costPrice: 12.99,
     category: "Clothing",
     image:
       "https://images.unsplash.com/photo-1622290291165-d341f1938b8a?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxiYWJ5JTIwY2xvdGhlc3xlbnwxfHx8fDE3Nzc1MzA0OTl8MA&ixlib=rb-4.1.0&q=80&w=1080",
@@ -45,6 +54,8 @@ export const SEED_PRODUCTS: StoreProduct[] = [
     id: 3,
     name: "Colorful Building Blocks",
     price: 29.99,
+    sellingPrice: 29.99,
+    costPrice: 20.49,
     category: "Toys",
     image:
       "https://images.unsplash.com/photo-1655087751207-1020c89f7eee?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHw5fHxiYWJ5JTIwcHJvZHVjdHMlMjB0b3lzfGVufDF8fHx8MTc3NzUzMDQ5OXww&ixlib=rb-4.1.0&q=80&w=1080",
@@ -56,6 +67,8 @@ export const SEED_PRODUCTS: StoreProduct[] = [
     id: 4,
     name: "Rainbow Baby Dresses",
     price: 34.99,
+    sellingPrice: 34.99,
+    costPrice: 24.49,
     category: "Clothing",
     image:
       "https://images.unsplash.com/photo-1560506840-ec148e82a604?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwyfHxiYWJ5JTIwY2xvdGhlc3xlbnwxfHx8fDE3Nzc1MzA0OTl8MA&ixlib=rb-4.1.0&q=80&w=1080",
@@ -67,6 +80,8 @@ export const SEED_PRODUCTS: StoreProduct[] = [
     id: 5,
     name: "Baby Blue Romper",
     price: 22.99,
+    sellingPrice: 22.99,
+    costPrice: 15.99,
     category: "Clothing",
     image:
       "https://images.unsplash.com/photo-1622290319146-7b63df48a635?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwzfHxiYWJ5JTIwY2xvdGhlc3xlbnwxfHx8fDE3Nzc1MzA0OTl8MA&ixlib=rb-4.1.0&q=80&w=1080",
@@ -77,6 +92,8 @@ export const SEED_PRODUCTS: StoreProduct[] = [
     id: 6,
     name: "Colorful Baby Socks Set",
     price: 12.99,
+    sellingPrice: 12.99,
+    costPrice: 8.99,
     category: "Accessories",
     image:
       "https://images.unsplash.com/photo-1542355581-caf7454785ca?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHw0fHxiYWJ5JTIwY2xvdGhlc3xlbnwxfHx8fDE3Nzc1MzA0OTl8MA&ixlib=rb-4.1.0&q=80&w=1080",
@@ -88,6 +105,8 @@ export const SEED_PRODUCTS: StoreProduct[] = [
     id: 7,
     name: "Activity Play Mat",
     price: 49.99,
+    sellingPrice: 49.99,
+    costPrice: 35.49,
     category: "Toys",
     image:
       "https://images.unsplash.com/photo-1593793373220-2e51e1c31385?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHw2fHxiYWJ5JTIwcHJvZHVjdHMlMjB0b3lzfGVufDF8fHx8MTc3NzUzMDQ5OXww&ixlib=rb-4.1.0&q=80&w=1080",
@@ -99,6 +118,8 @@ export const SEED_PRODUCTS: StoreProduct[] = [
     id: 8,
     name: "Stuffed Animal Collection",
     price: 39.99,
+    sellingPrice: 39.99,
+    costPrice: 27.99,
     category: "Toys",
     image:
       "https://images.unsplash.com/photo-1724703171978-bbe9c2ab70c4?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHw3fHxiYWJ5JTIwcHJvZHVjdHMlMjB0b3lzfGVufDF8fHx8MTc3NzUzMDQ5OXww&ixlib=rb-4.1.0&q=80&w=1080",
@@ -109,6 +130,8 @@ export const SEED_PRODUCTS: StoreProduct[] = [
     id: 9,
     name: "White Dress & Shoes Set",
     price: 44.99,
+    sellingPrice: 44.99,
+    costPrice: 31.49,
     category: "Clothing",
     image:
       "https://images.unsplash.com/photo-1684244160171-97f5dac39204?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHw3fHxiYWJ5JTIwY2xvdGhlc3xlbnwxfHx8fDE3Nzc1MzA0OTl8MA&ixlib=rb-4.1.0&q=80&w=1080",
@@ -120,6 +143,8 @@ export const SEED_PRODUCTS: StoreProduct[] = [
     id: 10,
     name: "Colorful Onesie Pack",
     price: 32.99,
+    sellingPrice: 32.99,
+    costPrice: 22.99,
     category: "Clothing",
     image:
       "https://images.unsplash.com/photo-1569974641446-22542de88536?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHw4fHxiYWJ5JTIwY2xvdGhlc3xlbnwxfHx8fDE3Nzc1MzA0OTl8MA&ixlib=rb-4.1.0&q=80&w=1080",
@@ -130,6 +155,8 @@ export const SEED_PRODUCTS: StoreProduct[] = [
     id: 11,
     name: "Baby Gift Hamper",
     price: 89.99,
+    sellingPrice: 89.99,
+    costPrice: 63.99,
     category: "Accessories",
     image:
       "https://images.unsplash.com/photo-1635874714425-c342060a4c58?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxMHx8YmFieSUyMGNsb3RoZXN8ZW58MXx8fHwxNzc3NTMwNDk5fDA&ixlib=rb-4.1.0&q=80&w=1080",
@@ -140,6 +167,8 @@ export const SEED_PRODUCTS: StoreProduct[] = [
     id: 12,
     name: "Educational Toy Set",
     price: 36.99,
+    sellingPrice: 36.99,
+    costPrice: 25.99,
     category: "Toys",
     image:
       "https://images.unsplash.com/photo-1515488042361-ee00e0ddd4e4?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxMHx8YmFieSUyMHByb2R1Y3RzJTIwdG95c3xlbnwxfHx8fDE3Nzc1MzA0OTl8MA&ixlib=rb-4.1.0&q=80&w=1080",
@@ -168,11 +197,24 @@ export function formatNairaAmount(amount: number) {
   return nairaFormatter.format(Math.round(amount));
 }
 
+export function getProductSellingPrice(record: ProductRecord) {
+  return Number(record.selling_price ?? record.price ?? 0);
+}
+
+export function getProductCostPrice(record: ProductRecord) {
+  return Number(record.cost_price ?? record.selling_price ?? record.price ?? 0);
+}
+
 export function mapProductRecord(record: ProductRecord): StoreProduct {
+  const sellingPrice = getProductSellingPrice(record);
+  const costPrice = getProductCostPrice(record);
+
   return {
     id: Number(record.id),
     name: record.name,
-    price: Number(record.price),
+    price: sellingPrice,
+    sellingPrice,
+    costPrice,
     category: record.category,
     image: record.image,
     description: record.description,

@@ -1,3 +1,7 @@
+-- Recovery migration for projects that were initially set up from the older
+-- DATABASE_SETUP.md file. Safe to run in Supabase SQL Editor on an existing
+-- project to bring the schema in line with the current app.
+
 create extension if not exists pgcrypto;
 
 create table if not exists public.products (

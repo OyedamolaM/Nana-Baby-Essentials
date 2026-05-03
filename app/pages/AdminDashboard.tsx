@@ -21,7 +21,14 @@ import {
   type CollectionRecord,
   type HomeDealRecord,
 } from "../../lib/content";
-import { formatNaira, formatNairaAmount, toNairaAmount } from "../../lib/commerce";
+import {
+  formatNaira,
+  formatNairaAmount,
+  getProductCostPrice,
+  getProductSellingPrice,
+  toNairaAmount,
+  type ProductRecord,
+} from "../../lib/commerce";
 import { useAuth } from "../contexts/AuthContext";
 import { hasSupabaseEnv, supabase } from "../lib/supabase";
 import { Button } from "../components/ui/button";
@@ -73,17 +80,6 @@ type Customer = {
   email?: string | null;
   phone?: string | null;
   created_at: string;
-};
-
-type ProductRecord = {
-  id: number;
-  name: string;
-  price: number;
-  category: string;
-  image: string;
-  description: string;
-  in_stock: boolean;
-  created_at?: string;
 };
 
 type RegistryRecord = {
@@ -186,7 +182,8 @@ export function AdminDashboard() {
   const [showProductModal, setShowProductModal] = useState(false);
   const [editingProduct, setEditingProduct] = useState<ProductRecord | null>(null);
   const [productName, setProductName] = useState("");
-  const [productPrice, setProductPrice] = useState("");
+  const [productSellingPrice, setProductSellingPrice] = useState("");
+  const [productCostPrice, setProductCostPrice] = useState("");
   const [productCategory, setProductCategory] = useState("Toys");
   const [productImage, setProductImage] = useState("");
   const [productDescription, setProductDescription] = useState("");
@@ -245,7 +242,10 @@ export function AdminDashboard() {
       blogPostsResult,
     ] = await Promise.all([
       supabase.from("orders").select("*").order("created_at", { ascending: false }),
-      supabase.from("user_profiles").select("*").eq("is_admin", false),
+      supabase
+        .from("user_profiles")
+        .select("*")
+        .or("is_admin.eq.false,is_admin.is.null"),
       supabase.from("products").select("*").order("created_at", { ascending: false }),
       supabase.from("registries").select("*").order("created_at", { ascending: false }),
       supabase.from("registry_items").select("registry_id, requested_quantity, purchased_quantity"),
@@ -390,7 +390,8 @@ export function AdminDashboard() {
   const resetProductForm = () => {
     setEditingProduct(null);
     setProductName("");
-    setProductPrice("");
+    setProductSellingPrice("");
+    setProductCostPrice("");
     setProductCategory("Toys");
     setProductImage("");
     setProductDescription("");
@@ -401,7 +402,10 @@ export function AdminDashboard() {
   const handleEditProduct = (product: ProductRecord) => {
     setEditingProduct(product);
     setProductName(product.name);
-    setProductPrice(String(toNairaAmount(Number(product.price))));
+    setProductSellingPrice(
+      String(toNairaAmount(getProductSellingPrice(product))),
+    );
+    setProductCostPrice(String(toNairaAmount(getProductCostPrice(product))));
     setProductCategory(product.category);
     setProductImage(product.image);
     setProductDescription(product.description);
@@ -413,9 +417,19 @@ export function AdminDashboard() {
   const handleSaveProduct = async (event: React.FormEvent) => {
     event.preventDefault();
 
+    const sellingPrice = Number(productSellingPrice) / 1000;
+    const costPrice = Number(productCostPrice) / 1000;
+
+    if (!Number.isFinite(sellingPrice) || !Number.isFinite(costPrice)) {
+      toast.error("Enter valid product prices.");
+      return;
+    }
+
     const productPayload = {
       name: productName,
-      price: Number(productPrice) / 1000,
+      price: sellingPrice,
+      selling_price: sellingPrice,
+      cost_price: costPrice,
       category: productCategory,
       image: productImage,
       description: productDescription,
@@ -924,7 +938,8 @@ export function AdminDashboard() {
                     <TableHead>Name</TableHead>
                     <TableHead>Category</TableHead>
                     <TableHead>Collections</TableHead>
-                    <TableHead>Price</TableHead>
+                    <TableHead>Selling</TableHead>
+                    <TableHead>Cost</TableHead>
                     <TableHead>Stock</TableHead>
                     <TableHead>Actions</TableHead>
                   </TableRow>
@@ -940,7 +955,10 @@ export function AdminDashboard() {
                           .filter(Boolean)
                           .join(", ") || "None"}
                       </TableCell>
-                      <TableCell>{formatNaira(Number(product.price))}</TableCell>
+                      <TableCell>
+                        {formatNaira(getProductSellingPrice(product))}
+                      </TableCell>
+                      <TableCell>{formatNaira(getProductCostPrice(product))}</TableCell>
                       <TableCell>
                         <span className={product.in_stock ? "text-green-600" : "text-red-600"}>
                           {product.in_stock ? "In Stock" : "Out of Stock"}
@@ -1198,17 +1216,31 @@ export function AdminDashboard() {
 
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <div className="space-y-2">
-                <Label htmlFor="product-price">Price (NGN)</Label>
+                <Label htmlFor="product-selling-price">Selling Price (NGN)</Label>
                 <Input
-                  id="product-price"
+                  id="product-selling-price"
                   type="number"
                   min="0"
-                  value={productPrice}
-                  onChange={(event) => setProductPrice(event.target.value)}
+                  value={productSellingPrice}
+                  onChange={(event) => setProductSellingPrice(event.target.value)}
                   required
                 />
               </div>
 
+              <div className="space-y-2">
+                <Label htmlFor="product-cost-price">Cost Price (NGN)</Label>
+                <Input
+                  id="product-cost-price"
+                  type="number"
+                  min="0"
+                  value={productCostPrice}
+                  onChange={(event) => setProductCostPrice(event.target.value)}
+                  required
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="product-category">Category</Label>
                 <Select value={productCategory} onValueChange={setProductCategory}>

@@ -11,3 +11,28 @@ export const hasSupabaseEnv = Boolean(
 );
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+
+type SupabaseErrorLike = {
+  code?: string | null;
+  message?: string | null;
+};
+
+export function isSupabaseMissingRelationError(
+  error: unknown,
+  relationName?: string,
+) {
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+
+  const maybeError = error as SupabaseErrorLike;
+  if (maybeError.code !== "PGRST205") {
+    return false;
+  }
+
+  if (!relationName) {
+    return true;
+  }
+
+  return maybeError.message?.includes(`'public.${relationName}'`) ?? false;
+}
