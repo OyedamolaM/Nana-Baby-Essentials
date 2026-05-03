@@ -4,10 +4,12 @@ import { Card, CardContent } from "./ui/card";
 
 interface BabyRegistryHighlightProps {
   onCreateRegistry: () => void;
+  onExploreRegistry: () => void;
 }
 
 export function BabyRegistryHighlight({
   onCreateRegistry,
+  onExploreRegistry,
 }: BabyRegistryHighlightProps) {
   const features = [
     {
@@ -62,9 +64,12 @@ export function BabyRegistryHighlight({
           ))}
         </div>
 
-        <div className="text-center">
+        <div className="flex flex-col items-center justify-center gap-4 sm:flex-row">
+          <Button size="lg" variant="outline" className="text-lg px-8" onClick={onExploreRegistry}>
+            Explore Registry Page
+          </Button>
           <Button size="lg" className="text-lg px-8" onClick={onCreateRegistry}>
-            Create Your Registry
+            Start My Registry
           </Button>
         </div>
       </div>

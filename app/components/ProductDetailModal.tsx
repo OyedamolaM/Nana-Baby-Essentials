@@ -16,6 +16,7 @@ interface ProductDetailModalProps {
   open: boolean;
   onClose: () => void;
   onAddToCart: (product: Product, quantity?: number) => void;
+  addActionLabel?: string;
 }
 
 export function ProductDetailModal({
@@ -23,6 +24,7 @@ export function ProductDetailModal({
   open,
   onClose,
   onAddToCart,
+  addActionLabel = "Add to Cart",
 }: ProductDetailModalProps) {
   const [quantity, setQuantity] = useState(1);
   const [isInWishlist, setIsInWishlist] = useState(false);
@@ -200,7 +202,7 @@ export function ProductDetailModal({
                   disabled={!product.inStock}
                 >
                   <ShoppingCart className="mr-2 h-4 w-4" />
-                  {product.inStock ? "Add to Cart" : "Out of Stock"}
+                  {product.inStock ? addActionLabel : "Out of Stock"}
                 </Button>
 
                 <Button

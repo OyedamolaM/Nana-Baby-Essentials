@@ -8,26 +8,32 @@ import {
   Gift,
   Globe,
   Heart,
+  Menu,
   PartyPopper,
   Search,
   Share2,
-  ShoppingCart,
 } from "lucide-react";
 import { toast } from "sonner";
+import { CATEGORIES } from "../../lib/commerce";
 import {
-  CATEGORIES,
-  SEED_PRODUCTS,
-  mapProductRecord,
-  type ProductRecord,
-} from "../../lib/commerce";
+  formatBabyGender,
+  formatDueMonth,
+  mapRegistryItemRecord,
+  type RegistryItem,
+  type RegistryItemRecord,
+  type RegistryRecord,
+} from "../../lib/registry";
+import { CollectionShowcase } from "../components/CollectionShowcase";
+import { usePaginatedProducts } from "../hooks/usePaginatedProducts";
+import { useActiveCollections } from "../hooks/useContentData";
 import { useAuth } from "../contexts/AuthContext";
 import { hasSupabaseEnv, supabase } from "../lib/supabase";
 import { CategoryFilter } from "../components/CategoryFilter";
 import { ProductCard, type Product } from "../components/ProductCard";
 import { ProductDetailModal } from "../components/ProductDetailModal";
-import { ShoppingCartDrawer } from "../components/ShoppingCartDrawer";
-import { CheckoutModal } from "../components/checkout/CheckoutModal";
+import { AuthModal } from "../components/auth/AuthModal";
 import { CreateRegistryModal } from "../components/registry/CreateRegistryModal";
+import { RegistryBuilderDrawer } from "../components/registry/RegistryBuilderDrawer";
 import {
   Accordion,
   AccordionContent,
@@ -38,88 +44,66 @@ import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card, CardContent } from "../components/ui/card";
 import { Input } from "../components/ui/input";
+import {
+  Pagination,
+  PaginationContent,
+  PaginationEllipsis,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from "../components/ui/pagination";
 
-interface CartItem extends Product {
-  quantity: number;
-}
+type AuthTab = "login" | "signup";
 
-interface RegistryRecord {
-  id: string;
-  share_code: string;
-  name: string;
-  whatsapp?: string | null;
-  due_month?: string | null;
-  baby_gender?: string | null;
-  additional_info?: string | null;
-  created_at: string;
-}
-
-function formatDueMonth(dueMonth?: string | null) {
-  if (!dueMonth) {
-    return "N/A";
+function buildPagination(currentPage: number, totalPages: number) {
+  if (totalPages <= 5) {
+    return Array.from({ length: totalPages }, (_, index) => index + 1);
   }
 
-  const date = new Date(`${dueMonth}-01T00:00:00`);
-  return Number.isNaN(date.getTime())
-    ? dueMonth
-    : date.toLocaleDateString("en-NG", {
-        month: "long",
-        year: "numeric",
-      });
-}
-
-function formatBabyGender(value?: string | null) {
-  if (!value) {
-    return "N/A";
+  if (currentPage <= 3) {
+    return [1, 2, 3, 4, "ellipsis", totalPages] as const;
   }
 
-  if (value === "neutral") {
-    return "Surprise / Neutral";
+  if (currentPage >= totalPages - 2) {
+    return [1, "ellipsis", totalPages - 3, totalPages - 2, totalPages - 1, totalPages] as const;
   }
 
-  return value.charAt(0).toUpperCase() + value.slice(1);
+  return [1, "ellipsis", currentPage - 1, currentPage, currentPage + 1, "ellipsis", totalPages] as const;
 }
 
 export function RegistryLandingPage() {
   const { user } = useAuth();
-  const [products, setProducts] = useState<Product[]>(
-    SEED_PRODUCTS.filter((product) => product.inStock),
-  );
-  const [productsLoading, setProductsLoading] = useState(hasSupabaseEnv);
-  const [selectedCategory, setSelectedCategory] = useState("All");
-  const [searchQuery, setSearchQuery] = useState("");
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [cartOpen, setCartOpen] = useState(false);
-  const [checkoutOpen, setCheckoutOpen] = useState(false);
+  const [authModalOpen, setAuthModalOpen] = useState(false);
+  const [authDefaultTab, setAuthDefaultTab] = useState<AuthTab>("signup");
+  const [builderOpen, setBuilderOpen] = useState(false);
   const [productDetailOpen, setProductDetailOpen] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
-  const [cartItems, setCartItems] = useState<CartItem[]>([]);
   const [myRegistry, setMyRegistry] = useState<RegistryRecord | null>(null);
+  const [registryItems, setRegistryItems] = useState<RegistryItem[]>([]);
+  const collections = useActiveCollections(4);
+  const {
+    loading: productsLoading,
+    page,
+    products,
+    searchQuery,
+    selectedCategory,
+    setPage,
+    setSearchQuery,
+    setSelectedCategory,
+    totalCount,
+    totalPages,
+  } = usePaginatedProducts({
+    onlyInStock: true,
+    pageSize: 16,
+  });
 
-  const loadProducts = useCallback(async () => {
-    if (!hasSupabaseEnv) {
-      setProducts(SEED_PRODUCTS.filter((product) => product.inStock));
-      setProductsLoading(false);
-      return;
-    }
-
-    setProductsLoading(true);
-
-    const { data, error } = await supabase
-      .from("products")
-      .select("*")
-      .eq("in_stock", true)
-      .order("created_at", { ascending: false });
-
-    if (error || !data || data.length === 0) {
-      setProducts(SEED_PRODUCTS.filter((product) => product.inStock));
-      setProductsLoading(false);
-      return;
-    }
-
-    setProducts((data as ProductRecord[]).map(mapProductRecord));
-    setProductsLoading(false);
-  }, []);
+  const openAuth = (tab: AuthTab) => {
+    setAuthDefaultTab(tab);
+    setAuthModalOpen(true);
+  };
 
   const loadMyRegistry = useCallback(async () => {
     if (!user || !hasSupabaseEnv) {
@@ -138,67 +122,181 @@ export function RegistryLandingPage() {
     setMyRegistry((data as RegistryRecord | null) ?? null);
   }, [user]);
 
+  const loadRegistryItems = useCallback(async () => {
+    if (!myRegistry || !hasSupabaseEnv) {
+      setRegistryItems([]);
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from("registry_items")
+      .select("*, products(*)")
+      .eq("registry_id", myRegistry.id)
+      .order("created_at", { ascending: false });
+
+    if (error || !data) {
+      setRegistryItems([]);
+      return;
+    }
+
+    setRegistryItems((data as RegistryItemRecord[]).map(mapRegistryItemRecord));
+  }, [myRegistry]);
+
   useEffect(() => {
     queueMicrotask(() => {
-      void loadProducts();
       void loadMyRegistry();
     });
-  }, [loadMyRegistry, loadProducts]);
+  }, [loadMyRegistry]);
 
-  const filteredProducts = useMemo(() => {
-    return products.filter((product) => {
-      const matchesCategory =
-        selectedCategory === "All" || product.category === selectedCategory;
-      const matchesSearch =
-        searchQuery === "" ||
-        product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        product.description.toLowerCase().includes(searchQuery.toLowerCase());
-
-      return matchesCategory && matchesSearch;
+  useEffect(() => {
+    queueMicrotask(() => {
+      void loadRegistryItems();
     });
-  }, [products, searchQuery, selectedCategory]);
+  }, [loadRegistryItems]);
 
   const handleProductClick = (product: Product) => {
     setSelectedProduct(product);
     setProductDetailOpen(true);
   };
 
-  const handleAddToCart = (product: Product) => {
-    setCartItems((currentItems) => {
-      const existingItem = currentItems.find((item) => item.id === product.id);
+  const handleAddToRegistry = async (product: Product, quantity = 1) => {
+    if (!user) {
+      toast.info("Sign in to start building your registry.");
+      openAuth("signup");
+      return;
+    }
 
-      if (existingItem) {
-        toast.success(`Added another ${product.name} to cart.`);
-        return currentItems.map((item) =>
-          item.id === product.id
-            ? { ...item, quantity: item.quantity + 1 }
-            : item,
-        );
+    if (!myRegistry) {
+      toast.info("Create your registry first, then add products to it.");
+      setShowCreateModal(true);
+      return;
+    }
+
+    if (!hasSupabaseEnv) {
+      toast.error("Supabase is not configured yet.");
+      return;
+    }
+
+    const existingItem = registryItems.find((item) => item.productId === product.id);
+
+    if (existingItem) {
+      const { error } = await supabase
+        .from("registry_items")
+        .update({
+          requested_quantity: existingItem.requestedQuantity + quantity,
+          unit_price_snapshot: product.price,
+        })
+        .eq("id", existingItem.id);
+
+      if (error) {
+        toast.error("Failed to update your registry item.");
+        return;
       }
 
-      toast.success(`${product.name} added to cart.`);
-      return [...currentItems, { ...product, quantity: 1 }];
-    });
+      setRegistryItems((currentItems) =>
+        currentItems.map((item) =>
+          item.id === existingItem.id
+            ? {
+                ...item,
+                requestedQuantity: item.requestedQuantity + quantity,
+                unitPriceSnapshot: product.price,
+              }
+            : item,
+        ),
+      );
+    } else {
+      const { data, error } = await supabase
+        .from("registry_items")
+        .insert({
+          registry_id: myRegistry.id,
+          product_id: product.id,
+          requested_quantity: quantity,
+          purchased_quantity: 0,
+          unit_price_snapshot: product.price,
+          note: "",
+        })
+        .select("*, products(*)")
+        .single();
+
+      if (error || !data) {
+        toast.error("Failed to add this item to your registry.");
+        return;
+      }
+
+      setRegistryItems((currentItems) => [
+        mapRegistryItemRecord(data as RegistryItemRecord),
+        ...currentItems,
+      ]);
+    }
+
+    toast.success(`${product.name} added to your registry.`);
   };
 
-  const handleRemoveItem = (productId: number) => {
-    setCartItems((currentItems) =>
-      currentItems.filter((item) => item.id !== productId),
+  const handleRemoveRegistryItem = async (registryItemId: string) => {
+    if (!hasSupabaseEnv) {
+      toast.error("Supabase is not configured yet.");
+      return;
+    }
+
+    const { error } = await supabase
+      .from("registry_items")
+      .delete()
+      .eq("id", registryItemId);
+
+    if (error) {
+      toast.error("Failed to remove this item from your registry.");
+      return;
+    }
+
+    setRegistryItems((currentItems) =>
+      currentItems.filter((item) => item.id !== registryItemId),
     );
-    toast.info("Item removed from cart.");
+    toast.success("Item removed from your registry.");
   };
 
-  const handleUpdateQuantity = (productId: number, quantity: number) => {
-    setCartItems((currentItems) =>
+  const handleUpdateRegistryQuantity = async (
+    registryItemId: string,
+    quantity: number,
+  ) => {
+    if (!hasSupabaseEnv) {
+      toast.error("Supabase is not configured yet.");
+      return;
+    }
+
+    const { error } = await supabase
+      .from("registry_items")
+      .update({ requested_quantity: quantity })
+      .eq("id", registryItemId);
+
+    if (error) {
+      toast.error("Failed to update this registry item.");
+      return;
+    }
+
+    setRegistryItems((currentItems) =>
       currentItems.map((item) =>
-        item.id === productId ? { ...item, quantity } : item,
+        item.id === registryItemId
+          ? { ...item, requestedQuantity: quantity }
+          : item,
       ),
     );
   };
 
-  const handleCheckout = () => {
-    setCartOpen(false);
-    setCheckoutOpen(true);
+  const handleUpdateRegistryNote = async (registryItemId: string, note: string) => {
+    if (!hasSupabaseEnv) {
+      return;
+    }
+
+    setRegistryItems((currentItems) =>
+      currentItems.map((item) =>
+        item.id === registryItemId ? { ...item, note } : item,
+      ),
+    );
+
+    await supabase
+      .from("registry_items")
+      .update({ note })
+      .eq("id", registryItemId);
   };
 
   const handleShareRegistry = async () => {
@@ -217,7 +315,7 @@ export function RegistryLandingPage() {
         });
         return;
       } catch {
-        // Fall back to clipboard below.
+        // Fall back to clipboard.
       }
     }
 
@@ -229,16 +327,16 @@ export function RegistryLandingPage() {
     toast.success("Baby checklist download started!");
   };
 
-  const totalCartItems = cartItems.reduce(
-    (sum, item) => sum + item.quantity,
-    0,
+  const paginationItems = useMemo(
+    () => buildPagination(page, totalPages),
+    [page, totalPages],
   );
 
   const faqs = [
     {
       question: "How does the baby registry work?",
       answer:
-        "Create your registry, add your favorite baby products, and share your unique link with family and friends. They can purchase items directly from your list, and you'll receive amazing rewards based on your registry total.",
+        "Create your registry, add your favorite baby products, and share your unique link with family and friends. They can purchase items directly from your list or contribute toward your registry.",
     },
     {
       question: "What are the special offers?",
@@ -248,17 +346,17 @@ export function RegistryLandingPage() {
     {
       question: "Can friends and family abroad shop from my registry?",
       answer:
-        "Yes. Your personalized baby registry can be shared globally, so loved ones anywhere can shop for the exact items you want.",
+        "Yes. Your personalized baby registry can be shared globally, so loved ones anywhere can buy selected items or contribute a custom amount.",
     },
     {
       question: "How do I share my registry?",
       answer:
-        "Once created, you'll receive a unique shareable link. You can share it via WhatsApp, email, social media, or any messaging platform.",
+        "Once created, you'll receive a unique public link to your registry. You can share it through WhatsApp, email, social media, or any messaging platform.",
     },
     {
       question: "Can I update my registry after creating it?",
       answer:
-        "Yes. You can add or remove products from your registry anytime through your profile dashboard.",
+        "Yes. Add, remove, and adjust registry items anytime from the registry page or your dashboard.",
     },
   ];
 
@@ -266,10 +364,10 @@ export function RegistryLandingPage() {
     <div className="min-h-screen bg-white">
       <header className="sticky top-0 z-50 w-full border-b bg-white/95 shadow-sm backdrop-blur">
         <div className="container mx-auto px-4">
-          <div className="flex h-16 items-center justify-between">
+          <div className="flex h-16 items-center justify-between gap-3">
             <Link href="/" className="flex items-center gap-2">
               <Baby className="h-8 w-8 text-pink-500" />
-              <h1 className="text-2xl font-semibold text-gray-900">
+              <h1 className="text-xl font-semibold text-gray-900 md:text-2xl">
                 Baby Registry
               </h1>
             </Link>
@@ -304,22 +402,107 @@ export function RegistryLandingPage() {
             <div className="flex items-center gap-2">
               <Button
                 variant="outline"
-                size="icon"
-                className="relative"
-                onClick={() => setCartOpen(true)}
+                size="sm"
+                className="hidden md:inline-flex"
+                onClick={() => (user ? setBuilderOpen(true) : openAuth("signup"))}
               >
-                <ShoppingCart className="h-5 w-5" />
-                {totalCartItems > 0 && (
-                  <Badge
-                    variant="destructive"
-                    className="absolute -right-2 -top-2 flex h-5 min-w-5 items-center justify-center rounded-full p-0"
-                  >
-                    {totalCartItems}
+                <Gift className="mr-2 h-4 w-4" />
+                My Registry
+                {registryItems.length > 0 && (
+                  <Badge variant="secondary" className="ml-2">
+                    {registryItems.length}
                   </Badge>
                 )}
               </Button>
+
+              <Button
+                variant="outline"
+                size="sm"
+                className="hidden md:inline-flex"
+                onClick={() => (user ? setShowCreateModal(true) : openAuth("signup"))}
+              >
+                {myRegistry ? "New Registry" : "Start My Registry"}
+              </Button>
+
+              <Button
+                variant="ghost"
+                size="icon"
+                className="md:hidden"
+                onClick={() => setMobileMenuOpen((current) => !current)}
+              >
+                <Menu className="h-5 w-5" />
+              </Button>
             </div>
           </div>
+
+          {mobileMenuOpen && (
+            <div className="border-t py-4 md:hidden">
+              <nav className="flex flex-col gap-3">
+                <Link
+                  href="/"
+                  className="text-sm font-medium transition-colors hover:text-pink-600"
+                  onClick={() => setMobileMenuOpen(false)}
+                >
+                  Home
+                </Link>
+                <a
+                  href="#products"
+                  className="text-sm font-medium transition-colors hover:text-pink-600"
+                  onClick={() => setMobileMenuOpen(false)}
+                >
+                  Products
+                </a>
+                <a
+                  href="#faq"
+                  className="text-sm font-medium transition-colors hover:text-pink-600"
+                  onClick={() => setMobileMenuOpen(false)}
+                >
+                  FAQ
+                </a>
+                <Link
+                  href="/blog"
+                  className="text-sm font-medium transition-colors hover:text-pink-600"
+                  onClick={() => setMobileMenuOpen(false)}
+                >
+                  Blog
+                </Link>
+              </nav>
+
+              <div className="mt-4 flex flex-col gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    if (user) {
+                      setBuilderOpen(true);
+                    } else {
+                      openAuth("signup");
+                    }
+                  }}
+                >
+                  <Gift className="mr-2 h-4 w-4" />
+                  My Registry
+                  {registryItems.length > 0 && (
+                    <Badge variant="secondary" className="ml-2">
+                      {registryItems.length}
+                    </Badge>
+                  )}
+                </Button>
+                <Button
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    if (user) {
+                      setShowCreateModal(true);
+                    } else {
+                      openAuth("signup");
+                    }
+                  }}
+                >
+                  {myRegistry ? "Create New Registry" : "Start My Registry"}
+                </Button>
+              </div>
+            </div>
+          )}
         </div>
       </header>
 
@@ -332,42 +515,38 @@ export function RegistryLandingPage() {
             <p className="mb-4 text-xl leading-relaxed text-gray-600">
               Now your friends and family, home and abroad, can shop for the
               exact baby items you desire when you share your personalized baby
-              registry with them!
+              registry with them.
             </p>
             <p className="mb-8 text-lg font-semibold text-pink-600">
               Get amazing rewards: Lactation cookies at N500k orders and 5%
-              cashback at N1M orders
+              cashback at N1M orders.
             </p>
 
             {myRegistry ? (
               <div className="flex flex-col items-center justify-center gap-4 sm:flex-row">
-                <Button
-                  size="lg"
-                  onClick={handleShareRegistry}
-                  className="px-8 text-lg"
-                >
+                <Button size="lg" onClick={handleShareRegistry} className="px-8 text-lg">
                   <Share2 className="mr-2 h-5 w-5" />
                   Share My Registry
                 </Button>
                 <Button
                   size="lg"
                   variant="outline"
-                  onClick={() => setShowCreateModal(true)}
+                  onClick={() => setBuilderOpen(true)}
                   className="px-8 text-lg"
                 >
                   <Gift className="mr-2 h-5 w-5" />
-                  Create New Registry
+                  Open Registry Builder
                 </Button>
               </div>
             ) : (
               <div className="flex flex-col items-center justify-center gap-4 sm:flex-row">
                 <Button
                   size="lg"
-                  onClick={() => setShowCreateModal(true)}
+                  onClick={() => (user ? setShowCreateModal(true) : openAuth("signup"))}
                   className="px-8 text-lg"
                 >
                   <Gift className="mr-2 h-5 w-5" />
-                  Create My Registry
+                  Start My Registry
                 </Button>
                 <Button
                   size="lg"
@@ -404,8 +583,8 @@ export function RegistryLandingPage() {
                     <p>{formatBabyGender(myRegistry.baby_gender)}</p>
                   </div>
                   <div>
-                    <p className="font-semibold text-gray-900">WhatsApp</p>
-                    <p>{myRegistry.whatsapp || "Not provided"}</p>
+                    <p className="font-semibold text-gray-900">Wanted Items</p>
+                    <p>{registryItems.length} selected</p>
                   </div>
                 </div>
               </div>
@@ -486,11 +665,11 @@ export function RegistryLandingPage() {
                   <Heart className="h-8 w-8 text-purple-600" />
                 </div>
                 <h3 className="mb-2 text-xl font-semibold text-gray-900">
-                  2. Add Products
+                  2. Build Your Registry
                 </h3>
                 <p className="text-gray-600">
-                  Browse and add your favorite baby items to your personalized
-                  registry.
+                  Add the items you want, set the quantities you need, and leave
+                  helpful notes for your guests.
                 </p>
               </CardContent>
             </Card>
@@ -505,7 +684,7 @@ export function RegistryLandingPage() {
                 </h3>
                 <p className="text-gray-600">
                   Share your registry link with friends and family anywhere in
-                  the world.
+                  the world so they can buy items or contribute.
                 </p>
               </CardContent>
             </Card>
@@ -513,11 +692,25 @@ export function RegistryLandingPage() {
         </div>
       </section>
 
+      <CollectionShowcase
+        collections={collections}
+        onAddToCart={handleAddToRegistry}
+        onViewProduct={handleProductClick}
+        addLabel="Add to Registry"
+        sectionTitle="Registry Collections"
+        sectionSubtitle="Curated sets can be managed by your team in the admin dashboard while your category filter still handles the full catalog."
+      />
+
       <section id="products" className="bg-white py-20">
         <div className="container mx-auto px-4">
-          <h2 className="mb-12 text-center text-4xl font-bold text-gray-900">
-            Popular Registry Items
-          </h2>
+          <div className="mb-12 text-center">
+            <h2 className="text-4xl font-bold text-gray-900">
+              Popular Registry Items
+            </h2>
+            <p className="mt-2 text-gray-600">
+              {totalCount} products available for your registry list.
+            </p>
+          </div>
 
           <div className="mx-auto mb-8 max-w-2xl">
             <div className="relative">
@@ -542,23 +735,79 @@ export function RegistryLandingPage() {
             <div className="py-16 text-center">
               <p className="text-xl text-gray-500">Loading products...</p>
             </div>
-          ) : filteredProducts.length === 0 ? (
+          ) : products.length === 0 ? (
             <div className="py-16 text-center">
               <p className="text-xl text-gray-500">
                 No products found. Try a different search or category.
               </p>
             </div>
           ) : (
-            <div className="mt-8 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-              {filteredProducts.map((product) => (
-                <ProductCard
-                  key={product.id}
-                  product={product}
-                  onAddToCart={handleAddToCart}
-                  onViewDetails={handleProductClick}
-                />
-              ))}
-            </div>
+            <>
+              <div className="mt-8 grid grid-cols-2 gap-4 sm:gap-6 lg:grid-cols-3 xl:grid-cols-4">
+                {products.map((product) => (
+                  <ProductCard
+                    key={product.id}
+                    product={product}
+                    addLabel="Add to Registry"
+                    onAddToCart={handleAddToRegistry}
+                    onViewDetails={handleProductClick}
+                  />
+                ))}
+              </div>
+
+              <Pagination className="mt-10">
+                <PaginationContent>
+                  <PaginationItem>
+                    <PaginationPrevious
+                      href="#products"
+                      onClick={(event) => {
+                        event.preventDefault();
+                        if (page > 1) {
+                          setPage(page - 1);
+                        }
+                      }}
+                      aria-disabled={page === 1}
+                      className={page === 1 ? "pointer-events-none opacity-50" : ""}
+                    />
+                  </PaginationItem>
+
+                  {paginationItems.map((item, index) => (
+                    <PaginationItem key={`${item}-${index}`}>
+                      {item === "ellipsis" ? (
+                        <PaginationEllipsis />
+                      ) : (
+                        <PaginationLink
+                          href="#products"
+                          isActive={item === page}
+                          onClick={(event) => {
+                            event.preventDefault();
+                            setPage(Number(item));
+                          }}
+                        >
+                          {item}
+                        </PaginationLink>
+                      )}
+                    </PaginationItem>
+                  ))}
+
+                  <PaginationItem>
+                    <PaginationNext
+                      href="#products"
+                      onClick={(event) => {
+                        event.preventDefault();
+                        if (page < totalPages) {
+                          setPage(page + 1);
+                        }
+                      }}
+                      aria-disabled={page === totalPages}
+                      className={
+                        page === totalPages ? "pointer-events-none opacity-50" : ""
+                      }
+                    />
+                  </PaginationItem>
+                </PaginationContent>
+              </Pagination>
+            </>
           )}
         </div>
       </section>
@@ -595,21 +844,21 @@ export function RegistryLandingPage() {
       <section className="bg-gradient-to-r from-pink-500 to-purple-600 py-20 text-white">
         <div className="container mx-auto px-4 text-center">
           <h2 className="mb-6 text-4xl font-bold md:text-5xl">
-            Ready to Create Your Registry?
+            Ready to Build and Share Your Registry?
           </h2>
           <p className="mx-auto mb-8 max-w-2xl text-xl">
-            Start building your perfect baby registry today and let your loved
-            ones celebrate with you.
+            Start building your registry today, then share one public link so
+            your loved ones can gift items or contribute from anywhere.
           </p>
           <div className="flex flex-col justify-center gap-4 sm:flex-row">
             <Button
               size="lg"
               variant="secondary"
-              onClick={() => setShowCreateModal(true)}
+              onClick={() => (user ? setBuilderOpen(true) : openAuth("signup"))}
               className="px-8 text-lg"
             >
               <Gift className="mr-2 h-5 w-5" />
-              Create Registry Now
+              Open Registry Builder
             </Button>
             <Button
               size="lg"
@@ -629,33 +878,33 @@ export function RegistryLandingPage() {
         onClose={() => setShowCreateModal(false)}
         onCreated={() => {
           void loadMyRegistry();
+          toast.success("Your registry is ready. Start adding products to it.");
         }}
       />
 
-      <ShoppingCartDrawer
-        open={cartOpen}
-        onOpenChange={setCartOpen}
-        cartItems={cartItems}
-        onRemoveItem={handleRemoveItem}
-        onUpdateQuantity={handleUpdateQuantity}
-        onCheckout={handleCheckout}
+      <AuthModal
+        open={authModalOpen}
+        onClose={() => setAuthModalOpen(false)}
+        defaultTab={authDefaultTab}
+      />
+
+      <RegistryBuilderDrawer
+        open={builderOpen}
+        onOpenChange={setBuilderOpen}
+        registry={myRegistry}
+        items={registryItems}
+        onRemoveItem={handleRemoveRegistryItem}
+        onUpdateQuantity={handleUpdateRegistryQuantity}
+        onUpdateNote={handleUpdateRegistryNote}
+        onShare={handleShareRegistry}
       />
 
       <ProductDetailModal
         product={selectedProduct}
         open={productDetailOpen}
         onClose={() => setProductDetailOpen(false)}
-        onAddToCart={handleAddToCart}
-      />
-
-      <CheckoutModal
-        open={checkoutOpen}
-        onClose={() => setCheckoutOpen(false)}
-        cartItems={cartItems}
-        onCheckoutComplete={() => {
-          setCartItems([]);
-          void loadProducts();
-        }}
+        onAddToCart={handleAddToRegistry}
+        addActionLabel="Add to Registry"
       />
     </div>
   );

@@ -13,12 +13,14 @@ interface ProductCardProps {
   product: Product;
   onAddToCart: (product: Product, quantity?: number) => void;
   onViewDetails?: (product: Product) => void;
+  addLabel?: string;
 }
 
 export function ProductCard({
   product,
   onAddToCart,
   onViewDetails,
+  addLabel = "Add to Cart",
 }: ProductCardProps) {
   return (
     <Card className="overflow-hidden transition-all hover:shadow-lg">
@@ -57,7 +59,7 @@ export function ProductCard({
           disabled={!product.inStock}
         >
           <ShoppingCart className="mr-2 h-4 w-4" />
-          {product.inStock ? "Add to Cart" : "Out of Stock"}
+          {product.inStock ? addLabel : "Out of Stock"}
         </Button>
         <Button
           type="button"

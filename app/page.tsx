@@ -1,10 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { About } from "./components/About";
 import { BabyRegistryHighlight } from "./components/BabyRegistryHighlight";
 import { CategoryFilter } from "./components/CategoryFilter";
+import { CollectionShowcase } from "./components/CollectionShowcase";
 import { DealOfTheWeek } from "./components/DealOfTheWeek";
 import { Footer } from "./components/Footer";
 import { FAQ } from "./components/FAQ";
@@ -18,35 +20,56 @@ import { AuthModal } from "./components/auth/AuthModal";
 import { CheckoutModal } from "./components/checkout/CheckoutModal";
 import { CreateRegistryModal } from "./components/registry/CreateRegistryModal";
 import { useAuth } from "./contexts/AuthContext";
-import { hasSupabaseEnv, supabase } from "./lib/supabase";
+import { useStoreCart } from "./contexts/StoreCartContext";
+import { useActiveCollections } from "./hooks/useContentData";
+import { useFeaturedProducts, usePaginatedProducts } from "./hooks/usePaginatedProducts";
 import { AdminDashboard } from "./pages/AdminDashboard";
 import { UserDashboard } from "./pages/UserDashboard";
 import {
   CATEGORIES,
-  SEED_PRODUCTS,
-  mapProductRecord,
-  type ProductRecord,
 } from "../lib/commerce";
+import {
+  Pagination,
+  PaginationContent,
+  PaginationEllipsis,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from "./components/ui/pagination";
 
 type AppView = "store" | "dashboard" | "admin";
 type AuthTab = "login" | "signup";
 
-// const { data, error } = await supabase.from("products").select("*");
-// console.log(data, error);
+function buildPagination(currentPage: number, totalPages: number) {
+  if (totalPages <= 5) {
+    return Array.from({ length: totalPages }, (_, index) => index + 1);
+  }
 
-interface CartItem extends Product {
-  quantity: number;
+  if (currentPage <= 3) {
+    return [1, 2, 3, 4, "ellipsis", totalPages] as const;
+  }
+
+  if (currentPage >= totalPages - 2) {
+    return [1, "ellipsis", totalPages - 3, totalPages - 2, totalPages - 1, totalPages] as const;
+  }
+
+  return [1, "ellipsis", currentPage - 1, currentPage, currentPage + 1, "ellipsis", totalPages] as const;
 }
 
 export default function App() {
+  const router = useRouter();
   const { isAdmin, signOut, user } = useAuth();
+  const {
+    items: cartItems,
+    addItem,
+    removeItem,
+    updateQuantity,
+    clearCart,
+    distinctItemCount,
+  } = useStoreCart();
   const [activeView, setActiveView] = useState<AppView>("store");
-  const [selectedCategory, setSelectedCategory] = useState("All");
   const [cartOpen, setCartOpen] = useState(false);
-  const [cartItems, setCartItems] = useState<CartItem[]>([]);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [products, setProducts] = useState<Product[]>(SEED_PRODUCTS);
-  const [productsLoading, setProductsLoading] = useState(hasSupabaseEnv);
   const [authOpen, setAuthOpen] = useState(false);
   const [authDefaultTab, setAuthDefaultTab] = useState<AuthTab>("login");
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
@@ -54,49 +77,22 @@ export default function App() {
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [registryOpen, setRegistryOpen] = useState(false);
   const productsRef = useRef<HTMLElement>(null);
+  const featuredProducts = useFeaturedProducts({ onlyInStock: false, limit: 4 });
+  const collections = useActiveCollections(4);
+  const {
+    loading: productsLoading,
+    page,
+    products,
+    searchQuery,
+    selectedCategory,
+    setPage,
+    setSearchQuery,
+    setSelectedCategory,
+    totalCount,
+    totalPages,
+  } = usePaginatedProducts({ pageSize: 16 });
 
-  const loadProducts = useCallback(async () => {
-    if (!hasSupabaseEnv) {
-      setProducts(SEED_PRODUCTS);
-      setProductsLoading(false);
-      return;
-    }
-
-    setProductsLoading(true);
-
-    const { data, error } = await supabase
-      .from("products")
-      .select("*")
-      .order("created_at", { ascending: false });
-
-    if (error || !data || data.length === 0) {
-      setProducts(SEED_PRODUCTS);
-      setProductsLoading(false);
-      return;
-    }
-
-    setProducts((data as ProductRecord[]).map(mapProductRecord));
-    setProductsLoading(false);
-  }, []);
-
-  useEffect(() => {
-    queueMicrotask(() => {
-      void loadProducts();
-    });
-  }, [loadProducts]);
-
-  const filteredProducts = useMemo(() => {
-    return products.filter((product) => {
-      const matchesCategory =
-        selectedCategory === "All" || product.category === selectedCategory;
-      const matchesSearch =
-        searchQuery === "" ||
-        product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        product.description.toLowerCase().includes(searchQuery.toLowerCase());
-
-      return matchesCategory && matchesSearch;
-    });
-  }, [products, searchQuery, selectedCategory]);
+  const paginationItems = buildPagination(page, totalPages);
 
   const runAfterStoreRender = (callback: () => void) => {
     setActiveView("store");
@@ -124,38 +120,21 @@ export default function App() {
   };
 
   const handleAddToCart = (product: Product, quantity = 1) => {
-    setCartItems((currentItems) => {
-      const existingItem = currentItems.find((item) => item.id === product.id);
-
-      if (existingItem) {
-        toast.success(`Updated ${product.name} in your cart.`);
-        return currentItems.map((item) =>
-          item.id === product.id
-            ? { ...item, quantity: item.quantity + quantity }
-            : item,
-        );
-      }
-
-      toast.success(`${product.name} added to cart.`);
-      return [...currentItems, { ...product, quantity }];
-    });
-
-    setCartOpen(true);
+    addItem(product, quantity);
+    toast.success(
+      quantity > 1
+        ? `${quantity} ${product.name} items added to cart.`
+        : `${product.name} added to cart.`,
+    );
   };
 
   const handleRemoveItem = (productId: number) => {
-    setCartItems((currentItems) =>
-      currentItems.filter((item) => item.id !== productId),
-    );
+    removeItem(productId);
     toast.info("Item removed from cart.");
   };
 
   const handleUpdateQuantity = (productId: number, quantity: number) => {
-    setCartItems((currentItems) =>
-      currentItems.map((item) =>
-        item.id === productId ? { ...item, quantity } : item,
-      ),
-    );
+    updateQuantity(productId, quantity);
   };
 
   const handleSearch = (query: string) => {
@@ -236,16 +215,11 @@ export default function App() {
     setSelectedCategory("All");
   };
 
-  const totalCartItems = cartItems.reduce(
-    (sum, item) => sum + item.quantity,
-    0,
-  );
-
   return (
     <div className="min-h-screen bg-white">
       <Header
         activeView={activeView}
-        cartItemCount={totalCartItems}
+        cartItemCount={distinctItemCount}
         isAuthenticated={Boolean(user)}
         isAdmin={isAdmin}
         showSearch={activeView === "store"}
@@ -269,11 +243,14 @@ export default function App() {
             </section>
 
             <section id="registry">
-              <BabyRegistryHighlight onCreateRegistry={handleCreateRegistry} />
+              <BabyRegistryHighlight
+                onCreateRegistry={handleCreateRegistry}
+                onExploreRegistry={() => router.push("/registry")}
+              />
             </section>
 
             <ProductShowcase
-              products={products}
+              products={featuredProducts}
               onAddToCart={handleAddToCart}
               onViewProduct={handleViewProduct}
               onViewAll={scrollToProducts}
@@ -282,6 +259,13 @@ export default function App() {
             <DealOfTheWeek
               onAddToCart={(product) => handleAddToCart(product)}
               onViewDetails={handleViewProduct}
+            />
+
+            <CollectionShowcase
+              collections={collections}
+              onAddToCart={handleAddToCart}
+              onViewProduct={handleViewProduct}
+              sectionSubtitle="Admin-managed collections let you highlight seasonal edits, gifting picks, or any new merchandising story."
             />
             <section id="about">
               <About />
@@ -301,7 +285,7 @@ export default function App() {
                   </h2>
                   <p className="text-gray-600">
                     {searchQuery
-                      ? `${filteredProducts.length} products found`
+                      ? `${totalCount} products found`
                       : "Browse our complete collection"}
                   </p>
                 </div>
@@ -336,23 +320,78 @@ export default function App() {
                   <div className="py-16 text-center">
                     <p className="text-xl text-gray-500">Loading products...</p>
                   </div>
-                ) : filteredProducts.length === 0 ? (
+                ) : products.length === 0 ? (
                   <div className="py-16 text-center">
                     <p className="text-xl text-gray-500">
                       No products found. Try a different search or category.
                     </p>
                   </div>
                 ) : (
-                  <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                    {filteredProducts.map((product) => (
-                      <ProductCard
-                        key={product.id}
-                        product={product}
-                        onAddToCart={handleAddToCart}
-                        onViewDetails={handleViewProduct}
-                      />
-                    ))}
-                  </div>
+                  <>
+                    <div className="grid grid-cols-2 gap-4 sm:gap-6 lg:grid-cols-3 xl:grid-cols-4">
+                      {products.map((product) => (
+                        <ProductCard
+                          key={product.id}
+                          product={product}
+                          onAddToCart={handleAddToCart}
+                          onViewDetails={handleViewProduct}
+                        />
+                      ))}
+                    </div>
+
+                    <Pagination className="mt-10">
+                      <PaginationContent>
+                        <PaginationItem>
+                          <PaginationPrevious
+                            href="#products"
+                            onClick={(event) => {
+                              event.preventDefault();
+                              if (page > 1) {
+                                setPage(page - 1);
+                              }
+                            }}
+                            aria-disabled={page === 1}
+                            className={page === 1 ? "pointer-events-none opacity-50" : ""}
+                          />
+                        </PaginationItem>
+
+                        {paginationItems.map((item, index) => (
+                          <PaginationItem key={`${item}-${index}`}>
+                            {item === "ellipsis" ? (
+                              <PaginationEllipsis />
+                            ) : (
+                              <PaginationLink
+                                href="#products"
+                                isActive={item === page}
+                                onClick={(event) => {
+                                  event.preventDefault();
+                                  setPage(Number(item));
+                                }}
+                              >
+                                {item}
+                              </PaginationLink>
+                            )}
+                          </PaginationItem>
+                        ))}
+
+                        <PaginationItem>
+                          <PaginationNext
+                            href="#products"
+                            onClick={(event) => {
+                              event.preventDefault();
+                              if (page < totalPages) {
+                                setPage(page + 1);
+                              }
+                            }}
+                            aria-disabled={page === totalPages}
+                            className={
+                              page === totalPages ? "pointer-events-none opacity-50" : ""
+                            }
+                          />
+                        </PaginationItem>
+                      </PaginationContent>
+                    </Pagination>
+                  </>
                 )}
               </div>
             </section>
@@ -398,8 +437,7 @@ export default function App() {
         onClose={() => setCheckoutOpen(false)}
         cartItems={cartItems}
         onCheckoutComplete={() => {
-          setCartItems([]);
-          void loadProducts();
+          clearCart();
         }}
       />
 

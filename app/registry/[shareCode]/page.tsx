@@ -1,55 +1,46 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
-import { Baby, CalendarClock, Gift, Share2 } from "lucide-react";
+import {
+  Baby,
+  CalendarClock,
+  Gift,
+  Minus,
+  Plus,
+  Share2,
+  Wallet,
+} from "lucide-react";
+import { toast } from "sonner";
 import { Footer } from "../../components/Footer";
+import { ImageWithFallback } from "../../components/figma/ImageWithFallback";
+import { RegistryGiftCheckoutModal, type RegistryGiftSelection } from "../../components/registry/RegistryGiftCheckoutModal";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { Card, CardContent } from "../../components/ui/card";
+import { Input } from "../../components/ui/input";
+import { formatNairaAmount, toNairaAmount } from "../../../lib/commerce";
+import {
+  formatBabyGender,
+  formatDueMonth,
+  getRemainingRegistryQuantity,
+  mapRegistryItemRecord,
+  type RegistryItem,
+  type RegistryItemRecord,
+  type RegistryRecord,
+} from "../../../lib/registry";
 import { hasSupabaseEnv, supabase } from "../../lib/supabase";
-
-interface PublicRegistryRecord {
-  id: string;
-  name: string;
-  share_code: string;
-  due_month?: string | null;
-  baby_gender?: string | null;
-  additional_info?: string | null;
-}
-
-function formatDueMonth(dueMonth?: string | null) {
-  if (!dueMonth) {
-    return "To be announced";
-  }
-
-  const date = new Date(`${dueMonth}-01T00:00:00`);
-  return Number.isNaN(date.getTime())
-    ? dueMonth
-    : date.toLocaleDateString("en-NG", {
-        month: "long",
-        year: "numeric",
-      });
-}
-
-function formatBabyGender(value?: string | null) {
-  if (!value) {
-    return "Not specified";
-  }
-
-  if (value === "neutral") {
-    return "Surprise / Neutral";
-  }
-
-  return value.charAt(0).toUpperCase() + value.slice(1);
-}
 
 export default function PublicRegistryPage() {
   const params = useParams<{ shareCode: string }>();
   const shareCode = params?.shareCode ?? "";
   const [loading, setLoading] = useState(() => Boolean(shareCode && hasSupabaseEnv));
-  const [registry, setRegistry] = useState<PublicRegistryRecord | null>(null);
+  const [registry, setRegistry] = useState<RegistryRecord | null>(null);
+  const [registryItems, setRegistryItems] = useState<RegistryItem[]>([]);
+  const [giftQuantities, setGiftQuantities] = useState<Record<string, number>>({});
+  const [contributionAmount, setContributionAmount] = useState("");
+  const [giftModalOpen, setGiftModalOpen] = useState(false);
 
   useEffect(() => {
     if (!shareCode || !hasSupabaseEnv) {
@@ -63,12 +54,96 @@ export default function PublicRegistryPage() {
         .eq("share_code", shareCode)
         .maybeSingle();
 
-      setRegistry((data as PublicRegistryRecord | null) ?? null);
+      const typedRegistry = (data as RegistryRecord | null) ?? null;
+      setRegistry(typedRegistry);
+
+      if (!typedRegistry) {
+        setRegistryItems([]);
+        setLoading(false);
+        return;
+      }
+
+      const { data: itemRows } = await supabase
+        .from("registry_items")
+        .select("*, products(*)")
+        .eq("registry_id", typedRegistry.id)
+        .order("created_at", { ascending: false });
+
+      setRegistryItems(
+        ((itemRows as RegistryItemRecord[] | null) ?? []).map(mapRegistryItemRecord),
+      );
       setLoading(false);
     };
 
     void loadRegistry();
   }, [shareCode]);
+
+  const selectedItems = useMemo<RegistryGiftSelection[]>(() => {
+    return registryItems
+      .map((item) => ({
+        item,
+        quantity: giftQuantities[item.id] ?? 0,
+      }))
+      .filter((selection) => selection.quantity > 0);
+  }, [giftQuantities, registryItems]);
+
+  const customContributionAmount = useMemo(() => {
+    const parsedValue = Number(contributionAmount);
+    if (!Number.isFinite(parsedValue) || parsedValue <= 0) {
+      return 0;
+    }
+
+    return Math.round(parsedValue);
+  }, [contributionAmount]);
+
+  const requestedCount = registryItems.reduce(
+    (sum, item) => sum + item.requestedQuantity,
+    0,
+  );
+  const purchasedCount = registryItems.reduce(
+    (sum, item) => sum + item.purchasedQuantity,
+    0,
+  );
+  const remainingCount = registryItems.reduce(
+    (sum, item) => sum + getRemainingRegistryQuantity(item),
+    0,
+  );
+
+  const handleQuantityChange = (item: RegistryItem, nextQuantity: number) => {
+    const remaining = getRemainingRegistryQuantity(item);
+    const clampedQuantity = Math.max(0, Math.min(remaining, nextQuantity));
+
+    setGiftQuantities((current) => ({
+      ...current,
+      [item.id]: clampedQuantity,
+    }));
+  };
+
+  const handleShareRegistry = async () => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const shareUrl = window.location.href;
+    await navigator.clipboard.writeText(shareUrl);
+    toast.success("Registry link copied to clipboard!");
+  };
+
+  const reloadRegistryItems = async () => {
+    if (!registry || !hasSupabaseEnv) {
+      return;
+    }
+
+    const { data: itemRows } = await supabase
+      .from("registry_items")
+      .select("*, products(*)")
+      .eq("registry_id", registry.id)
+      .order("created_at", { ascending: false });
+
+    setRegistryItems(
+      ((itemRows as RegistryItemRecord[] | null) ?? []).map(mapRegistryItemRecord),
+    );
+  };
 
   return (
     <div className="min-h-screen bg-white">
@@ -165,6 +240,33 @@ export default function PublicRegistryPage() {
                     </div>
                   </div>
 
+                  <div className="grid gap-4 md:grid-cols-3">
+                    <div className="rounded-2xl border border-gray-200 bg-white p-5">
+                      <p className="text-sm font-medium uppercase tracking-[0.18em] text-gray-500">
+                        Requested
+                      </p>
+                      <p className="mt-2 text-3xl font-bold text-gray-900">
+                        {requestedCount}
+                      </p>
+                    </div>
+                    <div className="rounded-2xl border border-gray-200 bg-white p-5">
+                      <p className="text-sm font-medium uppercase tracking-[0.18em] text-gray-500">
+                        Already Gifted
+                      </p>
+                      <p className="mt-2 text-3xl font-bold text-green-600">
+                        {purchasedCount}
+                      </p>
+                    </div>
+                    <div className="rounded-2xl border border-gray-200 bg-white p-5">
+                      <p className="text-sm font-medium uppercase tracking-[0.18em] text-gray-500">
+                        Still Needed
+                      </p>
+                      <p className="mt-2 text-3xl font-bold text-pink-600">
+                        {remainingCount}
+                      </p>
+                    </div>
+                  </div>
+
                   {registry.additional_info && (
                     <div className="rounded-2xl border border-gray-200 bg-white p-6">
                       <p className="mb-3 text-sm font-medium uppercase tracking-[0.18em] text-gray-500">
@@ -176,20 +278,186 @@ export default function PublicRegistryPage() {
                     </div>
                   )}
 
-                  <div className="rounded-2xl bg-gray-50 p-6 text-center">
-                    <div className="mb-3 inline-flex h-12 w-12 items-center justify-center rounded-full bg-pink-100">
-                      <Share2 className="h-6 w-6 text-pink-600" />
+                  <div className="rounded-2xl bg-gray-50 p-6">
+                    <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+                      <div>
+                        <div className="mb-3 inline-flex h-12 w-12 items-center justify-center rounded-full bg-pink-100">
+                          <Gift className="h-6 w-6 text-pink-600" />
+                        </div>
+                        <h2 className="text-2xl font-bold text-gray-900">
+                          Choose Items to Gift
+                        </h2>
+                        <p className="mt-2 max-w-2xl text-gray-600">
+                          You can pay for some of the registry items below, make a
+                          custom contribution, or do both together without creating
+                          an account.
+                        </p>
+                      </div>
+                      <Button type="button" variant="outline" onClick={handleShareRegistry}>
+                        <Share2 className="mr-2 h-4 w-4" />
+                        Copy Share Link
+                      </Button>
                     </div>
-                    <h2 className="mb-2 text-2xl font-bold text-gray-900">
-                      Shop Registry Picks
-                    </h2>
-                    <p className="mx-auto mb-6 max-w-xl text-gray-600">
-                      Browse popular baby essentials and choose something lovely
-                      for this registry.
-                    </p>
-                    <Button asChild size="lg">
-                      <Link href="/registry">View Registry Collection</Link>
-                    </Button>
+                  </div>
+
+                  <div className="space-y-4">
+                    {registryItems.length === 0 ? (
+                      <div className="rounded-2xl border border-dashed border-gray-300 bg-white p-8 text-center text-gray-500">
+                        This registry is live, but no items have been added yet.
+                      </div>
+                    ) : (
+                      registryItems.map((item) => {
+                        const remaining = getRemainingRegistryQuantity(item);
+                        const selectedQuantity = giftQuantities[item.id] ?? 0;
+
+                        return (
+                          <div
+                            key={item.id}
+                            className="grid gap-5 rounded-3xl border bg-white p-5 shadow-sm md:grid-cols-[140px,1fr]"
+                          >
+                            <div className="overflow-hidden rounded-2xl bg-gray-100">
+                              {item.product?.image ? (
+                                <ImageWithFallback
+                                  src={item.product.image}
+                                  alt={item.product.name}
+                                  className="h-full w-full object-cover"
+                                />
+                              ) : null}
+                            </div>
+                            <div className="space-y-4">
+                              <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                                <div>
+                                  <h3 className="text-2xl font-bold text-gray-900">
+                                    {item.product?.name ?? "Registry Item"}
+                                  </h3>
+                                  <p className="mt-2 text-sm text-gray-600">
+                                    {item.product?.description}
+                                  </p>
+                                  {item.note ? (
+                                    <p className="mt-3 rounded-xl bg-pink-50 px-3 py-2 text-sm text-pink-900">
+                                      Parent note: {item.note}
+                                    </p>
+                                  ) : null}
+                                </div>
+                                <div className="text-left md:text-right">
+                                  <p className="text-sm font-medium text-gray-500">
+                                    Suggested price
+                                  </p>
+                                  <p className="text-xl font-bold text-pink-600">
+                                    {formatNairaAmount(
+                                      toNairaAmount(item.unitPriceSnapshot),
+                                    )}
+                                  </p>
+                                </div>
+                              </div>
+
+                              <div className="grid gap-3 text-sm sm:grid-cols-3">
+                                <div className="rounded-2xl bg-gray-50 p-3">
+                                  <p className="font-semibold text-gray-900">Requested</p>
+                                  <p className="mt-1 text-gray-600">
+                                    {item.requestedQuantity}
+                                  </p>
+                                </div>
+                                <div className="rounded-2xl bg-gray-50 p-3">
+                                  <p className="font-semibold text-gray-900">Gifted</p>
+                                  <p className="mt-1 text-gray-600">
+                                    {item.purchasedQuantity}
+                                  </p>
+                                </div>
+                                <div className="rounded-2xl bg-gray-50 p-3">
+                                  <p className="font-semibold text-gray-900">Remaining</p>
+                                  <p className="mt-1 text-gray-600">{remaining}</p>
+                                </div>
+                              </div>
+
+                              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                                <div className="inline-flex items-center gap-2 rounded-full border bg-white px-2 py-2">
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={() =>
+                                      handleQuantityChange(item, selectedQuantity - 1)
+                                    }
+                                    disabled={selectedQuantity <= 0}
+                                  >
+                                    <Minus className="h-4 w-4" />
+                                  </Button>
+                                  <span className="min-w-10 text-center text-sm font-semibold text-gray-900">
+                                    {selectedQuantity}
+                                  </span>
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={() =>
+                                      handleQuantityChange(item, selectedQuantity + 1)
+                                    }
+                                    disabled={remaining <= 0}
+                                  >
+                                    <Plus className="h-4 w-4" />
+                                  </Button>
+                                </div>
+                                <p className="text-sm text-gray-500">
+                                  Select how many of this item you want to gift.
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+
+                  <div className="rounded-3xl border bg-white p-6 shadow-sm">
+                    <div className="mb-4 flex items-center gap-3">
+                      <div className="inline-flex h-11 w-11 items-center justify-center rounded-full bg-blue-100">
+                        <Wallet className="h-5 w-5 text-blue-600" />
+                      </div>
+                      <div>
+                        <h2 className="text-xl font-bold text-gray-900">
+                          Add a Custom Contribution
+                        </h2>
+                        <p className="text-sm text-gray-600">
+                          You can contribute a custom amount even if you do not
+                          choose any specific items.
+                        </p>
+                      </div>
+                    </div>
+                    <div className="max-w-xs">
+                      <Input
+                        type="number"
+                        min="0"
+                        step="1000"
+                        placeholder="Amount in NGN"
+                        value={contributionAmount}
+                        onChange={(event) => setContributionAmount(event.target.value)}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="rounded-3xl bg-gradient-to-r from-pink-500 to-purple-600 p-6 text-white">
+                    <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+                      <div>
+                        <h2 className="text-2xl font-bold">Ready to send your gift?</h2>
+                        <p className="mt-2 max-w-2xl text-pink-50">
+                          Continue to the secure Paystack checkout to pay for the
+                          selected items, make your contribution, or both together.
+                        </p>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="lg"
+                        onClick={() => setGiftModalOpen(true)}
+                        disabled={
+                          selectedItems.length === 0 && customContributionAmount <= 0
+                        }
+                        className="text-gray-900"
+                      >
+                        Gift These Items
+                      </Button>
+                    </div>
                   </div>
                 </CardContent>
               </Card>
@@ -197,6 +465,21 @@ export default function PublicRegistryPage() {
           </div>
         </div>
       </main>
+
+      {registry ? (
+        <RegistryGiftCheckoutModal
+          open={giftModalOpen}
+          onClose={() => setGiftModalOpen(false)}
+          registry={registry}
+          selectedItems={selectedItems}
+          customContributionAmount={customContributionAmount}
+          onCheckoutComplete={() => {
+            setGiftQuantities({});
+            setContributionAmount("");
+            void reloadRegistryItems();
+          }}
+        />
+      ) : null}
 
       <Footer />
     </div>

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { Gift, Lock, MapPin, Package, Share2, Trash2, User } from "lucide-react";
 import { toast } from "sonner";
@@ -52,6 +53,12 @@ type RegistryRecord = {
   created_at: string;
 };
 
+type RegistryItemSummaryRow = {
+  registry_id: string;
+  requested_quantity?: number | null;
+  purchased_quantity?: number | null;
+};
+
 function formatDueMonth(dueMonth?: string | null) {
   if (!dueMonth) {
     return "N/A";
@@ -82,6 +89,9 @@ export function UserDashboard() {
   const { user, signOut, updateProfile } = useAuth();
   const [orders, setOrders] = useState<UserOrder[]>([]);
   const [registries, setRegistries] = useState<RegistryRecord[]>([]);
+  const [registrySummaries, setRegistrySummaries] = useState<
+    Record<string, { requested: number; purchased: number }>
+  >({});
   const [loading, setLoading] = useState(Boolean(user && hasSupabaseEnv));
   const [showCreateRegistryModal, setShowCreateRegistryModal] = useState(false);
 
@@ -102,20 +112,23 @@ export function UserDashboard() {
 
     setLoading(true);
 
-    const [{ data: profileData }, { data: ordersData }, { data: registriesData }] =
-      await Promise.all([
-        supabase.from("user_profiles").select("*").eq("id", user.id).maybeSingle(),
-        supabase
-          .from("orders")
-          .select("*")
-          .eq("user_id", user.id)
-          .order("created_at", { ascending: false }),
-        supabase
-          .from("registries")
-          .select("*")
-          .eq("user_id", user.id)
-          .order("created_at", { ascending: false }),
-      ]);
+    const [
+      { data: profileData },
+      { data: ordersData },
+      { data: registriesData },
+    ] = await Promise.all([
+      supabase.from("user_profiles").select("*").eq("id", user.id).maybeSingle(),
+      supabase
+        .from("orders")
+        .select("*")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false }),
+      supabase
+        .from("registries")
+        .select("*")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false }),
+    ]);
 
     const typedProfile = (profileData as UserProfile | null) ?? null;
 
@@ -129,8 +142,32 @@ export function UserDashboard() {
       }
     }
 
+    const typedRegistries = (registriesData as RegistryRecord[] | null) ?? [];
     setOrders((ordersData as UserOrder[] | null) ?? []);
-    setRegistries((registriesData as RegistryRecord[] | null) ?? []);
+    setRegistries(typedRegistries);
+
+    let registryItemRows: RegistryItemSummaryRow[] = [];
+    if (typedRegistries.length > 0) {
+      const { data } = await supabase
+        .from("registry_items")
+        .select("registry_id, requested_quantity, purchased_quantity")
+        .in(
+          "registry_id",
+          typedRegistries.map((registry) => registry.id),
+        );
+      registryItemRows = (data as RegistryItemSummaryRow[] | null) ?? [];
+    }
+
+    const summaryMap = registryItemRows.reduce<
+      Record<string, { requested: number; purchased: number }>
+    >((accumulator, row) => {
+      const existing = accumulator[row.registry_id] ?? { requested: 0, purchased: 0 };
+      existing.requested += Math.max(1, Number(row.requested_quantity ?? 1));
+      existing.purchased += Math.max(0, Number(row.purchased_quantity ?? 0));
+      accumulator[row.registry_id] = existing;
+      return accumulator;
+    }, {});
+    setRegistrySummaries(summaryMap);
     setLoading(false);
   }, [user]);
 
@@ -371,11 +408,21 @@ export function UserDashboard() {
           <TabsContent value="registries">
             <Card>
               <CardHeader className="flex flex-row items-center justify-between">
-                <CardTitle>My Registries</CardTitle>
-                <Button onClick={() => setShowCreateRegistryModal(true)}>
-                  <Gift className="mr-2 h-4 w-4" />
-                  Create New Registry
-                </Button>
+                <div>
+                  <CardTitle>My Registries</CardTitle>
+                  <p className="mt-1 text-sm text-gray-500">
+                    Share your public link and manage the latest registry builder from the registry page.
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button asChild variant="outline">
+                    <Link href="/registry">Open Registry Builder</Link>
+                  </Button>
+                  <Button onClick={() => setShowCreateRegistryModal(true)}>
+                    <Gift className="mr-2 h-4 w-4" />
+                    Create New Registry
+                  </Button>
+                </div>
               </CardHeader>
               <CardContent>
                 {registries.length === 0 ? (
@@ -387,42 +434,80 @@ export function UserDashboard() {
                   </div>
                 ) : (
                   <div className="space-y-4">
-                    {registries.map((registry) => (
-                      <div key={registry.id} className="rounded-lg border p-4">
-                        <div className="mb-2 flex items-start justify-between gap-4">
-                          <div>
-                            <p className="text-lg font-semibold">
-                              {registry.name}
+                    {registries.map((registry) => {
+                      const summary = registrySummaries[registry.id] ?? {
+                        requested: 0,
+                        purchased: 0,
+                      };
+                      const remaining = Math.max(
+                        0,
+                        summary.requested - summary.purchased,
+                      );
+
+                      return (
+                        <div key={registry.id} className="rounded-lg border p-4">
+                          <div className="mb-2 flex items-start justify-between gap-4">
+                            <div>
+                              <p className="text-lg font-semibold">
+                                {registry.name}
+                              </p>
+                              <p className="text-sm text-gray-500">
+                                Due: {formatDueMonth(registry.due_month)} and
+                                gender: {formatBabyGender(registry.baby_gender)}
+                              </p>
+                              <p className="text-sm text-gray-500">
+                                Created:{" "}
+                                {new Date(registry.created_at).toLocaleDateString()}
+                              </p>
+                              <div className="mt-3 grid gap-2 text-sm sm:grid-cols-3">
+                                <div className="rounded-xl bg-gray-50 px-3 py-2">
+                                  <span className="font-semibold text-gray-900">
+                                    Requested:
+                                  </span>{" "}
+                                  {summary.requested}
+                                </div>
+                                <div className="rounded-xl bg-gray-50 px-3 py-2">
+                                  <span className="font-semibold text-gray-900">
+                                    Gifted:
+                                  </span>{" "}
+                                  {summary.purchased}
+                                </div>
+                                <div className="rounded-xl bg-gray-50 px-3 py-2">
+                                  <span className="font-semibold text-gray-900">
+                                    Remaining:
+                                  </span>{" "}
+                                  {remaining}
+                                </div>
+                              </div>
+                            </div>
+                            <div className="flex flex-col gap-2">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleShareRegistry(registry)}
+                              >
+                                <Share2 className="mr-2 h-4 w-4" />
+                                Share
+                              </Button>
+                              {registries[0]?.id === registry.id ? (
+                                <Button asChild size="sm">
+                                  <Link href="/registry">Manage Active Registry</Link>
+                                </Button>
+                              ) : null}
+                            </div>
+                          </div>
+                          <Separator className="my-2" />
+                          <div className="rounded bg-gray-50 p-3">
+                            <p className="text-sm font-medium text-gray-700">
+                              Registry Code:
                             </p>
-                            <p className="text-sm text-gray-500">
-                              Due: {formatDueMonth(registry.due_month)} and
-                              gender: {formatBabyGender(registry.baby_gender)}
-                            </p>
-                            <p className="text-sm text-gray-500">
-                              Created:{" "}
-                              {new Date(registry.created_at).toLocaleDateString()}
+                            <p className="font-mono text-lg font-bold text-pink-600">
+                              {registry.share_code}
                             </p>
                           </div>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handleShareRegistry(registry)}
-                          >
-                            <Share2 className="mr-2 h-4 w-4" />
-                            Share
-                          </Button>
                         </div>
-                        <Separator className="my-2" />
-                        <div className="rounded bg-gray-50 p-3">
-                          <p className="text-sm font-medium text-gray-700">
-                            Registry Code:
-                          </p>
-                          <p className="font-mono text-lg font-bold text-pink-600">
-                            {registry.share_code}
-                          </p>
-                        </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </CardContent>
