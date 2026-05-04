@@ -35,7 +35,7 @@ export function CreateRegistryModal({
   onClose,
   onCreated,
 }: CreateRegistryModalProps) {
-  const { user } = useAuth();
+  const { session, user } = useAuth();
   const [loading, setLoading] = useState(false);
   const [registryName, setRegistryName] = useState("");
   const [whatsapp, setWhatsapp] = useState("");
@@ -65,18 +65,57 @@ export function CreateRegistryModal({
     try {
       const shareCode = generateShareCode();
 
-      const { error } = await supabase.from("registries").insert({
-        user_id: user.id,
-        name: registryName,
-        whatsapp,
-        due_month: dueMonth,
-        baby_gender: babyGender,
-        additional_info: additionalInfo,
-        share_code: shareCode,
-      });
+      const { data: registry, error } = await supabase
+        .from("registries")
+        .insert({
+          user_id: user.id,
+          name: registryName,
+          whatsapp,
+          due_month: dueMonth,
+          baby_gender: babyGender,
+          additional_info: additionalInfo,
+          share_code: shareCode,
+        })
+        .select("id, share_code")
+        .single();
 
-      if (error) {
-        throw error;
+      if (error || !registry) {
+        throw error ?? new Error("Failed to create registry.");
+      }
+
+      let emailNotice =
+        "We sent a confirmation email with your registry link.";
+
+      if (!session?.access_token) {
+        emailNotice = "Your registry is ready. Please sign in again if you need the confirmation email resent.";
+      } else {
+        const emailResponse = await fetch("/api/registry/created", {
+          body: JSON.stringify({ registryId: registry.id }),
+          headers: {
+            Authorization: `Bearer ${session.access_token}`,
+            "Content-Type": "application/json",
+          },
+          method: "POST",
+        });
+
+        if (!emailResponse.ok) {
+          const payload = (await emailResponse.json().catch(() => null)) as
+            | { message?: string }
+            | null;
+
+          emailNotice =
+            payload?.message?.trim() ||
+            "Your registry was created, but the confirmation email could not be sent yet.";
+        } else {
+          const payload = (await emailResponse.json().catch(() => null)) as
+            | { sandbox?: boolean }
+            | null;
+
+          if (payload?.sandbox) {
+            emailNotice =
+              "Brevo sandbox accepted your registry email. Turn off BREVO_SANDBOX_MODE to deliver real emails.";
+          }
+        }
       }
 
       toast.success(
@@ -88,11 +127,12 @@ export function CreateRegistryModal({
           <p className="text-sm">
             Our registry rep will call you within 24h to confirm your list.
           </p>
+          <p className="text-sm text-emerald-700">{emailNotice}</p>
         </div>,
         { duration: 6000 },
       );
 
-      onCreated(shareCode);
+      onCreated(registry.share_code);
       onClose();
       setRegistryName("");
       setWhatsapp("");

@@ -24,6 +24,10 @@ import { formatNairaAmount, toNairaAmount } from "../../../lib/commerce";
 import {
   formatBabyGender,
   formatDueMonth,
+  getRegistryItemFundedAmount,
+  getRegistryItemRemainingAmount,
+  getRegistryItemSelectionAmount,
+  getRegistryItemTargetAmount,
   getRemainingRegistryQuantity,
   mapRegistryItemRecord,
   type RegistryItem,
@@ -39,7 +43,7 @@ export default function PublicRegistryPage() {
   const [registry, setRegistry] = useState<RegistryRecord | null>(null);
   const [registryItems, setRegistryItems] = useState<RegistryItem[]>([]);
   const [giftQuantities, setGiftQuantities] = useState<Record<string, number>>({});
-  const [contributionAmount, setContributionAmount] = useState("");
+  const [paymentAmountInput, setPaymentAmountInput] = useState("");
   const [giftModalOpen, setGiftModalOpen] = useState(false);
 
   useEffect(() => {
@@ -87,14 +91,20 @@ export default function PublicRegistryPage() {
       .filter((selection) => selection.quantity > 0);
   }, [giftQuantities, registryItems]);
 
-  const customContributionAmount = useMemo(() => {
-    const parsedValue = Number(contributionAmount);
+  const paymentAmount = useMemo(() => {
+    const parsedValue = Number(paymentAmountInput);
     if (!Number.isFinite(parsedValue) || parsedValue <= 0) {
       return 0;
     }
 
     return Math.round(parsedValue);
-  }, [contributionAmount]);
+  }, [paymentAmountInput]);
+
+  const selectedItemsTargetAmount = useMemo(() => {
+    return selectedItems.reduce((sum, selection) => {
+      return sum + getRegistryItemSelectionAmount(selection.item, selection.quantity);
+    }, 0);
+  }, [selectedItems]);
 
   const requestedCount = registryItems.reduce(
     (sum, item) => sum + item.requestedQuantity,
@@ -108,6 +118,19 @@ export default function PublicRegistryPage() {
     (sum, item) => sum + getRemainingRegistryQuantity(item),
     0,
   );
+  const totalNeededAmount = registryItems.reduce(
+    (sum, item) => sum + getRegistryItemTargetAmount(item),
+    0,
+  );
+  const fundedAmount = registryItems.reduce(
+    (sum, item) => sum + getRegistryItemFundedAmount(item),
+    0,
+  );
+  const remainingAmount = registryItems.reduce(
+    (sum, item) => sum + getRegistryItemRemainingAmount(item),
+    0,
+  );
+  const paymentExceedsSelection = selectedItems.length > 0 && paymentAmount > selectedItemsTargetAmount;
 
   const handleQuantityChange = (item: RegistryItem, nextQuantity: number) => {
     const remaining = getRemainingRegistryQuantity(item);
@@ -251,7 +274,7 @@ export default function PublicRegistryPage() {
                     </div>
                     <div className="rounded-2xl border border-gray-200 bg-white p-5">
                       <p className="text-sm font-medium uppercase tracking-[0.18em] text-gray-500">
-                        Already Gifted
+                        Covered Units
                       </p>
                       <p className="mt-2 text-3xl font-bold text-green-600">
                         {purchasedCount}
@@ -259,10 +282,37 @@ export default function PublicRegistryPage() {
                     </div>
                     <div className="rounded-2xl border border-gray-200 bg-white p-5">
                       <p className="text-sm font-medium uppercase tracking-[0.18em] text-gray-500">
-                        Still Needed
+                        Units Left
                       </p>
                       <p className="mt-2 text-3xl font-bold text-pink-600">
                         {remainingCount}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="grid gap-4 md:grid-cols-3">
+                    <div className="rounded-2xl border border-gray-200 bg-white p-5">
+                      <p className="text-sm font-medium uppercase tracking-[0.18em] text-gray-500">
+                        Total Needed
+                      </p>
+                      <p className="mt-2 text-3xl font-bold text-gray-900">
+                        {formatNairaAmount(totalNeededAmount)}
+                      </p>
+                    </div>
+                    <div className="rounded-2xl border border-gray-200 bg-white p-5">
+                      <p className="text-sm font-medium uppercase tracking-[0.18em] text-gray-500">
+                        Funded So Far
+                      </p>
+                      <p className="mt-2 text-3xl font-bold text-green-600">
+                        {formatNairaAmount(fundedAmount)}
+                      </p>
+                    </div>
+                    <div className="rounded-2xl border border-gray-200 bg-white p-5">
+                      <p className="text-sm font-medium uppercase tracking-[0.18em] text-gray-500">
+                        Amount Left
+                      </p>
+                      <p className="mt-2 text-3xl font-bold text-pink-600">
+                        {formatNairaAmount(remainingAmount)}
                       </p>
                     </div>
                   </div>
@@ -351,7 +401,7 @@ export default function PublicRegistryPage() {
                                 </div>
                               </div>
 
-                              <div className="grid gap-3 text-sm sm:grid-cols-3">
+                              <div className="grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-5">
                                 <div className="rounded-2xl bg-gray-50 p-3">
                                   <p className="font-semibold text-gray-900">Requested</p>
                                   <p className="mt-1 text-gray-600">
@@ -359,14 +409,26 @@ export default function PublicRegistryPage() {
                                   </p>
                                 </div>
                                 <div className="rounded-2xl bg-gray-50 p-3">
-                                  <p className="font-semibold text-gray-900">Gifted</p>
+                                  <p className="font-semibold text-gray-900">Covered Units</p>
                                   <p className="mt-1 text-gray-600">
                                     {item.purchasedQuantity}
                                   </p>
                                 </div>
                                 <div className="rounded-2xl bg-gray-50 p-3">
-                                  <p className="font-semibold text-gray-900">Remaining</p>
+                                  <p className="font-semibold text-gray-900">Units Left</p>
                                   <p className="mt-1 text-gray-600">{remaining}</p>
+                                </div>
+                                <div className="rounded-2xl bg-gray-50 p-3">
+                                  <p className="font-semibold text-gray-900">Funded</p>
+                                  <p className="mt-1 text-gray-600">
+                                    {formatNairaAmount(getRegistryItemFundedAmount(item))}
+                                  </p>
+                                </div>
+                                <div className="rounded-2xl bg-gray-50 p-3">
+                                  <p className="font-semibold text-gray-900">Amount Left</p>
+                                  <p className="mt-1 text-gray-600">
+                                    {formatNairaAmount(getRegistryItemRemainingAmount(item))}
+                                  </p>
                                 </div>
                               </div>
 
@@ -399,7 +461,7 @@ export default function PublicRegistryPage() {
                                   </Button>
                                 </div>
                                 <p className="text-sm text-gray-500">
-                                  Select how many of this item you want to gift.
+                                  Select how many remaining units you want your payment to apply to.
                                 </p>
                               </div>
                             </div>
@@ -416,23 +478,48 @@ export default function PublicRegistryPage() {
                       </div>
                       <div>
                         <h2 className="text-xl font-bold text-gray-900">
-                          Add a Custom Contribution
+                          {selectedItems.length > 0 ? "Set Your Gift Amount" : "Make a General Cash Gift"}
                         </h2>
                         <p className="text-sm text-gray-600">
-                          You can contribute a custom amount even if you do not
-                          choose any specific items.
+                          {selectedItems.length > 0
+                            ? "Choose how much you want to pay now. Your payment will auto-fill the selected items in order and can be a part payment."
+                            : "You can still send a general registry cash gift even if you do not choose any specific items."}
                         </p>
                       </div>
                     </div>
-                    <div className="max-w-xs">
+                    <div className="max-w-xs space-y-3">
                       <Input
                         type="number"
                         min="0"
-                        step="1000"
-                        placeholder="Amount in NGN"
-                        value={contributionAmount}
-                        onChange={(event) => setContributionAmount(event.target.value)}
+                        step="500"
+                        placeholder={selectedItems.length > 0 ? "Amount to pay now" : "Cash gift amount in NGN"}
+                        value={paymentAmountInput}
+                        onChange={(event) => setPaymentAmountInput(event.target.value)}
                       />
+                      {selectedItems.length > 0 ? (
+                        <div className="space-y-2">
+                          <p className="text-sm text-gray-600">
+                            The selected items can still receive up to{" "}
+                            <span className="font-semibold text-gray-900">
+                              {formatNairaAmount(selectedItemsTargetAmount)}
+                            </span>
+                            .
+                          </p>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setPaymentAmountInput(String(selectedItemsTargetAmount))}
+                          >
+                            Use Full Selected Amount
+                          </Button>
+                          {paymentExceedsSelection ? (
+                            <p className="text-sm text-red-600">
+                              The amount entered is higher than the remaining amount on the selected items.
+                            </p>
+                          ) : null}
+                        </div>
+                      ) : null}
                     </div>
                   </div>
 
@@ -441,8 +528,9 @@ export default function PublicRegistryPage() {
                       <div>
                         <h2 className="text-2xl font-bold">Ready to send your gift?</h2>
                         <p className="mt-2 max-w-2xl text-pink-50">
-                          Continue to the secure Paystack checkout to pay for the
-                          selected items, make your contribution, or both together.
+                          {selectedItems.length > 0
+                            ? "Continue to secure Paystack checkout to pay this amount toward the items you selected."
+                            : "Continue to secure Paystack checkout to send your registry cash gift."}
                         </p>
                       </div>
                       <Button
@@ -450,12 +538,10 @@ export default function PublicRegistryPage() {
                         variant="secondary"
                         size="lg"
                         onClick={() => setGiftModalOpen(true)}
-                        disabled={
-                          selectedItems.length === 0 && customContributionAmount <= 0
-                        }
+                        disabled={paymentAmount <= 0 || paymentExceedsSelection}
                         className="text-gray-900"
                       >
-                        Gift These Items
+                        Continue to Payment
                       </Button>
                     </div>
                   </div>
@@ -472,10 +558,10 @@ export default function PublicRegistryPage() {
           onClose={() => setGiftModalOpen(false)}
           registry={registry}
           selectedItems={selectedItems}
-          customContributionAmount={customContributionAmount}
+          paymentAmount={paymentAmount}
           onCheckoutComplete={() => {
             setGiftQuantities({});
-            setContributionAmount("");
+            setPaymentAmountInput("");
             void reloadRegistryItems();
           }}
         />

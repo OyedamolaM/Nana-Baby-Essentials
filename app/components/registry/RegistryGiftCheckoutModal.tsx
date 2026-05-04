@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { loadPaystackScript } from "../../lib/loadPaystack";
-import { hasSupabaseEnv, supabase } from "../../lib/supabase";
+import { hasSupabaseEnv } from "../../lib/supabase";
 import { Button } from "../ui/button";
 import {
   Dialog,
@@ -15,8 +15,26 @@ import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { Separator } from "../ui/separator";
 import { Textarea } from "../ui/textarea";
-import { formatNairaAmount, toNairaAmount } from "../../../lib/commerce";
-import { getRemainingRegistryQuantity, type RegistryItem, type RegistryRecord } from "../../../lib/registry";
+import { formatNairaAmount } from "../../../lib/commerce";
+import {
+  getRegistryItemRemainingAmount,
+  getRegistryItemSelectionAmount,
+  getRemainingRegistryQuantity,
+  type RegistryItem,
+  type RegistryRecord,
+} from "../../../lib/registry";
+
+type PaystackHandler = {
+  openIframe: () => void;
+};
+
+type RegistryCheckoutSession = {
+  amountKobo: number;
+  checkoutType: "item" | "cash";
+  currency: string;
+  metadata: Record<string, unknown>;
+  reference: string;
+};
 
 export interface RegistryGiftSelection {
   item: RegistryItem;
@@ -28,7 +46,7 @@ interface RegistryGiftCheckoutModalProps {
   onClose: () => void;
   registry: RegistryRecord;
   selectedItems: RegistryGiftSelection[];
-  customContributionAmount: number;
+  paymentAmount: number;
   onCheckoutComplete: () => void;
 }
 
@@ -37,17 +55,52 @@ export function RegistryGiftCheckoutModal({
   onClose,
   registry,
   selectedItems,
-  customContributionAmount,
+  paymentAmount,
   onCheckoutComplete,
 }: RegistryGiftCheckoutModalProps) {
   const [loading, setLoading] = useState(false);
   const [paystackLoaded, setPaystackLoaded] = useState(false);
+  const [paystackActive, setPaystackActive] = useState(false);
   const [buyerName, setBuyerName] = useState("");
   const [buyerEmail, setBuyerEmail] = useState("");
   const [buyerPhone, setBuyerPhone] = useState("");
   const [buyerMessage, setBuyerMessage] = useState("");
-  const activeOrderIdRef = useRef<string | null>(null);
+  const activeReferenceRef = useRef<string | null>(null);
   const completedRef = useRef(false);
+  const pendingHandlerRef = useRef<PaystackHandler | null>(null);
+
+  const postRegistryCheckout = async <T,>(
+    payload: Record<string, unknown>,
+    fallbackMessage: string,
+  ) => {
+    const response = await fetch("/api/registry/checkout", {
+      body: JSON.stringify(payload),
+      headers: {
+        "Content-Type": "application/json",
+      },
+      method: "POST",
+    });
+
+    const data = (await response.json().catch(() => null)) as
+      | { message?: string }
+      | T
+      | null;
+
+    if (!response.ok) {
+      const message =
+        data &&
+        typeof data === "object" &&
+        "message" in data &&
+        typeof data.message === "string" &&
+        data.message.trim()
+          ? data.message.trim()
+          : fallbackMessage;
+
+      throw new Error(message);
+    }
+
+    return data as T;
+  };
 
   useEffect(() => {
     if (!open) {
@@ -62,31 +115,40 @@ export function RegistryGiftCheckoutModal({
       });
   }, [open]);
 
-  const itemsAmount = useMemo(() => {
+  useEffect(() => {
+    if (!paystackActive || !pendingHandlerRef.current) {
+      return;
+    }
+
+    const frameId = window.requestAnimationFrame(() => {
+      pendingHandlerRef.current?.openIframe();
+      pendingHandlerRef.current = null;
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+    };
+  }, [paystackActive]);
+
+  const selectedItemsTargetAmount = useMemo(() => {
     return selectedItems.reduce((sum, selection) => {
-      return sum + toNairaAmount(selection.item.unitPriceSnapshot) * selection.quantity;
+      return sum + getRegistryItemSelectionAmount(selection.item, selection.quantity);
     }, 0);
   }, [selectedItems]);
 
-  const totalAmount = itemsAmount + customContributionAmount;
-
-  const contributionType = useMemo<"items" | "cash" | "mixed">(() => {
-    if (selectedItems.length > 0 && customContributionAmount > 0) {
-      return "mixed";
-    }
-
-    if (selectedItems.length > 0) {
-      return "items";
-    }
-
-    return "cash";
-  }, [customContributionAmount, selectedItems.length]);
+  const totalAmount = paymentAmount;
+  const preventModalClose = loading || paystackActive;
 
   const handleCheckout = async (event: React.FormEvent) => {
     event.preventDefault();
 
     if (totalAmount <= 0) {
       toast.error("Select registry items or enter a contribution amount.");
+      return;
+    }
+
+    if (selectedItems.length > 0 && paymentAmount > selectedItemsTargetAmount) {
+      toast.error("This payment is higher than the remaining amount on the selected items.");
       return;
     }
 
@@ -115,40 +177,36 @@ export function RegistryGiftCheckoutModal({
         quantity: selection.quantity,
       }));
 
-      const { data: orderId, error: orderError } = await supabase.rpc(
-        "create_registry_order",
+      const session = await postRegistryCheckout<RegistryCheckoutSession>(
         {
-          p_registry_id: registry.id,
-          p_buyer_name: buyerName,
-          p_buyer_email: buyerEmail,
-          p_buyer_phone: buyerPhone,
-          p_buyer_message: buyerMessage,
-          p_total: totalAmount,
-          p_contribution_type: contributionType,
-          p_selected_items: checkoutItems,
+          action: "initiate",
+          buyerEmail,
+          buyerMessage,
+          buyerName,
+          buyerPhone,
+          paymentAmount,
+          registryId: registry.id,
+          selectedItems: checkoutItems.map((item) => ({
+            quantity: item.quantity,
+            registryItemId: item.registry_item_id,
+          })),
         },
+        "Failed to start registry payment.",
       );
 
-      if (orderError || !orderId) {
-        throw orderError ?? new Error("Failed to start registry payment.");
-      }
-
-      activeOrderIdRef.current = orderId;
+      activeReferenceRef.current = session.reference;
 
       const finalizePurchase = async (reference: string) => {
-        const { error: finalizeError } = await supabase.rpc(
-          "complete_registry_order_payment",
+        await postRegistryCheckout(
           {
-            p_order_id: orderId,
-            p_paystack_reference: reference,
+            action: "verify",
+            reference,
           },
+          "We could not finalize this registry gift after payment.",
         );
 
-        if (finalizeError) {
-          throw finalizeError;
-        }
-
-        activeOrderIdRef.current = null;
+        activeReferenceRef.current = null;
+        setPaystackActive(false);
         toast.success("Payment successful. Thank you for gifting!");
         onCheckoutComplete();
         onClose();
@@ -157,48 +215,59 @@ export function RegistryGiftCheckoutModal({
       const handler = window.PaystackPop.setup({
         key: paystackKey,
         email: buyerEmail,
-        amount: Math.round(totalAmount * 100),
-        currency: "NGN",
-        ref: `NBE-REG-${orderId}-${Date.now()}`,
+        amount: session.amountKobo,
+        currency: session.currency,
+        ref: session.reference,
         metadata: {
+          ...session.metadata,
           custom_fields: [
             {
               display_name: "Registry",
               variable_name: "registry_name",
               value: registry.name,
             },
+            {
+              display_name: "Checkout Type",
+              variable_name: "checkout_type",
+              value: session.checkoutType,
+            },
           ],
         },
         onClose: function() {
-          if (completedRef.current || !activeOrderIdRef.current) {
+          if (completedRef.current || !activeReferenceRef.current) {
+            setPaystackActive(false);
             setLoading(false);
             return;
           }
 
-          const orderId = activeOrderIdRef.current;
+          const reference = activeReferenceRef.current;
 
           void (async () => {
-            const { error: cancelError } = await supabase.rpc(
-              "cancel_registry_order",
-              {
-                p_order_id: orderId,
-              },
-            );
-
-            if (cancelError) {
-              console.error("Failed to cancel registry order", cancelError);
+            try {
+              await postRegistryCheckout(
+                {
+                  action: "cancel",
+                  reference,
+                },
+                "Failed to cancel registry checkout.",
+              );
+            } catch (error) {
+              console.error("Failed to cancel registry checkout", error);
             }
 
-            activeOrderIdRef.current = null;
-            toast.info("Payment cancelled.");
+            activeReferenceRef.current = null;
+            setPaystackActive(false);
+            toast.info("Payment cancelled. Your gift details are still here.");
             setLoading(false);
           })();
         },
         callback: function(response: { reference: string }) {
           completedRef.current = true;
-          void finalizePurchase(response.reference)
+          const verifiedReference = response.reference || activeReferenceRef.current;
+          void finalizePurchase(verifiedReference ?? "")
             .catch((error) => {
-              activeOrderIdRef.current = null;
+              activeReferenceRef.current = null;
+              setPaystackActive(false);
               const message =
                 error instanceof Error
                   ? error.message
@@ -207,6 +276,8 @@ export function RegistryGiftCheckoutModal({
               toast.error(
                 `Payment received, but we could not finish the registry gift. Please contact support with reference ${response.reference}. ${message}`,
               );
+              onCheckoutComplete();
+              onClose();
             })
             .finally(() => {
               setLoading(false);
@@ -214,18 +285,42 @@ export function RegistryGiftCheckoutModal({
         },
       });
 
-      handler.openIframe();
+      pendingHandlerRef.current = handler;
+      setPaystackActive(true);
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Registry checkout failed.";
       toast.error(message);
+      activeReferenceRef.current = null;
+      setPaystackActive(false);
       setLoading(false);
     }
   };
 
   return (
-    <Dialog open={open} onOpenChange={(nextOpen) => !nextOpen && onClose()}>
-      <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
+    <Dialog
+      open={open}
+      modal={!paystackActive}
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen && !preventModalClose) {
+          onClose();
+        }
+      }}
+    >
+      <DialogContent
+        className="max-h-[90vh] max-w-2xl overflow-y-auto"
+        showCloseButton={!preventModalClose}
+        onEscapeKeyDown={(event) => {
+          if (preventModalClose) {
+            event.preventDefault();
+          }
+        }}
+        onPointerDownOutside={(event) => {
+          if (preventModalClose) {
+            event.preventDefault();
+          }
+        }}
+      >
         <DialogHeader>
           <DialogTitle>Complete Your Gift</DialogTitle>
         </DialogHeader>
@@ -242,31 +337,40 @@ export function RegistryGiftCheckoutModal({
                   </span>
                   <span>
                     {formatNairaAmount(
-                      toNairaAmount(selection.item.unitPriceSnapshot) *
+                      getRegistryItemSelectionAmount(
+                        selection.item,
                         selection.quantity,
+                      ),
                     )}
                   </span>
                 </div>
               ))
             ) : (
               <p className="text-sm text-gray-500">
-                No product gifts selected. You&apos;re making a cash contribution.
+                No product gifts selected. You&apos;re making a general registry cash gift.
               </p>
             )}
 
-            {customContributionAmount > 0 && (
+            {selectedItems.length > 0 ? (
               <div className="flex justify-between text-sm">
-                <span>Cash contribution</span>
-                <span>{formatNairaAmount(customContributionAmount)}</span>
+                <span>Selected item balance</span>
+                <span>{formatNairaAmount(selectedItemsTargetAmount)}</span>
               </div>
-            )}
+            ) : null}
 
             <Separator />
             <div className="flex justify-between font-semibold">
-              <span>Total</span>
+              <span>You are paying now</span>
               <span>{formatNairaAmount(totalAmount)}</span>
             </div>
           </div>
+
+          {paystackActive ? (
+            <div className="rounded-lg border border-emerald-100 bg-emerald-50 p-4 text-sm text-emerald-900">
+              Paystack is open in front of this form. If you cancel, your gift
+              details will stay here so you can try again.
+            </div>
+          ) : null}
 
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div className="space-y-2">
@@ -319,16 +423,21 @@ export function RegistryGiftCheckoutModal({
 
           {selectedItems.length > 0 && (
             <div className="rounded-lg border border-pink-100 bg-pink-50 p-4 text-sm text-pink-900">
-              <p className="font-semibold">Registry stock check</p>
+              <p className="font-semibold">Selected item funding</p>
               <ul className="mt-2 space-y-1">
                 {selectedItems.map((selection) => (
                   <li key={selection.item.id}>
                     {selection.item.product?.name ?? "Registry item"}:{" "}
-                    {getRemainingRegistryQuantity(selection.item)} remaining
+                    {getRemainingRegistryQuantity(selection.item)} units still needed and{" "}
+                    {formatNairaAmount(getRegistryItemRemainingAmount(selection.item))} left
                     before this payment.
                   </li>
                 ))}
               </ul>
+              <p className="mt-3">
+                Your payment will auto-fill the selected items in order until the
+                amount you&apos;re paying now is fully assigned.
+              </p>
             </div>
           )}
 
@@ -338,9 +447,11 @@ export function RegistryGiftCheckoutModal({
             size="lg"
             disabled={loading || totalAmount <= 0}
           >
-            {loading
-              ? "Processing..."
-              : `Pay ${formatNairaAmount(totalAmount)} with Paystack`}
+            {paystackActive
+              ? "Paystack checkout open..."
+              : loading
+                ? "Preparing secure checkout..."
+                : `Pay ${formatNairaAmount(totalAmount)} with Paystack`}
           </Button>
         </form>
       </DialogContent>

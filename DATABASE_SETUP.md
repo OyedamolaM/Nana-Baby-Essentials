@@ -28,21 +28,24 @@ Both files are idempotent, so they are safe to run more than once.
 - Product pricing columns: `cost_price` and `selling_price`
 - Profile backfill for existing auth users, so admin can see customers created before the trigger existed
 
-## Newsletter Mail Settings
+## Brevo Mail Settings
 
-To send newsletters from the admin dashboard, add these environment variables where Next.js runs:
+To send registry-created emails, store order confirmations, and newsletters from the app, add these environment variables where Next.js runs:
 
 ```env
-SMTP_HOST=smtp.gmail.com
-SMTP_PORT=465
-SMTP_USER=your-email@gmail.com
-SMTP_PASSWORD=your-app-password
-SMTP_FROM_EMAIL=your-email@gmail.com
-SMTP_FROM_NAME=Nana's Baby Essentials
-SMTP_REPLY_TO=your-email@gmail.com
+BREVO_API_KEY=your-brevo-api-key
+BREVO_SENDER_EMAIL=your-verified-sender@example.com
+BREVO_SENDER_NAME=Nana's Baby Essentials
+BREVO_REPLY_TO=your-verified-sender@example.com
+BREVO_ORDER_SENDER_EMAIL=orders@yourdomain.example
+BREVO_ORDER_SENDER_NAME=Nana's Orders
+BREVO_ORDER_REPLY_TO=orders@yourdomain.example
+BREVO_SANDBOX_MODE=true
 ```
 
-If you use Gmail, create an App Password and use that value as `SMTP_PASSWORD`.
+Set `BREVO_SANDBOX_MODE=true` while you validate the three email flows without delivering to real inboxes. Remove it or set it to `false` for live sends.
+
+`BREVO_SENDER_*` is used for registry-created emails and newsletters. `BREVO_ORDER_*` is used only for store order confirmations and falls back to the default sender if you leave it unset.
 
 ## Make Your Account Admin
 

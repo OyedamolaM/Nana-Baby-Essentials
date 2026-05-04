@@ -5,6 +5,21 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Gift, Lock, MapPin, Package, Share2, Trash2, User } from "lucide-react";
 import { toast } from "sonner";
 import { formatNairaAmount } from "../../lib/commerce";
+import {
+  buildRegistryPaymentActivities,
+  getRegistryItemFundedAmount,
+  getRegistryItemRemainingAmount,
+  getRemainingRegistryQuantity,
+  mapRegistryItemRecord,
+  summarizeRegistryItems,
+  type RegistryContributionRecord,
+  type RegistryItem,
+  type RegistryItemRecord,
+  type RegistryOrderItemRecord,
+  type RegistryOrderRecord,
+  type RegistryPaymentActivity,
+  type RegistrySummary,
+} from "../../lib/registry";
 import { useAuth } from "../contexts/AuthContext";
 import { hasSupabaseEnv, supabase } from "../lib/supabase";
 import { CreateRegistryModal } from "../components/registry/CreateRegistryModal";
@@ -53,12 +68,6 @@ type RegistryRecord = {
   created_at: string;
 };
 
-type RegistryItemSummaryRow = {
-  registry_id: string;
-  requested_quantity?: number | null;
-  purchased_quantity?: number | null;
-};
-
 function formatDueMonth(dueMonth?: string | null) {
   if (!dueMonth) {
     return "N/A";
@@ -85,12 +94,35 @@ function formatBabyGender(value?: string | null) {
   return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
+function formatDateTime(value?: string | null) {
+  if (!value) {
+    return "N/A";
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return date.toLocaleString("en-NG", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
 export function UserDashboard() {
   const { user, signOut, updateProfile } = useAuth();
   const [orders, setOrders] = useState<UserOrder[]>([]);
   const [registries, setRegistries] = useState<RegistryRecord[]>([]);
-  const [registrySummaries, setRegistrySummaries] = useState<
-    Record<string, { requested: number; purchased: number }>
+  const [registryItemsByRegistry, setRegistryItemsByRegistry] = useState<
+    Record<string, RegistryItem[]>
+  >({});
+  const [registrySummaries, setRegistrySummaries] = useState<Record<string, RegistrySummary>>({});
+  const [registryPaymentActivities, setRegistryPaymentActivities] = useState<
+    Record<string, RegistryPaymentActivity[]>
   >({});
   const [loading, setLoading] = useState(Boolean(user && hasSupabaseEnv));
   const [showCreateRegistryModal, setShowCreateRegistryModal] = useState(false);
@@ -155,28 +187,97 @@ export function UserDashboard() {
     setOrders((ordersData as UserOrder[] | null) ?? []);
     setRegistries(typedRegistries);
 
-    let registryItemRows: RegistryItemSummaryRow[] = [];
+    let registryItemsById: Record<string, RegistryItem[]> = {};
+    let registrySummaryMap: Record<string, RegistrySummary> = {};
+    let registryPaymentsMap: Record<string, RegistryPaymentActivity[]> = {};
     if (typedRegistries.length > 0) {
-      const { data } = await supabase
-        .from("registry_items")
-        .select("registry_id, requested_quantity, purchased_quantity")
-        .in(
-          "registry_id",
-          typedRegistries.map((registry) => registry.id),
-        );
-      registryItemRows = (data as RegistryItemSummaryRow[] | null) ?? [];
+      const registryIds = typedRegistries.map((registry) => registry.id);
+      const [
+        { data: registryItemsData },
+        { data: registryOrdersData },
+        { data: registryContributionsData },
+      ] = await Promise.all([
+        supabase
+          .from("registry_items")
+          .select("*, products(*)")
+          .in("registry_id", registryIds)
+          .order("created_at", { ascending: false }),
+        supabase
+          .from("registry_orders")
+          .select("*")
+          .in("registry_id", registryIds)
+          .order("created_at", { ascending: false }),
+        supabase
+          .from("registry_contributions")
+          .select("*")
+          .in("registry_id", registryIds)
+          .order("created_at", { ascending: false }),
+      ]);
+
+      const registryItems = ((registryItemsData as RegistryItemRecord[] | null) ?? []).map(
+        mapRegistryItemRecord,
+      );
+      registryItemsById = registryItems.reduce<Record<string, RegistryItem[]>>(
+        (accumulator, item) => {
+          const existing = accumulator[item.registryId] ?? [];
+          existing.push(item);
+          accumulator[item.registryId] = existing;
+          return accumulator;
+        },
+        {},
+      );
+
+      registrySummaryMap = Object.fromEntries(
+        Object.entries(registryItemsById).map(([registryId, items]) => [
+          registryId,
+          summarizeRegistryItems(items),
+        ]),
+      ) as Record<string, RegistrySummary>;
+
+      const registryOrders = (registryOrdersData as RegistryOrderRecord[] | null) ?? [];
+      const registryContributions =
+        (registryContributionsData as RegistryContributionRecord[] | null) ?? [];
+      let registryOrderItems: RegistryOrderItemRecord[] = [];
+
+      if (registryOrders.length > 0) {
+        const { data: registryOrderItemsData } = await supabase
+          .from("registry_order_items")
+          .select("*")
+          .in(
+            "registry_order_id",
+            registryOrders.map((registryOrder) => registryOrder.id),
+          );
+        registryOrderItems =
+          (registryOrderItemsData as RegistryOrderItemRecord[] | null) ?? [];
+      }
+
+      registryPaymentsMap = typedRegistries.reduce<Record<string, RegistryPaymentActivity[]>>(
+        (accumulator, registry) => {
+          accumulator[registry.id] = buildRegistryPaymentActivities({
+            contributions: registryContributions.filter(
+              (contribution) => contribution.registry_id === registry.id,
+            ),
+            orderItems: registryOrderItems.filter((orderItem) =>
+              registryOrders.some(
+                (registryOrder) =>
+                  registryOrder.id === orderItem.registry_order_id &&
+                  registryOrder.registry_id === registry.id,
+              ),
+            ),
+            orders: registryOrders.filter(
+              (registryOrder) => registryOrder.registry_id === registry.id,
+            ),
+            registryItems: registryItemsById[registry.id] ?? [],
+          });
+          return accumulator;
+        },
+        {},
+      );
     }
 
-    const summaryMap = registryItemRows.reduce<
-      Record<string, { requested: number; purchased: number }>
-    >((accumulator, row) => {
-      const existing = accumulator[row.registry_id] ?? { requested: 0, purchased: 0 };
-      existing.requested += Math.max(1, Number(row.requested_quantity ?? 1));
-      existing.purchased += Math.max(0, Number(row.purchased_quantity ?? 0));
-      accumulator[row.registry_id] = existing;
-      return accumulator;
-    }, {});
-    setRegistrySummaries(summaryMap);
+    setRegistryItemsByRegistry(registryItemsById);
+    setRegistrySummaries(registrySummaryMap);
+    setRegistryPaymentActivities(registryPaymentsMap);
     setLoading(false);
   }, [user]);
 
@@ -484,13 +585,15 @@ export function UserDashboard() {
                   <div className="space-y-4">
                     {registries.map((registry) => {
                       const summary = registrySummaries[registry.id] ?? {
+                        fundedAmount: 0,
                         requested: 0,
                         purchased: 0,
+                        remainingAmount: 0,
+                        remainingQuantity: 0,
+                        totalNeededAmount: 0,
                       };
-                      const remaining = Math.max(
-                        0,
-                        summary.requested - summary.purchased,
-                      );
+                      const registryItems = registryItemsByRegistry[registry.id] ?? [];
+                      const payments = registryPaymentActivities[registry.id] ?? [];
 
                       return (
                         <div key={registry.id} className="rounded-lg border p-4">
@@ -524,7 +627,7 @@ export function UserDashboard() {
                                   <span className="font-semibold text-gray-900">
                                     Remaining:
                                   </span>{" "}
-                                  {remaining}
+                                  {summary.remainingQuantity}
                                 </div>
                               </div>
                             </div>
@@ -552,6 +655,130 @@ export function UserDashboard() {
                             <p className="font-mono text-lg font-bold text-pink-600">
                               {registry.share_code}
                             </p>
+                          </div>
+
+                          <div className="mt-4 grid gap-4 xl:grid-cols-[0.95fr_1.05fr]">
+                            <div className="rounded-lg border p-4">
+                              <p className="text-sm font-semibold text-gray-900">
+                                Item Funding
+                              </p>
+                              <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                                <div className="rounded-xl bg-gray-50 px-3 py-2 text-sm">
+                                  <span className="font-semibold text-gray-900">
+                                    Needed:
+                                  </span>{" "}
+                                  {formatNairaAmount(summary.totalNeededAmount)}
+                                </div>
+                                <div className="rounded-xl bg-gray-50 px-3 py-2 text-sm">
+                                  <span className="font-semibold text-gray-900">
+                                    Funded:
+                                  </span>{" "}
+                                  {formatNairaAmount(summary.fundedAmount)}
+                                </div>
+                                <div className="rounded-xl bg-gray-50 px-3 py-2 text-sm">
+                                  <span className="font-semibold text-gray-900">
+                                    Left:
+                                  </span>{" "}
+                                  {formatNairaAmount(summary.remainingAmount)}
+                                </div>
+                              </div>
+
+                              <div className="mt-4 space-y-3">
+                                {registryItems.length === 0 ? (
+                                  <p className="text-sm text-gray-500">
+                                    No registry items yet.
+                                  </p>
+                                ) : (
+                                  registryItems.map((item) => (
+                                    <div
+                                      key={item.id}
+                                      className="rounded-xl border border-gray-200 px-3 py-3"
+                                    >
+                                      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                                        <div>
+                                          <p className="font-medium text-gray-900">
+                                            {item.product?.name ?? "Registry item"}
+                                          </p>
+                                          <p className="text-sm text-gray-500">
+                                            {item.purchasedQuantity} covered,{" "}
+                                            {getRemainingRegistryQuantity(item)} units left
+                                          </p>
+                                        </div>
+                                        <div className="text-sm text-gray-600 sm:text-right">
+                                          <p>
+                                            Funded:{" "}
+                                            {formatNairaAmount(getRegistryItemFundedAmount(item))}
+                                          </p>
+                                          <p>
+                                            Left:{" "}
+                                            {formatNairaAmount(getRegistryItemRemainingAmount(item))}
+                                          </p>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  ))
+                                )}
+                              </div>
+                            </div>
+
+                            <div className="rounded-lg border p-4">
+                              <p className="text-sm font-semibold text-gray-900">
+                                Payment Activity
+                              </p>
+                              <div className="mt-4 space-y-3">
+                                {payments.length === 0 ? (
+                                  <p className="text-sm text-gray-500">
+                                    No payments for this registry yet.
+                                  </p>
+                                ) : (
+                                  payments.map((payment) => (
+                                    <div
+                                      key={payment.id}
+                                      className="rounded-xl border border-gray-200 px-3 py-3"
+                                    >
+                                      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                                        <div>
+                                          <p className="font-medium text-gray-900">
+                                            {payment.buyerName}
+                                          </p>
+                                          <p className="text-sm text-gray-500">
+                                            {payment.buyerEmail}
+                                            {payment.buyerPhone ? ` | ${payment.buyerPhone}` : ""}
+                                          </p>
+                                          <p className="mt-2 text-sm text-gray-700">
+                                            {payment.type === "item"
+                                              ? "Paid toward selected registry items"
+                                              : "General registry cash gift"}
+                                          </p>
+                                          <ul className="mt-2 space-y-1 text-sm text-gray-600">
+                                            {payment.itemLabels.map((label) => (
+                                              <li key={`${payment.id}-${label}`}>{label}</li>
+                                            ))}
+                                          </ul>
+                                          {payment.buyerMessage ? (
+                                            <p className="mt-2 rounded-lg bg-gray-50 px-3 py-2 text-sm text-gray-600">
+                                              &quot;{payment.buyerMessage}&quot;
+                                            </p>
+                                          ) : null}
+                                        </div>
+                                        <div className="text-sm text-gray-600 sm:text-right">
+                                          <p className="font-semibold text-gray-900">
+                                            {formatNairaAmount(payment.totalAmount)}
+                                          </p>
+                                          <p>{payment.status}</p>
+                                          <p>{formatDateTime(payment.paidAt ?? payment.createdAt)}</p>
+                                          {payment.paystackReference ? (
+                                            <p className="font-mono text-xs text-gray-500">
+                                              {payment.paystackReference}
+                                            </p>
+                                          ) : null}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  ))
+                                )}
+                              </div>
+                            </div>
                           </div>
                         </div>
                       );

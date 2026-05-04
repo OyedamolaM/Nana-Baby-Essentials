@@ -44,23 +44,26 @@ You now have a fully functional e-commerce baby store with:
 2. Customize these email templates:
    - **Confirm signup**: Welcome email
    - **Reset password**: Password reset email
-3. For order confirmation emails, you'll need to set up a Supabase Edge Function (see below)
+3. Transactional emails now run through Brevo from the Next.js server routes below
 
-### 5. Configure Newsletter Mail Sending
+### 5. Configure Brevo Email Sending
 
 Add these environment variables to the app where Next.js runs:
 
 ```env
-SMTP_HOST=smtp.gmail.com
-SMTP_PORT=465
-SMTP_USER=your-email@gmail.com
-SMTP_PASSWORD=your-app-password
-SMTP_FROM_EMAIL=your-email@gmail.com
-SMTP_FROM_NAME=Nana's Baby Essentials
-SMTP_REPLY_TO=your-email@gmail.com
+BREVO_API_KEY=your-brevo-api-key
+BREVO_SENDER_EMAIL=your-verified-sender@example.com
+BREVO_SENDER_NAME=Nana's Baby Essentials
+BREVO_REPLY_TO=your-verified-sender@example.com
+BREVO_ORDER_SENDER_EMAIL=orders@yourdomain.example
+BREVO_ORDER_SENDER_NAME=Nana's Orders
+BREVO_ORDER_REPLY_TO=orders@yourdomain.example
+BREVO_SANDBOX_MODE=true
 ```
 
-If you use Gmail, generate an App Password and use it for `SMTP_PASSWORD`.
+Set `BREVO_SANDBOX_MODE=true` to test registry-created emails, order confirmation emails, and newsletter sends without delivering real messages. Set it to `false` or remove it when you are ready for live delivery.
+
+`BREVO_SENDER_*` is the default sender used by registry-created emails and newsletters. `BREVO_ORDER_*` is an optional separate sender just for order confirmations.
 
 ### 6. Deploy Edge Function for Payment Verification (Optional but Recommended)
 

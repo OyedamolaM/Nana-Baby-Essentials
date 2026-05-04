@@ -1,11 +1,14 @@
 import { NextResponse } from "next/server";
-import nodemailer from "nodemailer";
 
 import {
-  getNewsletterMailConfig,
+  sendBrevoBatchEmail,
+  hasBrevoEnv,
+  isBrevoSandboxMode,
+} from "@/lib/brevo";
+import {
   renderNewsletterHtml,
   renderNewsletterText,
-} from "@/lib/newsletter";
+} from "@/lib/emailTemplates";
 import {
   createSupabaseServerClient,
   hasSupabaseServerEnv,
@@ -108,34 +111,33 @@ export async function POST(request: Request) {
     );
   }
 
-  const mailConfig = getNewsletterMailConfig();
-  if (!mailConfig) {
+  if (!hasBrevoEnv) {
     return NextResponse.json(
-      { message: "Add your SMTP mail settings to send newsletters." },
+      { message: "Add your Brevo mail settings to send newsletters." },
       { status: 500 },
     );
   }
 
-  const transporter = nodemailer.createTransport({
-    host: mailConfig.host,
-    port: mailConfig.port,
-    secure: mailConfig.secure,
-    auth: {
-      user: mailConfig.user,
-      pass: mailConfig.password,
-    },
-  });
+  const html = renderNewsletterHtml({ subject, body });
+  const text = renderNewsletterText({ subject, body });
+  const sentRecipients: string[] = [];
 
   try {
-    await transporter.sendMail({
-      from: `"${mailConfig.fromName}" <${mailConfig.fromEmail}>`,
-      replyTo: mailConfig.replyTo || mailConfig.fromEmail,
-      to: mailConfig.fromEmail,
-      bcc: recipientEmails,
-      subject,
-      text: renderNewsletterText({ subject, body }),
-      html: renderNewsletterHtml({ subject, body }),
-    });
+    for (let index = 0; index < recipientEmails.length; index += 1000) {
+      const chunk = recipientEmails.slice(index, index + 1000);
+
+      await sendBrevoBatchEmail({
+        htmlContent: html,
+        messageVersions: chunk.map((email) => ({
+          to: [{ email }],
+        })),
+        subject,
+        tags: ["newsletter"],
+        textContent: text,
+      });
+
+      sentRecipients.push(...chunk);
+    }
   } catch (error) {
     console.error("Failed to send newsletter email.", error);
 
@@ -143,12 +145,26 @@ export async function POST(request: Request) {
       subject,
       body,
       status: "failed",
-      recipient_count: recipientEmails.length,
+      recipient_count: sentRecipients.length,
       created_by: user.id,
     });
 
+    if (sentRecipients.length > 0) {
+      const partialSentAt = new Date().toISOString();
+
+      await adminClient
+        .from("newsletter_subscribers")
+        .update({ last_sent_at: partialSentAt })
+        .in("email", sentRecipients);
+    }
+
     return NextResponse.json(
-      { message: "The newsletter could not be sent with the current mail settings." },
+      {
+        message:
+          sentRecipients.length > 0
+            ? "The newsletter was only partially sent. Check Brevo before retrying."
+            : "The newsletter could not be sent with the current Brevo settings.",
+      },
       { status: 500 },
     );
   }
@@ -159,7 +175,7 @@ export async function POST(request: Request) {
     subject,
     body,
     status: "sent",
-    recipient_count: recipientEmails.length,
+    recipient_count: sentRecipients.length,
     sent_at: sentAt,
     created_by: user.id,
   });
@@ -167,10 +183,11 @@ export async function POST(request: Request) {
   await adminClient
     .from("newsletter_subscribers")
     .update({ last_sent_at: sentAt })
-    .in("email", recipientEmails);
+    .in("email", sentRecipients);
 
   return NextResponse.json({
     message: "Newsletter sent successfully.",
-    recipientCount: recipientEmails.length,
+    recipientCount: sentRecipients.length,
+    sandbox: isBrevoSandboxMode,
   });
 }

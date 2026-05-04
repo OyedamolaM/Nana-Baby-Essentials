@@ -4,6 +4,8 @@ import Link from "next/link";
 import { Gift, Share2, Trash2 } from "lucide-react";
 import { formatNairaAmount, toNairaAmount } from "../../../lib/commerce";
 import {
+  getRegistryItemFundedAmount,
+  getRegistryItemRemainingAmount,
   type RegistryItem,
   type RegistryRecord,
   getRemainingRegistryQuantity,
@@ -92,6 +94,10 @@ export function RegistryBuilderDrawer({
                               toNairaAmount(item.unitPriceSnapshot) *
                                 item.requestedQuantity,
                             )}
+                          </p>
+                          <p className="mt-1 text-sm text-gray-600">
+                            Funded {formatNairaAmount(getRegistryItemFundedAmount(item))} and{" "}
+                            {formatNairaAmount(getRegistryItemRemainingAmount(item))} left.
                           </p>
                         </div>
                         <Button

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useAuth } from "../../contexts/AuthContext";
 import { hasSupabaseEnv, supabase } from "../../lib/supabase";
@@ -29,6 +29,10 @@ interface CartItem extends Product {
   quantity: number;
 }
 
+type PaystackHandler = {
+  openIframe: () => void;
+};
+
 interface CheckoutModalProps {
   open: boolean;
   onClose: () => void;
@@ -52,9 +56,10 @@ export function CheckoutModal({
   cartItems,
   onCheckoutComplete,
 }: CheckoutModalProps) {
-  const { user } = useAuth();
+  const { session, user } = useAuth();
   const [loading, setLoading] = useState(false);
   const [paystackLoaded, setPaystackLoaded] = useState(false);
+  const [paystackActive, setPaystackActive] = useState(false);
   const [shippingTier, setShippingTier] = useState("lagos");
 
   const [shippingName, setShippingName] = useState("");
@@ -62,6 +67,9 @@ export function CheckoutModal({
   const [shippingAddress, setShippingAddress] = useState("");
   const [shippingCity, setShippingCity] = useState("");
   const [shippingState, setShippingState] = useState("");
+  const activeOrderIdRef = useRef<string | null>(null);
+  const completedRef = useRef(false);
+  const pendingHandlerRef = useRef<PaystackHandler | null>(null);
 
   useEffect(() => {
     if (!open) {
@@ -76,6 +84,21 @@ export function CheckoutModal({
       });
   }, [open]);
 
+  useEffect(() => {
+    if (!paystackActive || !pendingHandlerRef.current) {
+      return;
+    }
+
+    const frameId = window.requestAnimationFrame(() => {
+      pendingHandlerRef.current?.openIframe();
+      pendingHandlerRef.current = null;
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+    };
+  }, [paystackActive]);
+
   const selectedTier = useMemo(
     () => SHIPPING_TIERS.find((tier) => tier.value === shippingTier),
     [shippingTier],
@@ -87,6 +110,7 @@ export function CheckoutModal({
   );
   const shippingFee = selectedTier?.fee ?? 0;
   const totalAmount = subtotalAmount + shippingFee;
+  const preventModalClose = loading || paystackActive;
 
   const handleCheckout = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -113,6 +137,7 @@ export function CheckoutModal({
     }
 
     setLoading(true);
+    completedRef.current = false;
 
     try {
       const shippingAddressData = {
@@ -123,47 +148,82 @@ export function CheckoutModal({
         state: shippingState,
       };
 
-      const { data: order, error } = await supabase
-        .from("orders")
-        .insert({
-          user_id: user.id,
-          total: totalAmount,
-          status: "awaiting_payment",
-          shipping_address: shippingAddressData,
-          billing_address: shippingAddressData,
-          items: cartItems.map((item) => ({
-            product_id: item.id,
-            name: item.name,
-            price: toNairaAmount(item.price),
-            quantity: item.quantity,
-          })),
-          shipping_tier: shippingTier,
-        })
-        .select()
-        .single();
+      const orderItems = cartItems.map((item) => ({
+        product_id: item.id,
+        name: item.name,
+        price: toNairaAmount(item.price),
+        quantity: item.quantity,
+      }));
 
-      if (error) {
-        throw error;
+      const { data: orderId, error } = await supabase.rpc(
+        "create_store_order",
+        {
+          p_total: totalAmount,
+          p_shipping_address: shippingAddressData,
+          p_billing_address: shippingAddressData,
+          p_items: orderItems,
+          p_shipping_tier: shippingTier,
+        },
+      );
+
+      if (error || !orderId) {
+        throw error ?? new Error("Failed to start checkout.");
       }
 
-      const onPaymentSuccess = async (response: { reference: string }) => {
-        try {
-          await supabase
-            .from("orders")
-            .update({
-              payment_reference: response.reference,
-              status: "paid",
-            })
-            .eq("id", order.id);
+      activeOrderIdRef.current = orderId;
 
-          toast.success("Payment successful. Your order has been placed.");
-          onCheckoutComplete();
-          onClose();
-        } catch {
-          toast.error("Order updated failed, but payment was successful. Please contact support.");
-        } finally {
-          setLoading(false);
+      const onPaymentSuccess = async (response: { reference: string }) => {
+        const { error: paymentError } = await supabase.rpc(
+          "complete_store_order_payment",
+          {
+            p_order_id: orderId,
+            p_paystack_reference: response.reference,
+          },
+        );
+
+        if (paymentError) {
+          throw paymentError;
         }
+
+        let successMessage = "Payment successful. Your order has been placed.";
+
+        if (!session?.access_token) {
+          successMessage =
+            "Payment successful. Your order has been placed, but we could not open an authenticated session to send your confirmation email.";
+        } else {
+          const emailResponse = await fetch("/api/orders/confirmation", {
+            body: JSON.stringify({ orderId }),
+            headers: {
+              Authorization: `Bearer ${session.access_token}`,
+              "Content-Type": "application/json",
+            },
+            method: "POST",
+          });
+
+          if (emailResponse.ok) {
+            const payload = (await emailResponse.json().catch(() => null)) as
+              | { sandbox?: boolean }
+              | null;
+
+            successMessage = payload?.sandbox
+              ? "Payment successful. Your order has been placed and Brevo sandbox accepted the confirmation email request."
+              : "Payment successful. Your order has been placed and your confirmation email is on the way.";
+          } else {
+            const payload = (await emailResponse.json().catch(() => null)) as
+              | { message?: string }
+              | null;
+
+            successMessage =
+              payload?.message?.trim() ||
+              "Payment successful. Your order has been placed, but the confirmation email could not be sent yet.";
+          }
+        }
+
+        activeOrderIdRef.current = null;
+        setPaystackActive(false);
+        toast.success(successMessage);
+        onCheckoutComplete();
+        onClose();
       };
 
       const handler = window.PaystackPop.setup({
@@ -171,37 +231,102 @@ export function CheckoutModal({
         email: user.email || shippingName,
         amount: Math.round(totalAmount * 100),
         currency: "NGN",
-        ref: `NBE-${order.id}-${Date.now()}`,
+        ref: `NBE-${orderId}-${Date.now()}`,
         metadata: {
           custom_fields: [
             {
               display_name: "Order ID",
               variable_name: "order_id",
-              value: String(order.id),
+              value: String(orderId),
             },
           ],
         },
         onClose: function() {
-          toast.info("Payment cancelled.");
-          setLoading(false);
+          if (completedRef.current || !activeOrderIdRef.current) {
+            setPaystackActive(false);
+            setLoading(false);
+            return;
+          }
+
+          const pendingOrderId = activeOrderIdRef.current;
+
+          void (async () => {
+            const { error: cancelError } = await supabase.rpc(
+              "cancel_store_order",
+              {
+                p_order_id: pendingOrderId,
+              },
+            );
+
+            if (cancelError) {
+              console.error("Failed to cancel store order", cancelError);
+            }
+
+            activeOrderIdRef.current = null;
+            setPaystackActive(false);
+            toast.info("Payment cancelled. Your checkout details are still here.");
+            setLoading(false);
+          })();
         },
         callback: function(response: { reference: string }) {
-          onPaymentSuccess(response);
+          completedRef.current = true;
+          void onPaymentSuccess(response)
+            .catch((error) => {
+              activeOrderIdRef.current = null;
+              setPaystackActive(false);
+              const message =
+                error instanceof Error
+                  ? error.message
+                  : "We could not finalize your order after payment.";
+
+              toast.error(
+                `Payment received, but we could not finish your order. Please contact support with reference ${response.reference}. ${message}`,
+              );
+              onCheckoutComplete();
+              onClose();
+            })
+            .finally(() => {
+              setLoading(false);
+            });
         },
       });
-      onClose();
-      handler.openIframe();
+
+      pendingHandlerRef.current = handler;
+      setPaystackActive(true);
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Checkout failed.";
       toast.error(message);
+      activeOrderIdRef.current = null;
+      setPaystackActive(false);
       setLoading(false);
     }
   };
 
   return (
-    <Dialog open={open} onOpenChange={(nextOpen) => !nextOpen && onClose()}>
-      <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
+    <Dialog
+      open={open}
+      modal={!paystackActive}
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen && !preventModalClose) {
+          onClose();
+        }
+      }}
+    >
+      <DialogContent
+        className="max-h-[90vh] max-w-2xl overflow-y-auto"
+        showCloseButton={!preventModalClose}
+        onEscapeKeyDown={(event) => {
+          if (preventModalClose) {
+            event.preventDefault();
+          }
+        }}
+        onPointerDownOutside={(event) => {
+          if (preventModalClose) {
+            event.preventDefault();
+          }
+        }}
+      >
         <DialogHeader>
           <DialogTitle>Checkout</DialogTitle>
         </DialogHeader>
@@ -234,6 +359,13 @@ export function CheckoutModal({
               <span>{formatNairaAmount(totalAmount)}</span>
             </div>
           </div>
+
+          {paystackActive ? (
+            <div className="rounded-lg border border-emerald-100 bg-emerald-50 p-4 text-sm text-emerald-900">
+              Paystack is open in front of this form. If you cancel payment, your
+              checkout details will stay here so you can try again.
+            </div>
+          ) : null}
 
           <div className="space-y-2">
             <Label>Shipping Zone</Label>
@@ -313,9 +445,11 @@ export function CheckoutModal({
             size="lg"
             disabled={loading || cartItems.length === 0}
           >
-            {loading
-              ? "Processing..."
-              : `Pay ${formatNairaAmount(totalAmount)} with Paystack`}
+            {paystackActive
+              ? "Paystack checkout open..."
+              : loading
+                ? "Preparing secure checkout..."
+                : `Pay ${formatNairaAmount(totalAmount)} with Paystack`}
           </Button>
         </form>
       </DialogContent>
