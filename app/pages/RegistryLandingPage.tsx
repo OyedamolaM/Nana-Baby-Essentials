@@ -374,8 +374,8 @@ export function RegistryLandingPage() {
           <div className="flex h-16 items-center justify-between gap-3">
             <Link href="/" className="flex items-center gap-2">
               <Baby className="h-8 w-8 text-pink-500" />
-              <h1 className="text-xl font-semibold text-gray-900 md:text-2xl">
-                Baby Registry
+              <h1 className="text-sm sm:text-base md:text-xl lg:text-2xl font-semibold text-gray-900">
+                Nana&apos;s Baby Registry
               </h1>
             </Link>
 

@@ -110,68 +110,44 @@ export function RegistryGiftCheckoutModal({
     completedRef.current = false;
 
     try {
-      const { data: order, error: orderError } = await supabase
-        .from("registry_orders")
-        .insert({
-          registry_id: registry.id,
-          buyer_name: buyerName,
-          buyer_email: buyerEmail,
-          buyer_phone: buyerPhone,
-          buyer_message: buyerMessage,
-          total_amount: totalAmount,
-          contribution_type: contributionType,
-          status: "awaiting_payment",
-        })
-        .select()
-        .single();
+      const checkoutItems = selectedItems.map((selection) => ({
+        registry_item_id: selection.item.id,
+        quantity: selection.quantity,
+      }));
 
-      if (orderError || !order) {
+      const { data: orderId, error: orderError } = await supabase.rpc(
+        "create_registry_order",
+        {
+          p_registry_id: registry.id,
+          p_buyer_name: buyerName,
+          p_buyer_email: buyerEmail,
+          p_buyer_phone: buyerPhone,
+          p_buyer_message: buyerMessage,
+          p_total: totalAmount,
+          p_contribution_type: contributionType,
+          p_selected_items: checkoutItems,
+        },
+      );
+
+      if (orderError || !orderId) {
         throw orderError ?? new Error("Failed to start registry payment.");
       }
 
-      activeOrderIdRef.current = order.id;
-
-      if (selectedItems.length > 0) {
-        const { error: itemInsertError } = await supabase
-          .from("registry_order_items")
-          .insert(
-            selectedItems.map((selection) => ({
-              registry_order_id: order.id,
-              registry_item_id: selection.item.id,
-              product_id: selection.item.productId,
-              quantity: selection.quantity,
-              amount:
-                toNairaAmount(selection.item.unitPriceSnapshot) * selection.quantity,
-            })),
-          );
-
-        if (itemInsertError) {
-          throw itemInsertError;
-        }
-      }
+      activeOrderIdRef.current = orderId;
 
       const finalizePurchase = async (reference: string) => {
-        await supabase
-          .from("registry_orders")
-          .update({
-            paystack_reference: reference,
-            status: "paid",
-          })
-          .eq("id", order.id);
+        const { error: finalizeError } = await supabase.rpc(
+          "complete_registry_order_payment",
+          {
+            p_order_id: orderId,
+            p_paystack_reference: reference,
+          },
+        );
 
-        for (const selection of selectedItems) {
-          const latestPurchasedQuantity =
-            selection.item.purchasedQuantity + selection.quantity;
-
-          await supabase
-            .from("registry_items")
-            .update({
-              purchased_quantity: latestPurchasedQuantity,
-            })
-            .eq("id", selection.item.id);
+        if (finalizeError) {
+          throw finalizeError;
         }
 
-        completedRef.current = true;
         activeOrderIdRef.current = null;
         toast.success("Payment successful. Thank you for gifting!");
         onCheckoutComplete();
@@ -183,7 +159,7 @@ export function RegistryGiftCheckoutModal({
         email: buyerEmail,
         amount: Math.round(totalAmount * 100),
         currency: "NGN",
-        ref: `NBE-REG-${order.id}-${Date.now()}`,
+        ref: `NBE-REG-${orderId}-${Date.now()}`,
         metadata: {
           custom_fields: [
             {
@@ -202,10 +178,16 @@ export function RegistryGiftCheckoutModal({
           const orderId = activeOrderIdRef.current;
 
           void (async () => {
-            await supabase
-              .from("registry_orders")
-              .update({ status: "cancelled" })
-              .eq("id", orderId);
+            const { error: cancelError } = await supabase.rpc(
+              "cancel_registry_order",
+              {
+                p_order_id: orderId,
+              },
+            );
+
+            if (cancelError) {
+              console.error("Failed to cancel registry order", cancelError);
+            }
 
             activeOrderIdRef.current = null;
             toast.info("Payment cancelled.");
@@ -213,9 +195,22 @@ export function RegistryGiftCheckoutModal({
           })();
         },
         callback: function(response: { reference: string }) {
-          void finalizePurchase(response.reference).finally(() => {
-            setLoading(false);
-          });
+          completedRef.current = true;
+          void finalizePurchase(response.reference)
+            .catch((error) => {
+              activeOrderIdRef.current = null;
+              const message =
+                error instanceof Error
+                  ? error.message
+                  : "We could not finalize this registry gift after payment.";
+
+              toast.error(
+                `Payment received, but we could not finish the registry gift. Please contact support with reference ${response.reference}. ${message}`,
+              );
+            })
+            .finally(() => {
+              setLoading(false);
+            });
         },
       });
 
