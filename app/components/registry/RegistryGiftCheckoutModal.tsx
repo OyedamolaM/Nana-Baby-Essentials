@@ -365,12 +365,12 @@ export function RegistryGiftCheckoutModal({
             </div>
           </div>
 
-          {paystackActive ? (
+          {/* {paystackActive ? (
             <div className="rounded-lg border border-emerald-100 bg-emerald-50 p-4 text-sm text-emerald-900">
               Paystack is open in front of this form. If you cancel, your gift
               details will stay here so you can try again.
             </div>
-          ) : null}
+          ) : null} */}
 
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div className="space-y-2">

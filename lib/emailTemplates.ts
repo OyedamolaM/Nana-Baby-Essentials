@@ -79,7 +79,7 @@ function renderEmailShell(options: {
 <html lang="en">
   <body style="margin:0;padding:32px 16px;background:#f8fafc;font-family:Arial,sans-serif;color:#0f172a;">
     <div style="margin:0 auto;max-width:680px;overflow:hidden;border-radius:28px;background:#ffffff;box-shadow:0 24px 60px rgba(15,23,42,0.08);">
-      <div style="padding:32px 32px 28px;background:linear-gradient(135deg,#ea580c 0%,#fb7185 100%);color:#ffffff;">
+      <div style="padding:32px 32px 28px;background: linear-gradient(135deg, #db2777 0%, #fb7185 100%);color:#ffffff;">
         <div style="font-size:12px;letter-spacing:0.18em;text-transform:uppercase;opacity:0.92;">${escapeHtml(options.eyebrow)}</div>
         <h1 style="margin:14px 0 10px;font-size:32px;line-height:1.15;">${escapeHtml(options.title)}</h1>
         <p style="margin:0;max-width:540px;font-size:15px;line-height:1.7;color:rgba(255,255,255,0.92);">${escapeHtml(options.subtitle)}</p>

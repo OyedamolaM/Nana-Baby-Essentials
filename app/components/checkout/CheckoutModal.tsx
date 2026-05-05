@@ -360,12 +360,12 @@ export function CheckoutModal({
             </div>
           </div>
 
-          {paystackActive ? (
+          {/* {paystackActive ? (
             <div className="rounded-lg border border-emerald-100 bg-emerald-50 p-4 text-sm text-emerald-900">
               Paystack is open in front of this form. If you cancel payment, your
               checkout details will stay here so you can try again.
             </div>
-          ) : null}
+          ) : null} */}
 
           <div className="space-y-2">
             <Label>Shipping Zone</Label>
