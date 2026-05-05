@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Clock, ShoppingCart, Zap } from "lucide-react";
 import { Product } from "./ProductCard";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
@@ -15,7 +15,11 @@ import {
   CarouselPrevious,
 } from "./ui/carousel";
 import { useHomepageDeals } from "../hooks/useContentData";
-import { formatNaira, formatNairaAmount, toNairaAmount } from "../../lib/commerce";
+import {
+  formatNaira,
+  formatNairaAmount,
+  toNairaAmount,
+} from "../../lib/commerce";
 
 interface DealOfTheWeekProps {
   onAddToCart: (product: Product) => void;
@@ -49,6 +53,21 @@ export function DealOfTheWeek({
     return () => window.clearInterval(timer);
   }, []);
 
+  /**
+   * ✅ Only show active deals (admin-controlled)
+   */
+  const activeDeals = useMemo(() => {
+    return deals.filter((deal) => {
+      if (!deal.endsAt) return false; // must be set by admin
+      return new Date(deal.endsAt).getTime() > now;
+    });
+  }, [deals, now]);
+
+  /**
+   * ✅ If no deals, remove entire section
+   */
+  if (activeDeals.length === 0) return null;
+
   return (
     <section className="bg-gradient-to-r from-orange-50 to-red-50 py-16">
       <div className="w-full px-3 sm:px-4">
@@ -61,24 +80,28 @@ export function DealOfTheWeek({
         </div>
 
         <div className="w-full lg:max-w-6xl lg:mx-auto sm:px-6 md:px-10">
-          <Carousel className="px-1 sm:px-0" opts={{ loop: deals.length > 1 }}>
+          <Carousel className="px-1 sm:px-0" opts={{ loop: activeDeals.length > 1 }}>
             <CarouselContent>
-              {deals.map((deal) => {
+              {activeDeals.map((deal) => {
                 const displayProduct: Product = {
                   ...deal.product,
                   price: deal.salePrice,
                 };
 
-                const compareAtPrice = Math.max(deal.compareAtPrice, deal.salePrice);
-                const savings = toNairaAmount(compareAtPrice - deal.salePrice);
+                const compareAtPrice = Math.max(
+                  deal.compareAtPrice,
+                  deal.salePrice
+                );
+
+                const savings = toNairaAmount(
+                  compareAtPrice - deal.salePrice
+                );
+
                 const discount = Math.round(
                   ((compareAtPrice - deal.salePrice) / compareAtPrice) * 100
                 );
 
-                const endsAt = deal.endsAt
-                  ? new Date(deal.endsAt).getTime()
-                  : now + 3 * 24 * 60 * 60 * 1000;
-
+                const endsAt = new Date(deal.endsAt!).getTime();
                 const timeLeft = getTimeLeft(endsAt);
 
                 return (
@@ -94,7 +117,7 @@ export function DealOfTheWeek({
                           <ImageWithFallback
                             src={deal.image}
                             alt={deal.title}
-                            className="h-56 w-full rounded-lg object-cover sm:h-full"
+                            className="h-48 w-full rounded-lg object-cover sm:h-full"
                           />
                         </div>
 
@@ -190,11 +213,11 @@ export function DealOfTheWeek({
               })}
             </CarouselContent>
 
-            {/* Smaller mobile arrows */}
-            {deals.length > 1 && (
+            {activeDeals.length > 1 && (
               <>
                 <CarouselPrevious className="-left-3 sm:-left-5 md:-left-12 size-8 sm:size-10 border-orange-200 bg-white text-orange-700 shadow-sm hover:bg-orange-50" />
-                <CarouselNext className="-right-3 sm:-right-5 md:-right-12 size-8 sm:size-10 border-orange-200 bg-white text-orange-700 shadow-sm hover:bg-orange-50" /></>
+                <CarouselNext className="-right-3 sm:-right-5 md:-right-12 size-8 sm:size-10 border-orange-200 bg-white text-orange-700 shadow-sm hover:bg-orange-50" />
+              </>
             )}
           </Carousel>
         </div>
