@@ -2,7 +2,14 @@
 
 import { Trash2, ShoppingBag } from "lucide-react";
 import { Button } from "./ui/button";
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetFooter } from "./ui/sheet";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+} from "./ui/sheet";
 import { Separator } from "./ui/separator";
 import { Product } from "./ProductCard";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
@@ -42,6 +49,9 @@ export function ShoppingCartDrawer({
             <ShoppingBag className="h-5 w-5" />
             Shopping Cart
           </SheetTitle>
+          <SheetDescription>
+            Review the items you have selected before continuing to checkout.
+          </SheetDescription>
         </SheetHeader>
 
         <div className="flex-1 overflow-y-auto py-4">

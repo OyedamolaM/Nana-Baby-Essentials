@@ -13,7 +13,6 @@ import {
 import { useAuth } from "./AuthContext";
 import {
   hasSupabaseEnv,
-  isSupabaseMissingRelationError,
   supabase,
 } from "../lib/supabase";
 import { mapProductRecord, type ProductRecord, type StoreProduct } from "../../lib/commerce";
@@ -47,6 +46,16 @@ const StoreCartContext = createContext<StoreCartContextValue | undefined>(
   undefined,
 );
 
+function normalizeCartQuantity(quantity: unknown) {
+  const normalizedQuantity = Math.floor(Number(quantity));
+
+  if (!Number.isFinite(normalizedQuantity) || normalizedQuantity <= 0) {
+    return 0;
+  }
+
+  return Math.min(normalizedQuantity, 99);
+}
+
 function isStoreCartItem(value: unknown): value is StoreCartItem {
   if (!value || typeof value !== "object") {
     return false;
@@ -61,8 +70,59 @@ function isStoreCartItem(value: unknown): value is StoreCartItem {
     typeof item.image === "string" &&
     typeof item.description === "string" &&
     typeof item.inStock === "boolean" &&
-    typeof item.quantity === "number"
+    normalizeCartQuantity(item.quantity) > 0
   );
+}
+
+function sanitizeStoreCartItems(items: unknown[]) {
+  const deduped = new Map<number, StoreCartItem>();
+
+  for (const value of items) {
+    if (!isStoreCartItem(value)) {
+      continue;
+    }
+
+    const quantity = normalizeCartQuantity(value.quantity);
+    if (quantity <= 0) {
+      continue;
+    }
+
+    const existing = deduped.get(value.id);
+    deduped.set(value.id, {
+      ...value,
+      quantity: existing
+        ? Math.max(existing.quantity, quantity)
+        : quantity,
+    });
+  }
+
+  return Array.from(deduped.values());
+}
+
+function shouldResetCorruptedCartSnapshot(rawItems: unknown[], sanitizedItems: StoreCartItem[]) {
+  if (sanitizedItems.length !== rawItems.length) {
+    return true;
+  }
+
+  const seenProductIds = new Set<number>();
+  for (const rawItem of rawItems) {
+    if (!isStoreCartItem(rawItem)) {
+      return true;
+    }
+
+    const normalizedQuantity = normalizeCartQuantity(rawItem.quantity);
+    if (normalizedQuantity !== rawItem.quantity) {
+      return true;
+    }
+
+    if (seenProductIds.has(rawItem.id)) {
+      return true;
+    }
+
+    seenProductIds.add(rawItem.id);
+  }
+
+  return false;
 }
 
 function readLocalStoreCart() {
@@ -77,9 +137,48 @@ function readLocalStoreCart() {
     }
 
     const parsed = JSON.parse(raw) as unknown[];
-    return parsed.filter(isStoreCartItem);
+    return sanitizeStoreCartItems(parsed);
   } catch {
     return [] as StoreCartItem[];
+  }
+}
+
+function readLocalStoreCartSnapshot() {
+  if (typeof window === "undefined") {
+    return {
+      hasSnapshot: false,
+      items: [] as StoreCartItem[],
+    };
+  }
+
+  try {
+    const raw = window.localStorage.getItem(STORE_CART_STORAGE_KEY);
+    if (raw === null) {
+      return {
+        hasSnapshot: false,
+        items: [] as StoreCartItem[],
+      };
+    }
+
+    const parsed = JSON.parse(raw) as unknown[];
+    const sanitizedItems = sanitizeStoreCartItems(parsed);
+    if (shouldResetCorruptedCartSnapshot(parsed, sanitizedItems)) {
+      window.localStorage.setItem(STORE_CART_STORAGE_KEY, JSON.stringify([]));
+      return {
+        hasSnapshot: true,
+        items: [] as StoreCartItem[],
+      };
+    }
+
+    return {
+      hasSnapshot: true,
+      items: sanitizedItems,
+    };
+  } catch {
+    return {
+      hasSnapshot: true,
+      items: [] as StoreCartItem[],
+    };
   }
 }
 
@@ -107,7 +206,7 @@ function mergeCartItems(
       merged.set(item.id, {
         ...existing,
         ...item,
-        quantity: existing.quantity + item.quantity,
+        quantity: Math.max(existing.quantity, item.quantity),
       });
     } else {
       merged.set(item.id, { ...item });
@@ -134,7 +233,7 @@ async function ensureRemoteCart(userId: string) {
 
   const { data: insertedCart, error: insertError } = await supabase
     .from("shopping_carts")
-    .insert({ user_id: userId })
+    .upsert({ user_id: userId }, { onConflict: "user_id" })
     .select("id")
     .single();
 
@@ -169,10 +268,13 @@ async function loadRemoteCart(userId: string) {
 
       return {
         ...mapProductRecord(productRecord),
-        quantity: Number(row.quantity),
+        quantity: normalizeCartQuantity(row.quantity),
       } satisfies StoreCartItem;
     })
-    .filter((item): item is StoreCartItem => Boolean(item));
+    .filter(
+      (item): item is StoreCartItem =>
+        Boolean(item) && (item?.quantity ?? 0) > 0,
+    );
 
   return { cartId: cart.id, items };
 }
@@ -199,12 +301,13 @@ async function persistRemoteCart(
 
   const { error: insertError } = await supabase
     .from("shopping_cart_items")
-    .insert(
+    .upsert(
       items.map((item) => ({
         cart_id: resolvedCartId,
         product_id: item.id,
         quantity: item.quantity,
       })),
+      { onConflict: "cart_id,product_id" },
     );
 
   if (insertError) {
@@ -232,7 +335,7 @@ export function StoreCartProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     queueMicrotask(() => {
-      const localItems = readLocalStoreCart();
+      const localItems = sanitizeStoreCartItems(readLocalStoreCart());
       setItems(localItems);
       setHydrated(true);
     });
@@ -256,20 +359,16 @@ export function StoreCartProvider({ children }: { children: ReactNode }) {
 
     try {
       syncInProgressRef.current = true;
-      const localItems = readLocalStoreCart();
+      const localSnapshot = readLocalStoreCartSnapshot();
       const { cartId, items: remoteItems } = await loadRemoteCart(user.id);
-      const mergedItems = mergeCartItems(remoteItems, localItems);
+      const mergedItems = localSnapshot.hasSnapshot
+        ? localSnapshot.items
+        : mergeCartItems(remoteItems, []);
       cartIdRef.current = await persistRemoteCart(user.id, cartId, mergedItems);
       setItems(mergedItems);
       setRemoteReady(true);
     } catch (error) {
-      if (isSupabaseMissingRelationError(error)) {
-        console.warn(
-          "Store cart sync is disabled until the shopping cart tables are migrated.",
-        );
-      } else {
-        console.warn("Store cart sync is unavailable, so this session will use local cart storage only.");
-      }
+      void error;
       disableRemoteCartSync();
     } finally {
       bootstrappedUserIdRef.current = user.id;
@@ -316,13 +415,7 @@ export function StoreCartProvider({ children }: { children: ReactNode }) {
           cartIdRef.current = cartId;
         })
         .catch((error) => {
-          if (isSupabaseMissingRelationError(error)) {
-            console.warn(
-              "Store cart sync is disabled until the shopping cart tables are migrated.",
-            );
-          } else {
-            console.warn("Store cart sync could not save remotely, so local cart storage will be used instead.");
-          }
+          void error;
           disableRemoteCartSync();
         })
         .finally(() => {
@@ -337,17 +430,21 @@ export function StoreCartProvider({ children }: { children: ReactNode }) {
 
   const addItem = useCallback((product: StoreProduct, quantity = 1) => {
     setItems((currentItems) => {
+      const nextQuantity = normalizeCartQuantity(quantity) || 1;
       const existingItem = currentItems.find((item) => item.id === product.id);
 
       if (existingItem) {
         return currentItems.map((item) =>
           item.id === product.id
-            ? { ...item, quantity: item.quantity + quantity }
+            ? {
+                ...item,
+                quantity: normalizeCartQuantity(item.quantity + nextQuantity) || 1,
+              }
             : item,
         );
       }
 
-      return [...currentItems, { ...product, quantity }];
+      return [...currentItems, { ...product, quantity: nextQuantity }];
     });
   }, []);
 
@@ -358,10 +455,11 @@ export function StoreCartProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const updateQuantity = useCallback((productId: number, quantity: number) => {
+    const nextQuantity = normalizeCartQuantity(quantity);
     setItems((currentItems) =>
       currentItems
         .map((item) =>
-          item.id === productId ? { ...item, quantity } : item,
+          item.id === productId ? { ...item, quantity: nextQuantity } : item,
         )
         .filter((item) => item.quantity > 0),
     );

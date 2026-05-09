@@ -61,10 +61,6 @@ export function useHomepageDeals(initialDeals?: HomepageDeal[]) {
   );
 
   useEffect(() => {
-    if (initialDeals && initialDeals.length > 0) {
-      return;
-    }
-
     if (!hasSupabaseEnv) {
       return;
     }

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Gift, Lock, MapPin, Package, Pencil, Share2, Trash2, User } from "lucide-react";
 import { toast } from "sonner";
 import { formatNairaAmount } from "../../lib/commerce";
@@ -246,6 +246,8 @@ export function UserDashboard({
   const [profileEditOpen, setProfileEditOpen] = useState(false);
   const [savingRegistryStatus, setSavingRegistryStatus] = useState(false);
   const [savingCampaignPreference, setSavingCampaignPreference] = useState(false);
+  const loadRequestIdRef = useRef(0);
+  const initialLoadKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!cachedEntry) {
@@ -280,32 +282,38 @@ export function UserDashboard({
     () => orders.filter((order) => order.status === "paid"),
     [orders],
   );
+  const shouldLoadRegistryData = initialTab === "registries" || initialTab === "profile";
   const loadUserData = useCallback(async (showSpinner = false) => {
     if (!user) {
       return;
     }
 
+    const requestId = loadRequestIdRef.current + 1;
+    loadRequestIdRef.current = requestId;
+
     if (showSpinner) {
       setLoading(true);
     }
 
-    const [
-      { data: profileData },
-      { data: ordersData },
-      { data: registriesData },
-    ] = await Promise.all([
+    const [{ data: profileData }, { data: ordersData }, { data: registriesData }] = await Promise.all([
       supabase.from("user_profiles").select("*").eq("id", user.id).maybeSingle(),
       supabase
         .from("orders")
         .select("*")
         .eq("user_id", user.id)
         .order("created_at", { ascending: false }),
-      supabase
-        .from("registries")
-        .select("*")
-        .eq("user_id", user.id)
-        .order("created_at", { ascending: false }),
+      shouldLoadRegistryData
+        ? supabase
+            .from("registries")
+            .select("*")
+            .eq("user_id", user.id)
+            .order("created_at", { ascending: false })
+        : Promise.resolve({ data: [] as RegistryRecord[] }),
     ]);
+
+    if (loadRequestIdRef.current !== requestId) {
+      return;
+    }
 
     const typedProfile = (profileData as UserProfile | null) ?? null;
 
@@ -324,10 +332,11 @@ export function UserDashboard({
     setOrders((ordersData as UserOrder[] | null) ?? []);
     setRegistries(typedRegistries);
 
-    let registryItemsById: Record<string, RegistryItem[]> = {};
-    let registrySummaryMap: Record<string, RegistrySummary> = {};
-    let registryPaymentsMap: Record<string, RegistryPaymentActivity[]> = {};
-    if (typedRegistries.length > 0) {
+    let registryItemsById: Record<string, RegistryItem[]> = cachedEntry?.registryItemsByRegistry ?? {};
+    let registrySummaryMap: Record<string, RegistrySummary> = cachedEntry?.registrySummaries ?? {};
+    let registryPaymentsMap: Record<string, RegistryPaymentActivity[]> =
+      cachedEntry?.registryPaymentActivities ?? {};
+    if (shouldLoadRegistryData && typedRegistries.length > 0) {
       const registryIds = typedRegistries.map((registry) => registry.id);
       const [
         { data: registryItemsData },
@@ -350,6 +359,10 @@ export function UserDashboard({
           .in("registry_id", registryIds)
           .order("created_at", { ascending: false }),
       ]);
+
+      if (loadRequestIdRef.current !== requestId) {
+        return;
+      }
 
       const registryItems = ((registryItemsData as RegistryItemRecord[] | null) ?? []).map(
         mapRegistryItemRecord,
@@ -410,6 +423,10 @@ export function UserDashboard({
         },
         {},
       );
+    } else if (!shouldLoadRegistryData) {
+      registryItemsById = cachedEntry?.registryItemsByRegistry ?? {};
+      registrySummaryMap = cachedEntry?.registrySummaries ?? {};
+      registryPaymentsMap = cachedEntry?.registryPaymentActivities ?? {};
     }
 
     setRegistryItemsByRegistry(registryItemsById);
@@ -429,17 +446,24 @@ export function UserDashboard({
       shippingState: typedProfile?.shipping_address?.state ?? "",
     });
     setLoading(false);
-  }, [user]);
+  }, [cachedEntry, shouldLoadRegistryData, user]);
 
   useEffect(() => {
     if (!user || !hasSupabaseEnv) {
       return;
     }
 
+    const requestKey = `${user.id}:${initialTab}:${cachedEntry ? "cached" : "fresh"}`;
+    if (initialLoadKeyRef.current === requestKey) {
+      return;
+    }
+
+    initialLoadKeyRef.current = requestKey;
+
     queueMicrotask(() => {
       void loadUserData(!cachedEntry);
     });
-  }, [cachedEntry, loadUserData, user]);
+  }, [cachedEntry, initialTab, loadUserData, user]);
 
   const handleShareRegistry = async (registry: RegistryRecord) => {
     const shareUrl = `${window.location.origin}/registry/${registry.share_code}`;
@@ -849,7 +873,7 @@ export function UserDashboard({
                 </div>
                 <div className="flex w-full flex-col gap-2 sm:flex-row lg:w-auto">
                   <Button asChild variant="outline">
-                    <Link href="/registry">Browse Registry Catalog</Link>
+                    <Link href="/registry/products">Browse Registry Catalog</Link>
                   </Button>
                   <Button onClick={() => setRegistryCreateOpen(true)}>
                     <Gift className="mr-2 h-4 w-4" />

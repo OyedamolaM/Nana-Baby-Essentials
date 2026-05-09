@@ -278,16 +278,30 @@ export function CheckoutModal({
       void refreshProfile();
 
       const onPaymentSuccess = async (response: { reference: string }) => {
-        const { error: paymentError } = await supabase.rpc(
-          "complete_store_order_payment",
-          {
-            p_order_id: orderId,
-            p_paystack_reference: response.reference,
-          },
-        );
+        if (!session?.access_token) {
+          throw new Error("Please sign in again before finalizing this order.");
+        }
 
-        if (paymentError) {
-          throw paymentError;
+        const paymentResponse = await fetch("/api/orders/complete", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${session.access_token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            orderId,
+            paystackReference: response.reference,
+          }),
+        });
+
+        if (!paymentResponse.ok) {
+          const payload = (await paymentResponse.json().catch(() => null)) as
+            | { message?: string }
+            | null;
+          throw new Error(
+            payload?.message?.trim() ||
+              "We could not finalize your order after payment.",
+          );
         }
 
         let successMessage = "Payment successful. Your order has been placed.";
@@ -356,15 +370,17 @@ export function CheckoutModal({
           const pendingOrderId = activeOrderIdRef.current;
 
           void (async () => {
-            const { error: cancelError } = await supabase.rpc(
-              "cancel_store_order",
-              {
-                p_order_id: pendingOrderId,
-              },
-            );
-
-            if (cancelError) {
-              console.error("Failed to cancel store order", cancelError);
+            if (session?.access_token) {
+              await fetch("/api/orders/cancel", {
+                method: "POST",
+                headers: {
+                  Authorization: `Bearer ${session.access_token}`,
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                  orderId: pendingOrderId,
+                }),
+              }).catch(() => null);
             }
 
             activeOrderIdRef.current = null;

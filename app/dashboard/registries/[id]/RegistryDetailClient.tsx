@@ -680,7 +680,7 @@ export function RegistryDetailClient({ registryId }: { registryId: string }) {
                 <Button
                   variant="outline"
                   className="w-full md:w-auto"
-                  onClick={() => router.push("/registry")}
+                  onClick={() => router.push("/registry/products")}
                 >
                   <Gift className="mr-2 h-4 w-4" />
                   Add Registry Items

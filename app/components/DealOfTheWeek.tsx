@@ -67,12 +67,22 @@ export function DealOfTheWeek({
    */
   const activeDeals = useMemo(() => {
     return deals.filter((deal) => {
-      if (!deal.endsAt) return false; // must be set by admin
       if (now === null) {
         return true;
       }
 
-      return new Date(deal.endsAt).getTime() > now;
+      const startsAt = deal.startsAt ? new Date(deal.startsAt).getTime() : null;
+      const endsAt = deal.endsAt ? new Date(deal.endsAt).getTime() : null;
+
+      if (startsAt && !Number.isNaN(startsAt) && startsAt > now) {
+        return false;
+      }
+
+      if (endsAt && !Number.isNaN(endsAt) && endsAt <= now) {
+        return false;
+      }
+
+      return true;
     });
   }, [deals, now]);
 

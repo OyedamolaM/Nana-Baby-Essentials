@@ -105,6 +105,19 @@ function isMissingFunctionError(error: unknown, functionName: string) {
   );
 }
 
+function shouldFallbackRegistryCheckoutRpc(error: unknown, functionName: string) {
+  if (isMissingFunctionError(error, functionName)) {
+    return true;
+  }
+
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+
+  const maybeError = error as SupabaseRpcErrorLike;
+  return maybeError.message?.includes("function min(uuid) does not exist") ?? false;
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
@@ -276,7 +289,7 @@ async function handleInitiateCheckout(
   });
 
   if (error) {
-    if (isMissingFunctionError(error, "create_registry_checkout")) {
+    if (shouldFallbackRegistryCheckoutRpc(error, "create_registry_checkout")) {
       const contributionType =
         selectedItems.length > 0 ? (paymentAmount > 0 ? "mixed" : "items") : "cash";
 
@@ -415,7 +428,7 @@ async function handleVerifyCheckout(
   );
 
   if (error) {
-    if (isMissingFunctionError(error, "complete_registry_checkout_payment")) {
+    if (shouldFallbackRegistryCheckoutRpc(error, "complete_registry_checkout_payment")) {
       const { data: fallbackOrder, error: fallbackOrderError } = await adminClient
         .from("registry_orders")
         .select("id, registry_id, contribution_type, status, paystack_reference")
@@ -532,7 +545,7 @@ async function handleCancelCheckout(
   });
 
   if (error) {
-    if (isMissingFunctionError(error, "cancel_registry_checkout")) {
+    if (shouldFallbackRegistryCheckoutRpc(error, "cancel_registry_checkout")) {
       const { data: fallbackOrder, error: fallbackOrderError } = await adminClient
         .from("registry_orders")
         .select("id")

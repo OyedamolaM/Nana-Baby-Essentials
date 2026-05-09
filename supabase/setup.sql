@@ -59,6 +59,24 @@ create table if not exists public.user_profiles (
 
 alter table public.user_profiles enable row level security;
 
+create or replace function public.is_current_user_admin()
+returns boolean
+language sql
+security definer
+stable
+set search_path = public
+as $$
+  select exists (
+    select 1
+    from public.user_profiles
+    where id = auth.uid()
+      and is_admin = true
+  );
+$$;
+
+revoke all on function public.is_current_user_admin() from public;
+grant execute on function public.is_current_user_admin() to anon, authenticated, service_role;
+
 drop policy if exists "Users can view own profile" on public.user_profiles;
 create policy "Users can view own profile" on public.user_profiles
   for select using (auth.uid() = id);
@@ -73,13 +91,7 @@ create policy "Users can insert own profile" on public.user_profiles
 
 drop policy if exists "Admins can view all profiles" on public.user_profiles;
 create policy "Admins can view all profiles" on public.user_profiles
-  for select using (
-    exists (
-      select 1
-      from public.user_profiles
-      where id = auth.uid() and is_admin = true
-    )
-  );
+  for select using (public.is_current_user_admin());
 
 create or replace function public.handle_new_user()
 returns trigger
@@ -2338,6 +2350,23 @@ alter table public.user_profiles
 update public.user_profiles
 set account_status = 'active'
 where account_status is null;
+
+create or replace function public.is_current_user_admin()
+returns boolean
+language sql
+security definer
+stable
+set search_path = public
+as $$
+  select exists (
+    select 1
+    from public.user_profiles
+    where id = auth.uid()
+      and is_admin = true
+      and coalesce(account_status, 'active') = 'active'
+      and deleted_at is null
+  );
+$$;
 
 create index if not exists idx_user_profiles_account_status
   on public.user_profiles (account_status, deleted_at, created_at desc);

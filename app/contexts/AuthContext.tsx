@@ -5,13 +5,17 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
 import { type Session, type User } from "@supabase/supabase-js";
 import { hasSupabaseEnv, supabase } from "../lib/supabase";
 import {
+  isMissingUserProfileColumnError,
   normalizeUserProfileRecord,
+  USER_PROFILE_FALLBACK_SELECT,
+  USER_PROFILE_SELECT,
   type UserProfileRecord,
 } from "../../lib/userProfile";
 
@@ -49,8 +53,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(hasSupabaseEnv);
   const [isAdmin, setIsAdmin] = useState(false);
   const [isAccountDisabled, setIsAccountDisabled] = useState(false);
+  const latestProfileRef = useRef<UserProfileRecord | null>(null);
 
   const applyProfile = useCallback((nextProfile: UserProfileRecord | null) => {
+    latestProfileRef.current = nextProfile;
     setProfile(nextProfile);
     setIsAdmin(nextProfile?.is_admin ?? false);
     setIsAccountDisabled(
@@ -60,38 +66,113 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     );
   }, []);
 
-  const loadProfileRow = useCallback(async (userId: string) => {
-    const result = await supabase
+  const getAccessToken = useCallback(async (nextSession?: Session | null) => {
+    const accessToken = nextSession?.access_token?.trim();
+    if (accessToken) {
+      return accessToken;
+    }
+
+    const {
+      data: { session: currentSession },
+    } = await supabase.auth.getSession();
+
+    return currentSession?.access_token?.trim() ?? "";
+  }, []);
+
+  const loadProfileRowDirect = useCallback(async (userId: string) => {
+    const primaryResult = await supabase
       .from("user_profiles")
-      .select("*")
+      .select(USER_PROFILE_SELECT)
       .eq("id", userId)
       .maybeSingle();
 
-    if (result.error) {
-      return null;
+    if (!primaryResult.error) {
+      return normalizeUserProfileRecord(
+        primaryResult.data as UserProfileRecord | null,
+      );
     }
 
-    return normalizeUserProfileRecord(
-      result.data as UserProfileRecord | null,
-    );
+    if (isMissingUserProfileColumnError(primaryResult.error)) {
+      const fallbackResult = await supabase
+        .from("user_profiles")
+        .select(USER_PROFILE_FALLBACK_SELECT)
+        .eq("id", userId)
+        .maybeSingle();
+
+      if (!fallbackResult.error) {
+        return normalizeUserProfileRecord(
+          fallbackResult.data as UserProfileRecord | null,
+        );
+      }
+    }
+
+    return null;
   }, []);
 
-  const syncUserProfile = useCallback(async (nextUser: User) => {
+  const requestProfileRoute = useCallback(
+    async (
+      method: "GET" | "PATCH" | "POST",
+      options?: {
+        body?: Record<string, unknown>;
+        session?: Session | null;
+      },
+    ) => {
+      const accessToken = await getAccessToken(options?.session);
+      if (!accessToken) {
+        return {
+          error: new Error("You need to sign in again."),
+          profile: null,
+        };
+      }
+
+      const response = await fetch("/api/auth/profile", {
+        body: options?.body ? JSON.stringify(options.body) : undefined,
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          ...(options?.body ? { "Content-Type": "application/json" } : {}),
+        },
+        method,
+      }).catch(() => null);
+
+      if (!response) {
+        return {
+          error: new Error("Could not reach the profile service."),
+          profile: null,
+        };
+      }
+
+      const payload = (await response.json().catch(() => null)) as
+        | { message?: string; profile?: UserProfileRecord | null }
+        | null;
+
+      if (!response.ok) {
+        return {
+          error: new Error(payload?.message || "Could not load your profile."),
+          profile: null,
+        };
+      }
+
+      return {
+        error: null,
+        profile: normalizeUserProfileRecord(payload?.profile),
+      };
+    },
+    [getAccessToken],
+  );
+
+  const syncUserProfile = useCallback(async (nextUser: User, nextSession?: Session | null) => {
     const profilePayload: {
-      campaign_opt_out?: boolean;
-      id: string;
       email: string;
-      full_name?: string;
+      fullName?: string;
       phone?: string;
     } = {
-      id: nextUser.id,
       email: nextUser.email ?? "",
     };
 
     const fullName =
       nextUser.user_metadata?.full_name ?? nextUser.user_metadata?.name;
     if (typeof fullName === "string" && fullName.trim()) {
-      profilePayload.full_name = fullName.trim();
+      profilePayload.fullName = fullName.trim();
     }
 
     const phoneNumber = nextUser.user_metadata?.phone;
@@ -99,20 +180,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       profilePayload.phone = phoneNumber.trim();
     }
 
-    const { data, error } = await supabase
-      .from("user_profiles")
-      .upsert(profilePayload, { onConflict: "id" })
-      .select("*")
-      .maybeSingle();
+    const routeResult = await requestProfileRoute("POST", {
+      body: profilePayload,
+      session: nextSession,
+    });
 
-    if (!error) {
-      applyProfile(normalizeUserProfileRecord(data as UserProfileRecord | null));
+    if (routeResult.profile) {
+      applyProfile(routeResult.profile);
       return;
     }
 
-    const fallbackProfile = await loadProfileRow(nextUser.id);
-    applyProfile(fallbackProfile);
-  }, [applyProfile, loadProfileRow]);
+    const fallbackProfile = await loadProfileRowDirect(nextUser.id);
+    if (fallbackProfile) {
+      applyProfile(fallbackProfile);
+      return;
+    }
+
+    if (!routeResult.error && latestProfileRef.current?.id === nextUser.id) {
+      applyProfile(latestProfileRef.current);
+      return;
+    }
+  }, [applyProfile, latestProfileRef, loadProfileRowDirect, requestProfileRoute]);
 
   const refreshProfile = useCallback(async () => {
     if (!hasSupabaseEnv || !user) {
@@ -120,8 +208,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    await syncUserProfile(user);
-  }, [applyProfile, syncUserProfile, user]);
+    const routeResult = await requestProfileRoute("GET");
+    if (routeResult.profile) {
+      applyProfile(routeResult.profile);
+      return;
+    }
+
+    const directProfile = await loadProfileRowDirect(user.id);
+    applyProfile(directProfile);
+  }, [applyProfile, loadProfileRowDirect, requestProfileRoute, user]);
 
   useEffect(() => {
     if (!hasSupabaseEnv) {
@@ -133,7 +228,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setSession(session);
       setUser(session?.user ?? null);
       if (session?.user) {
-        await syncUserProfile(session.user);
+        await syncUserProfile(session.user, session);
       }
       setLoading(false);
     });
@@ -145,7 +240,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setSession(session);
       setUser(session?.user ?? null);
       if (session?.user) {
-        void syncUserProfile(session.user);
+        void syncUserProfile(session.user, session);
       } else {
         applyProfile(null);
       }
@@ -196,15 +291,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
 
     if (!error && data.user?.id) {
-      await supabase.from("user_profiles").upsert(
-        {
-          id: data.user.id,
+      await requestProfileRoute("POST", {
+        body: {
           email: normalizedEmail,
-          full_name: normalizedFullName,
+          fullName: normalizedFullName,
           phone: normalizedPhone,
         },
-        { onConflict: "id" },
-      );
+      });
     }
     return { error };
   };
@@ -264,12 +357,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     if (!user) return { error: new Error('No user logged in') };
 
-    const { error } = await supabase
-      .from('user_profiles')
-      .update(data)
-      .eq('id', user.id);
+    const { error, profile: updatedProfile } = await requestProfileRoute("PATCH", {
+      body: data,
+      session,
+    });
 
-    if (!error) {
+    if (!error && updatedProfile) {
+      applyProfile(updatedProfile);
+    } else if (!error) {
       await refreshProfile();
     }
 

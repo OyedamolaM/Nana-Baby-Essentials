@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   BookOpen,
   DollarSign,
@@ -201,8 +201,12 @@ function toDatetimeLocalValue(value?: string | null) {
 }
 
 export function AdminDashboard() {
-  const { isAdmin, loading: authLoading } = useAuth();
-  const [loading, setLoading] = useState(Boolean(isAdmin && hasSupabaseEnv));
+  const { user, session, loading: authLoading } = useAuth();
+  const [loading, setLoading] = useState(false);
+  const [adminAccessStatus, setAdminAccessStatus] = useState<
+    "checking" | "allowed" | "denied"
+  >("checking");
+  const initialAdminLoadKeyRef = useRef<string | null>(null);
   const [orders, setOrders] = useState<AdminOrderRecord[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [products, setProducts] = useState<ProductRecord[]>([]);
@@ -481,16 +485,6 @@ export function AdminDashboard() {
     setLoading(false);
   }, []);
 
-  useEffect(() => {
-    if (!isAdmin || !hasSupabaseEnv) {
-      return;
-    }
-
-    queueMicrotask(() => {
-      void loadAdminData();
-    });
-  }, [isAdmin, loadAdminData]);
-
   const productLookup = useMemo(() => {
     return Object.fromEntries(products.map((product) => [product.id, product])) as Record<
       number,
@@ -547,13 +541,80 @@ export function AdminDashboard() {
       ),
     [newsletterCampaigns],
   );
-  const getAdminAccessToken = async () => {
+  const getAdminAccessToken = useCallback(async () => {
+    if (session?.access_token) {
+      return session.access_token;
+    }
+
     const {
-      data: { session },
+      data: { session: currentSession },
     } = await supabase.auth.getSession();
 
-    return session?.access_token ?? null;
-  };
+    return currentSession?.access_token ?? null;
+  }, [session]);
+
+  const verifyAdminAccess = useCallback(async () => {
+    if (!user || !hasSupabaseEnv) {
+      setAdminAccessStatus("denied");
+      return false;
+    }
+
+    const accessToken = await getAdminAccessToken();
+    if (!accessToken) {
+      setAdminAccessStatus("denied");
+      return false;
+    }
+
+    const response = await fetch("/api/admin/status", {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+      method: "GET",
+    }).catch(() => null);
+
+    if (!response?.ok) {
+      setAdminAccessStatus("denied");
+      return false;
+    }
+
+    setAdminAccessStatus("allowed");
+    return true;
+  }, [getAdminAccessToken, user]);
+
+  useEffect(() => {
+    if (authLoading) {
+      return;
+    }
+
+    if (!user || !hasSupabaseEnv) {
+      queueMicrotask(() => {
+        setAdminAccessStatus("denied");
+        setLoading(false);
+      });
+      return;
+    }
+
+    const loadKey = `${user.id}:admin`;
+    if (initialAdminLoadKeyRef.current === loadKey) {
+      return;
+    }
+
+    initialAdminLoadKeyRef.current = loadKey;
+
+    queueMicrotask(() => {
+      setAdminAccessStatus("checking");
+      setLoading(true);
+      void (async () => {
+        const hasAccess = await verifyAdminAccess();
+        if (!hasAccess) {
+          setLoading(false);
+          return;
+        }
+
+        await loadAdminData();
+      })();
+    });
+  }, [authLoading, loadAdminData, user, verifyAdminAccess]);
 
   const revalidatePublicTags = async (tags: string[]) => {
     const accessToken = await getAdminAccessToken();
@@ -958,7 +1019,14 @@ export function AdminDashboard() {
   const handleSaveDeal = async (event: React.FormEvent) => {
     event.preventDefault();
 
-    let overrideImage = dealImage || null;
+    const hasExistingUploadedImage =
+      typeof dealImage === "string" && dealImage.startsWith("data:image/");
+    let overrideImage = hasExistingUploadedImage ? dealImage : null;
+
+    if (!dealImageFile && !overrideImage) {
+      toast.error("Upload a deal image file that is 500KB or smaller.");
+      return;
+    }
 
     if (dealImageFile) {
       const accessToken = await getAdminAccessToken();
@@ -1184,7 +1252,23 @@ export function AdminDashboard() {
     );
   }
 
-  if (!isAdmin) {
+  if (!user) {
+    return (
+      <div className="container mx-auto px-4 py-8">
+        <p className="text-center text-gray-500">Please sign in to continue.</p>
+      </div>
+    );
+  }
+
+  if (adminAccessStatus === "checking") {
+    return (
+      <div className="container mx-auto px-4 py-8">
+        <p className="text-center text-gray-500">Checking admin access...</p>
+      </div>
+    );
+  }
+
+  if (adminAccessStatus !== "allowed") {
     return (
       <div className="container mx-auto px-4 py-8">
         <p className="text-center text-gray-500">Access denied. Admin only.</p>
@@ -2250,6 +2334,7 @@ export function AdminDashboard() {
                 id="deal-image"
                 type="file"
                 accept="image/*"
+                required={!editingDeal && !dealImage}
                 onChange={(event) => setDealImageFile(event.target.files?.[0] ?? null)}
               />
               <p className="text-xs text-gray-500">

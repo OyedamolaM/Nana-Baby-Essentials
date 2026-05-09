@@ -2,11 +2,16 @@ import { type User } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
 
 import {
+  createSupabaseServiceRoleClient,
   createSupabaseServerClient,
   hasSupabaseServerEnv,
+  hasSupabaseServiceRoleEnv,
 } from "./supabaseServer";
 import {
+  isMissingUserProfileColumnError,
   normalizeUserProfileRecord,
+  USER_PROFILE_FALLBACK_SELECT,
+  USER_PROFILE_SELECT,
   type UserProfileRecord,
 } from "./userProfile";
 
@@ -34,6 +39,76 @@ type RouteUserResult =
       user?: undefined;
     };
 
+export async function loadServerUserProfile(
+  userId: string,
+  accessToken: string,
+) {
+  const serviceRoleClient = hasSupabaseServiceRoleEnv
+    ? createSupabaseServiceRoleClient()
+    : null;
+
+  if (serviceRoleClient) {
+    const primaryResult = await serviceRoleClient
+      .from("user_profiles")
+      .select(USER_PROFILE_SELECT)
+      .eq("id", userId)
+      .maybeSingle();
+
+    if (!primaryResult.error) {
+      return normalizeUserProfileRecord(
+        primaryResult.data as UserProfileRecord | null,
+      );
+    }
+
+    if (isMissingUserProfileColumnError(primaryResult.error)) {
+      const fallbackResult = await serviceRoleClient
+        .from("user_profiles")
+        .select(USER_PROFILE_FALLBACK_SELECT)
+        .eq("id", userId)
+        .maybeSingle();
+
+      if (!fallbackResult.error) {
+        return normalizeUserProfileRecord(
+          fallbackResult.data as UserProfileRecord | null,
+        );
+      }
+    }
+  }
+
+  const userClient = createSupabaseServerClient(accessToken);
+  if (!userClient) {
+    return null;
+  }
+
+  const primaryResult = await userClient
+    .from("user_profiles")
+    .select(USER_PROFILE_SELECT)
+    .eq("id", userId)
+    .maybeSingle();
+
+  if (!primaryResult.error) {
+    return normalizeUserProfileRecord(
+      primaryResult.data as UserProfileRecord | null,
+    );
+  }
+
+  if (isMissingUserProfileColumnError(primaryResult.error)) {
+    const fallbackResult = await userClient
+      .from("user_profiles")
+      .select(USER_PROFILE_FALLBACK_SELECT)
+      .eq("id", userId)
+      .maybeSingle();
+
+    if (!fallbackResult.error) {
+      return normalizeUserProfileRecord(
+        fallbackResult.data as UserProfileRecord | null,
+      );
+    }
+  }
+
+  return null;
+}
+
 export async function requireRouteUser(
   request: Request,
 ): Promise<RouteUserResult> {
@@ -54,9 +129,8 @@ export async function requireRouteUser(
   }
 
   const authClient = createSupabaseServerClient();
-  const userClient = createSupabaseServerClient(accessToken);
 
-  if (!authClient || !userClient) {
+  if (!authClient) {
     return {
       response: NextResponse.json(
         { message: "Supabase server credentials are not configured." },
@@ -76,25 +150,9 @@ export async function requireRouteUser(
     };
   }
 
-  const profileResult = await userClient
-    .from("user_profiles")
-    .select("*")
-    .eq("id", user.id)
-    .maybeSingle();
-
-  if (profileResult.error) {
-    return {
-      accessToken,
-      profile: null,
-      user,
-    };
-  }
-
   return {
     accessToken,
-    profile: normalizeUserProfileRecord(
-      profileResult.data as UserProfileRecord | null,
-    ),
+    profile: await loadServerUserProfile(user.id, accessToken),
     user,
   };
 }
