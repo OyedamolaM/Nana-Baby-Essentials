@@ -30,11 +30,18 @@ import {
   CardHeader,
   CardTitle,
 } from "../components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "../components/ui/dialog";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { RegistryCreateModal } from "../components/registry/RegistryCreateModal";
 import { Separator } from "../components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
+import { Textarea } from "../components/ui/textarea";
 
 type OrderItem = {
   name: string;
@@ -64,6 +71,8 @@ type UserProfile = {
 
 type RegistryRecord = {
   id: string;
+  closed_at?: string | null;
+  closed_note?: string | null;
   name: string;
   share_code: string;
   status?: string | null;
@@ -71,6 +80,67 @@ type RegistryRecord = {
   baby_gender?: string | null;
   created_at: string;
 };
+
+type DashboardCacheEntry = {
+  fullName: string;
+  orders: UserOrder[];
+  phone: string;
+  registries: RegistryRecord[];
+  registryItemsByRegistry: Record<string, RegistryItem[]>;
+  registryPaymentActivities: Record<string, RegistryPaymentActivity[]>;
+  registrySummaries: Record<string, RegistrySummary>;
+  shippingAddress: string;
+  shippingCity: string;
+  shippingState: string;
+};
+
+const dashboardCache = new Map<string, DashboardCacheEntry>();
+const DASHBOARD_CACHE_STORAGE_PREFIX = "nbe:dashboard:";
+
+function getDashboardCacheStorageKey(userId: string) {
+  return `${DASHBOARD_CACHE_STORAGE_PREFIX}${userId}`;
+}
+
+function readDashboardCacheEntry(userId: string) {
+  if (typeof window === "undefined") {
+    return undefined;
+  }
+
+  const memoryEntry = dashboardCache.get(userId);
+  if (memoryEntry) {
+    return memoryEntry;
+  }
+
+  try {
+    const rawValue = window.sessionStorage.getItem(getDashboardCacheStorageKey(userId));
+    if (!rawValue) {
+      return undefined;
+    }
+
+    const parsed = JSON.parse(rawValue) as DashboardCacheEntry;
+    dashboardCache.set(userId, parsed);
+    return parsed;
+  } catch {
+    return undefined;
+  }
+}
+
+function persistDashboardCacheEntry(userId: string, entry: DashboardCacheEntry) {
+  dashboardCache.set(userId, entry);
+
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  try {
+    window.sessionStorage.setItem(
+      getDashboardCacheStorageKey(userId),
+      JSON.stringify(entry),
+    );
+  } catch {
+    // Ignore cache write failures and keep the in-memory cache.
+  }
+}
 
 function formatDueMonth(dueMonth?: string | null) {
   if (!dueMonth) {
@@ -141,29 +211,60 @@ export function UserDashboard({
 }) {
   const router = useRouter();
   const { user, signOut, updateProfile, loading: authLoading } = useAuth();
-  const [orders, setOrders] = useState<UserOrder[]>([]);
-  const [registries, setRegistries] = useState<RegistryRecord[]>([]);
+  const cachedEntry = user ? readDashboardCacheEntry(user.id) : undefined;
+  const [orders, setOrders] = useState<UserOrder[]>(cachedEntry?.orders ?? []);
+  const [registries, setRegistries] = useState<RegistryRecord[]>(cachedEntry?.registries ?? []);
   const [registryItemsByRegistry, setRegistryItemsByRegistry] = useState<
     Record<string, RegistryItem[]>
-  >({});
-  const [registrySummaries, setRegistrySummaries] = useState<Record<string, RegistrySummary>>({});
+  >(cachedEntry?.registryItemsByRegistry ?? {});
+  const [registrySummaries, setRegistrySummaries] = useState<Record<string, RegistrySummary>>(
+    cachedEntry?.registrySummaries ?? {},
+  );
   const [registryPaymentActivities, setRegistryPaymentActivities] = useState<
     Record<string, RegistryPaymentActivity[]>
-  >({});
-  const [loading, setLoading] = useState(Boolean(user && hasSupabaseEnv));
+  >(cachedEntry?.registryPaymentActivities ?? {});
+  const [loading, setLoading] = useState(Boolean(user && hasSupabaseEnv && !cachedEntry));
 
-  const [fullName, setFullName] = useState("");
-  const [phone, setPhone] = useState("");
+  const [fullName, setFullName] = useState(cachedEntry?.fullName ?? "");
+  const [phone, setPhone] = useState(cachedEntry?.phone ?? "");
 
-  const [shippingAddress, setShippingAddress] = useState("");
-  const [shippingCity, setShippingCity] = useState("");
-  const [shippingState, setShippingState] = useState("");
+  const [shippingAddress, setShippingAddress] = useState(cachedEntry?.shippingAddress ?? "");
+  const [shippingCity, setShippingCity] = useState(cachedEntry?.shippingCity ?? "");
+  const [shippingState, setShippingState] = useState(cachedEntry?.shippingState ?? "");
 
   const [oldPassword, setOldPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [activeTab, setActiveTab] = useState<DashboardTab>(initialTab);
   const [registryCreateOpen, setRegistryCreateOpen] = useState(false);
+  const [closeRegistryOpen, setCloseRegistryOpen] = useState(false);
+  const [closingRegistry, setClosingRegistry] = useState<RegistryRecord | null>(null);
+  const [closingRegistryNote, setClosingRegistryNote] = useState("");
+  const [profileEditOpen, setProfileEditOpen] = useState(false);
+  const [savingRegistryStatus, setSavingRegistryStatus] = useState(false);
+
+  useEffect(() => {
+    if (!cachedEntry) {
+      return;
+    }
+
+    const frameId = window.requestAnimationFrame(() => {
+      setOrders(cachedEntry.orders);
+      setRegistries(cachedEntry.registries);
+      setRegistryItemsByRegistry(cachedEntry.registryItemsByRegistry);
+      setRegistrySummaries(cachedEntry.registrySummaries);
+      setRegistryPaymentActivities(cachedEntry.registryPaymentActivities);
+      setFullName(cachedEntry.fullName);
+      setPhone(cachedEntry.phone);
+      setShippingAddress(cachedEntry.shippingAddress);
+      setShippingCity(cachedEntry.shippingCity);
+      setShippingState(cachedEntry.shippingState);
+      setLoading(false);
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+    };
+  }, [cachedEntry]);
 
   const unfinishedOrders = useMemo(
     () => orders.filter((order) => order.status !== "paid"),
@@ -173,13 +274,14 @@ export function UserDashboard({
     () => orders.filter((order) => order.status === "paid"),
     [orders],
   );
-
-  const loadUserData = useCallback(async () => {
+  const loadUserData = useCallback(async (showSpinner = false) => {
     if (!user) {
       return;
     }
 
-    setLoading(true);
+    if (showSpinner) {
+      setLoading(true);
+    }
 
     const [
       { data: profileData },
@@ -306,6 +408,18 @@ export function UserDashboard({
     setRegistryItemsByRegistry(registryItemsById);
     setRegistrySummaries(registrySummaryMap);
     setRegistryPaymentActivities(registryPaymentsMap);
+    persistDashboardCacheEntry(user.id, {
+      fullName: typedProfile?.full_name ?? "",
+      orders: (ordersData as UserOrder[] | null) ?? [],
+      phone: typedProfile?.phone ?? "",
+      registries: typedRegistries,
+      registryItemsByRegistry: registryItemsById,
+      registryPaymentActivities: registryPaymentsMap,
+      registrySummaries: registrySummaryMap,
+      shippingAddress: typedProfile?.shipping_address?.address ?? "",
+      shippingCity: typedProfile?.shipping_address?.city ?? "",
+      shippingState: typedProfile?.shipping_address?.state ?? "",
+    });
     setLoading(false);
   }, [user]);
 
@@ -315,9 +429,9 @@ export function UserDashboard({
     }
 
     queueMicrotask(() => {
-      void loadUserData();
+      void loadUserData(!cachedEntry);
     });
-  }, [loadUserData, user]);
+  }, [cachedEntry, loadUserData, user]);
 
   const handleShareRegistry = async (registry: RegistryRecord) => {
     const shareUrl = `${window.location.origin}/registry/${registry.share_code}`;
@@ -348,10 +462,12 @@ export function UserDashboard({
 
     if (error) {
       toast.error("Failed to update profile.");
-    } else {
-      toast.success("Profile updated successfully.");
-      void loadUserData();
+      return false;
     }
+
+    toast.success("Profile updated successfully.");
+    await loadUserData();
+    return true;
   };
 
   const handleUpdateAddress = async (event: React.FormEvent) => {
@@ -370,6 +486,7 @@ export function UserDashboard({
       toast.error("Failed to update address.");
     } else {
       toast.success("Address updated successfully.");
+      await loadUserData();
     }
   };
 
@@ -455,6 +572,72 @@ export function UserDashboard({
     }
   };
 
+  const handleOpenCloseRegistry = (registry: RegistryRecord) => {
+    setClosingRegistry(registry);
+    setClosingRegistryNote(registry.closed_note ?? "");
+    setCloseRegistryOpen(true);
+  };
+
+  const handleConfirmCloseRegistry = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    if (!closingRegistry) {
+      return;
+    }
+
+    const note = closingRegistryNote.trim();
+    if (!note) {
+      toast.error("Add a short note explaining why you are closing this registry.");
+      return;
+    }
+
+    setSavingRegistryStatus(true);
+
+    const { error } = await supabase
+      .from("registries")
+      .update({
+        closed_at: new Date().toISOString(),
+        closed_note: note,
+        status: "closed",
+      })
+      .eq("id", closingRegistry.id);
+
+    setSavingRegistryStatus(false);
+
+    if (error) {
+      toast.error("Could not close this registry.");
+      return;
+    }
+
+    toast.success("Registry closed.");
+    setCloseRegistryOpen(false);
+    setClosingRegistry(null);
+    setClosingRegistryNote("");
+    await loadUserData();
+  };
+
+  const handleReopenRegistry = async (registry: RegistryRecord) => {
+    setSavingRegistryStatus(true);
+
+    const { error } = await supabase
+      .from("registries")
+      .update({
+        closed_at: null,
+        status: "active",
+      })
+      .eq("id", registry.id);
+
+    setSavingRegistryStatus(false);
+
+    if (error) {
+      toast.error("Could not reopen this registry.");
+      return;
+    }
+
+    toast.success("Registry reopened.");
+    await loadUserData();
+  };
+
   const renderOrders = (items: UserOrder[], emptyMessage: string) => {
     if (items.length === 0) {
       return <p className="text-gray-500">{emptyMessage}</p>;
@@ -510,7 +693,6 @@ export function UserDashboard({
 
   const handleTabChange = (nextTab: string) => {
     const normalizedTab = nextTab as DashboardTab;
-    setActiveTab(normalizedTab);
     router.push(getDashboardTabRoute(normalizedTab));
   };
 
@@ -552,7 +734,7 @@ export function UserDashboard({
       <div className="mx-auto max-w-4xl">
         <h1 className="mb-8 text-3xl font-bold">My Dashboard</h1>
 
-        <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-6">
+        <Tabs value={initialTab} onValueChange={handleTabChange} className="space-y-6">
           <TabsList className="flex w-full overflow-x-auto gap-2 justify-start no-scrollbar h-14 items-center px-2">
             <TabsTrigger
               value="orders"
@@ -850,40 +1032,99 @@ export function UserDashboard({
           </TabsContent>
 
           <TabsContent value="profile">
-            <Card>
-              <CardHeader>
-                <CardTitle>Edit Profile</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <form onSubmit={handleUpdateProfile} className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="email">Email</Label>
-                    <Input id="email" value={user.email} disabled />
+            <div className="space-y-6">
+              <Card>
+                <CardHeader className="flex flex-row items-start justify-between gap-4">
+                  <div>
+                    <CardTitle>Profile</CardTitle>
+                    <p className="mt-1 text-sm text-gray-500">
+                      Review your personal details before editing them.
+                    </p>
                   </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="full-name">Full Name</Label>
-                    <Input
-                      id="full-name"
-                      value={fullName}
-                      onChange={(event) => setFullName(event.target.value)}
-                    />
+                  <Button variant="outline" onClick={() => setProfileEditOpen(true)}>
+                    <Pencil className="mr-2 h-4 w-4" />
+                    Edit Profile
+                  </Button>
+                </CardHeader>
+                <CardContent className="grid gap-4 sm:grid-cols-2">
+                  <div className="rounded-xl bg-gray-50 px-4 py-3">
+                    <p className="text-xs font-semibold uppercase tracking-[0.14em] text-gray-500">
+                      Email
+                    </p>
+                    <p className="mt-2 text-sm font-medium text-gray-900">
+                      {user.email || "No email saved"}
+                    </p>
                   </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="phone">Phone</Label>
-                    <Input
-                      id="phone"
-                      type="tel"
-                      value={phone}
-                      onChange={(event) => setPhone(event.target.value)}
-                    />
+                  <div className="rounded-xl bg-gray-50 px-4 py-3">
+                    <p className="text-xs font-semibold uppercase tracking-[0.14em] text-gray-500">
+                      Full Name
+                    </p>
+                    <p className="mt-2 text-sm font-medium text-gray-900">
+                      {fullName || "No name saved"}
+                    </p>
                   </div>
+                  <div className="rounded-xl bg-gray-50 px-4 py-3 sm:col-span-2">
+                    <p className="text-xs font-semibold uppercase tracking-[0.14em] text-gray-500">
+                      Phone
+                    </p>
+                    <p className="mt-2 text-sm font-medium text-gray-900">
+                      {phone || "No phone number saved"}
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
 
-                  <Button type="submit">Save Changes</Button>
-                </form>
-              </CardContent>
-            </Card>
+              <Card>
+                <CardHeader>
+                  <CardTitle>Registry Controls</CardTitle>
+                  <p className="mt-1 text-sm text-gray-500">
+                    Close a registry when you are done with it. The history stays available.
+                  </p>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {registries.length === 0 ? (
+                    <p className="text-sm text-gray-500">
+                      You do not have any registries yet.
+                    </p>
+                  ) : (
+                    registries.map((registry) => (
+                      <div key={registry.id} className="rounded-xl border px-4 py-4">
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                          <div className="space-y-1">
+                            <p className="font-semibold text-gray-900">{registry.name}</p>
+                            <p className="text-sm text-gray-500">
+                              Code: {registry.share_code}
+                            </p>
+                            {registry.closed_note ? (
+                              <p className="rounded-lg bg-gray-50 px-3 py-2 text-sm text-gray-600">
+                                Closing note: {registry.closed_note}
+                              </p>
+                            ) : null}
+                          </div>
+                          {registry.status === "closed" ? (
+                            <Button
+                              variant="outline"
+                              onClick={() => void handleReopenRegistry(registry)}
+                              disabled={savingRegistryStatus}
+                            >
+                              Reopen Registry
+                            </Button>
+                          ) : (
+                            <Button
+                              variant="outline"
+                              onClick={() => handleOpenCloseRegistry(registry)}
+                              disabled={savingRegistryStatus}
+                            >
+                              Close Registry
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </CardContent>
+              </Card>
+            </div>
           </TabsContent>
 
           <TabsContent value="address">
@@ -1000,6 +1241,78 @@ export function UserDashboard({
           router.push(`/dashboard/registries/${registryId}`);
         }}
       />
+
+      <Dialog open={profileEditOpen} onOpenChange={setProfileEditOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Edit Profile</DialogTitle>
+          </DialogHeader>
+
+          <form
+            onSubmit={async (event) => {
+              const didSave = await handleUpdateProfile(event);
+              if (didSave) {
+                setProfileEditOpen(false);
+              }
+            }}
+            className="space-y-4"
+          >
+            <div className="space-y-2">
+              <Label htmlFor="profile-email">Email</Label>
+              <Input id="profile-email" value={user.email} disabled />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="profile-full-name">Full Name</Label>
+              <Input
+                id="profile-full-name"
+                value={fullName}
+                onChange={(event) => setFullName(event.target.value)}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="profile-phone">Phone</Label>
+              <Input
+                id="profile-phone"
+                type="tel"
+                value={phone}
+                onChange={(event) => setPhone(event.target.value)}
+              />
+            </div>
+
+            <Button type="submit" className="w-full">
+              Save Changes
+            </Button>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={closeRegistryOpen} onOpenChange={setCloseRegistryOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Close Registry</DialogTitle>
+          </DialogHeader>
+
+          <form onSubmit={handleConfirmCloseRegistry} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="close-registry-note">Why are you closing this registry?</Label>
+              <Textarea
+                id="close-registry-note"
+                rows={4}
+                value={closingRegistryNote}
+                onChange={(event) => setClosingRegistryNote(event.target.value)}
+                placeholder="Add a short note for your records."
+                required
+              />
+            </div>
+
+            <Button type="submit" variant="destructive" className="w-full" disabled={savingRegistryStatus}>
+              {savingRegistryStatus ? "Saving..." : "Close Registry"}
+            </Button>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

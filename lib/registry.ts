@@ -12,6 +12,10 @@ export interface RegistryRecord {
   share_code: string;
   name: string;
   status?: string | null;
+  closed_at?: string | null;
+  closed_note?: string | null;
+  partner_email?: string | null;
+  partner_name?: string | null;
   whatsapp?: string | null;
   due_month?: string | null;
   baby_gender?: string | null;

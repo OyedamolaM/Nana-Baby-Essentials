@@ -20,6 +20,83 @@ interface UsePaginatedProductsOptions {
   pageSize?: number;
 }
 
+type PaginatedProductsCacheEntry = {
+  page: number;
+  products: StoreProduct[];
+  totalCount: number;
+};
+
+const PAGINATED_PRODUCTS_CACHE_STORAGE_PREFIX = "nbe:product-page:";
+const paginatedProductsCache = new Map<string, PaginatedProductsCacheEntry>();
+
+function getPaginatedProductsCacheKey({
+  onlyInStock,
+  page,
+  pageSize,
+  searchQuery,
+  selectedCategory,
+}: {
+  onlyInStock: boolean;
+  page: number;
+  pageSize: number;
+  searchQuery: string;
+  selectedCategory: string;
+}) {
+  return JSON.stringify({
+    onlyInStock,
+    page,
+    pageSize,
+    searchQuery: searchQuery.trim().toLowerCase(),
+    selectedCategory,
+  });
+}
+
+function readPaginatedProductsCache(cacheKey: string) {
+  if (typeof window === "undefined") {
+    return undefined;
+  }
+
+  const memoryEntry = paginatedProductsCache.get(cacheKey);
+  if (memoryEntry) {
+    return memoryEntry;
+  }
+
+  try {
+    const rawValue = window.sessionStorage.getItem(
+      `${PAGINATED_PRODUCTS_CACHE_STORAGE_PREFIX}${cacheKey}`,
+    );
+    if (!rawValue) {
+      return undefined;
+    }
+
+    const parsed = JSON.parse(rawValue) as PaginatedProductsCacheEntry;
+    paginatedProductsCache.set(cacheKey, parsed);
+    return parsed;
+  } catch {
+    return undefined;
+  }
+}
+
+function persistPaginatedProductsCache(
+  cacheKey: string,
+  entry: PaginatedProductsCacheEntry,
+) {
+  paginatedProductsCache.set(cacheKey, entry);
+
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  try {
+    window.sessionStorage.setItem(
+      `${PAGINATED_PRODUCTS_CACHE_STORAGE_PREFIX}${cacheKey}`,
+      JSON.stringify(entry),
+    );
+  } catch {
+    // Ignore storage failures and keep the in-memory cache.
+  }
+}
+
 function filterSeedProducts(
   products: StoreProduct[],
   selectedCategory: string,
@@ -85,19 +162,40 @@ export function usePaginatedProducts({
   }, []);
 
   const loadProducts = useCallback(async () => {
+    const cacheKey = getPaginatedProductsCacheKey({
+      onlyInStock,
+      page,
+      pageSize,
+      searchQuery,
+      selectedCategory,
+    });
+    const cachedResult = readPaginatedProductsCache(cacheKey);
+
+    if (cachedResult) {
+      setProducts(cachedResult.products);
+      setTotalCount(cachedResult.totalCount);
+      setLoading(false);
+    }
+
     if (!hasSupabaseEnv) {
       const seedBase = onlyInStock
         ? SEED_PRODUCTS.filter((product) => product.inStock)
         : SEED_PRODUCTS;
       const filtered = filterSeedProducts(seedBase, selectedCategory, searchQuery);
       const offset = (page - 1) * pageSize;
-      setProducts(filtered.slice(offset, offset + pageSize));
+      const nextProducts = filtered.slice(offset, offset + pageSize);
+      setProducts(nextProducts);
       setTotalCount(filtered.length);
+      persistPaginatedProductsCache(cacheKey, {
+        page,
+        products: nextProducts,
+        totalCount: filtered.length,
+      });
       setLoading(false);
       return;
     }
 
-    setLoading(true);
+    setLoading(!cachedResult);
 
     const from = (page - 1) * pageSize;
     const to = from + pageSize - 1;
@@ -129,14 +227,27 @@ export function usePaginatedProducts({
         ? SEED_PRODUCTS.filter((product) => product.inStock)
         : SEED_PRODUCTS;
       const filtered = filterSeedProducts(seedBase, selectedCategory, searchQuery);
-      setProducts(filtered.slice(from, to + 1));
+      const nextProducts = filtered.slice(from, to + 1);
+      setProducts(nextProducts);
       setTotalCount(filtered.length);
+      persistPaginatedProductsCache(cacheKey, {
+        page,
+        products: nextProducts,
+        totalCount: filtered.length,
+      });
       setLoading(false);
       return;
     }
 
-    setProducts((data as ProductRecord[]).map(mapProductRecord));
-    setTotalCount(count ?? data.length);
+    const nextProducts = (data as ProductRecord[]).map(mapProductRecord);
+    const nextTotalCount = count ?? data.length;
+    setProducts(nextProducts);
+    setTotalCount(nextTotalCount);
+    persistPaginatedProductsCache(cacheKey, {
+      page,
+      products: nextProducts,
+      totalCount: nextTotalCount,
+    });
     setLoading(false);
   }, [onlyInStock, page, pageSize, searchQuery, selectedCategory]);
 
@@ -159,6 +270,22 @@ export function usePaginatedProducts({
       });
     }
   }, [page, totalPages]);
+
+  useEffect(() => {
+    const cacheKey = getPaginatedProductsCacheKey({
+      onlyInStock,
+      page,
+      pageSize,
+      searchQuery,
+      selectedCategory,
+    });
+
+    persistPaginatedProductsCache(cacheKey, {
+      page,
+      products,
+      totalCount,
+    });
+  }, [onlyInStock, page, pageSize, products, searchQuery, selectedCategory, totalCount]);
 
   return {
     loading,

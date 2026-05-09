@@ -2,7 +2,11 @@ import { NextResponse } from "next/server";
 
 import { requireAdminRoute } from "@/lib/authServer";
 import { createSupabaseServiceRoleClient, hasSupabaseServiceRoleEnv } from "@/lib/supabaseServer";
-import { normalizeShippingAddress, type ShippingAddress } from "@/lib/userProfile";
+import {
+  isMissingUserProfileColumnError,
+  normalizeShippingAddress,
+  type ShippingAddress,
+} from "@/lib/userProfile";
 
 type UpdateCustomerPayload = {
   email?: string;
@@ -64,17 +68,29 @@ export async function PATCH(request: Request, context: RouteContext<"/api/admin/
     );
   }
 
-  const { error: profileError } = await serviceRoleClient
+  const baseProfileUpdate = {
+    email,
+    full_name: fullName,
+    phone,
+    shipping_address: shippingAddress,
+  };
+
+  let { error: profileError } = await serviceRoleClient
     .from("user_profiles")
     .update({
-      email,
-      full_name: fullName,
-      phone,
-      shipping_address: shippingAddress,
+      ...baseProfileUpdate,
       account_status: "active",
       deleted_at: null,
     })
     .eq("id", id);
+
+  if (profileError && isMissingUserProfileColumnError(profileError)) {
+    const fallbackResult = await serviceRoleClient
+      .from("user_profiles")
+      .update(baseProfileUpdate)
+      .eq("id", id);
+    profileError = fallbackResult.error;
+  }
 
   if (profileError) {
     return NextResponse.json(
@@ -128,13 +144,17 @@ export async function DELETE(request: Request, context: RouteContext<"/api/admin
     );
   }
 
-  const { error: profileError } = await serviceRoleClient
+  let { error: profileError } = await serviceRoleClient
     .from("user_profiles")
     .update({
       account_status: "disabled",
       deleted_at: new Date().toISOString(),
     })
     .eq("id", id);
+
+  if (profileError && isMissingUserProfileColumnError(profileError)) {
+    profileError = null;
+  }
 
   if (profileError) {
     return NextResponse.json(

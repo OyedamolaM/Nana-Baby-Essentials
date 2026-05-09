@@ -8,9 +8,12 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { hasSupabaseEnv, supabase } from "../lib/supabase";
 import { type Session, type User } from "@supabase/supabase-js";
-import { type UserProfileRecord } from "../../lib/userProfile";
+import { hasSupabaseEnv, supabase } from "../lib/supabase";
+import {
+  normalizeUserProfileRecord,
+  type UserProfileRecord,
+} from "../../lib/userProfile";
 
 interface AuthContextType {
   user: User | null;
@@ -47,6 +50,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isAdmin, setIsAdmin] = useState(false);
   const [isAccountDisabled, setIsAccountDisabled] = useState(false);
 
+  const applyProfile = useCallback((nextProfile: UserProfileRecord | null) => {
+    setProfile(nextProfile);
+    setIsAdmin(nextProfile?.is_admin ?? false);
+    setIsAccountDisabled(
+      Boolean(
+        nextProfile?.deleted_at || nextProfile?.account_status === "disabled",
+      ),
+    );
+  }, []);
+
+  const loadProfileRow = useCallback(async (userId: string) => {
+    const result = await supabase
+      .from("user_profiles")
+      .select("*")
+      .eq("id", userId)
+      .maybeSingle();
+
+    if (result.error) {
+      return null;
+    }
+
+    return normalizeUserProfileRecord(
+      result.data as UserProfileRecord | null,
+    );
+  }, []);
+
   const syncUserProfile = useCallback(async (nextUser: User) => {
     const profilePayload: {
       id: string;
@@ -72,52 +101,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { data, error } = await supabase
       .from("user_profiles")
       .upsert(profilePayload, { onConflict: "id" })
-      .select(
-        "id, email, full_name, phone, is_admin, shipping_address, account_status, deleted_at, created_at",
-      )
+      .select("*")
       .maybeSingle();
 
     if (!error) {
-      const nextProfile = (data as UserProfileRecord | null) ?? null;
-      setProfile(nextProfile);
-      setIsAdmin(nextProfile?.is_admin ?? false);
-      setIsAccountDisabled(
-        Boolean(
-          nextProfile?.deleted_at ||
-            nextProfile?.account_status === "disabled",
-        ),
-      );
+      applyProfile(normalizeUserProfileRecord(data as UserProfileRecord | null));
       return;
     }
 
-    const { data: fallbackData } = await supabase
-      .from("user_profiles")
-      .select(
-        "id, email, full_name, phone, is_admin, shipping_address, account_status, deleted_at, created_at",
-      )
-      .eq("id", nextUser.id)
-      .maybeSingle();
-
-    const nextProfile = (fallbackData as UserProfileRecord | null) ?? null;
-    setProfile(nextProfile);
-    setIsAdmin(nextProfile?.is_admin ?? false);
-    setIsAccountDisabled(
-      Boolean(
-        nextProfile?.deleted_at || nextProfile?.account_status === "disabled",
-      ),
-    );
-  }, []);
+    const fallbackProfile = await loadProfileRow(nextUser.id);
+    applyProfile(fallbackProfile);
+  }, [applyProfile, loadProfileRow]);
 
   const refreshProfile = useCallback(async () => {
     if (!hasSupabaseEnv || !user) {
-      setProfile(null);
-      setIsAdmin(false);
-      setIsAccountDisabled(false);
+      applyProfile(null);
       return;
     }
 
     await syncUserProfile(user);
-  }, [syncUserProfile, user]);
+  }, [applyProfile, syncUserProfile, user]);
 
   useEffect(() => {
     if (!hasSupabaseEnv) {
@@ -143,14 +146,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (session?.user) {
         void syncUserProfile(session.user);
       } else {
-        setProfile(null);
-        setIsAdmin(false);
-        setIsAccountDisabled(false);
+        applyProfile(null);
       }
     });
 
     return () => subscription.unsubscribe();
-  }, [syncUserProfile]);
+  }, [applyProfile, syncUserProfile]);
 
   const signUp = async (
     email: string,
@@ -237,9 +238,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!hasSupabaseEnv) {
       setSession(null);
       setUser(null);
-      setProfile(null);
-      setIsAdmin(false);
-      setIsAccountDisabled(false);
+      applyProfile(null);
       return;
     }
 

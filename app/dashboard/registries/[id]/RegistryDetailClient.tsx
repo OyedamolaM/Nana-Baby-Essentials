@@ -6,7 +6,14 @@ import { useRouter } from "next/navigation";
 import { Download, Gift, Pencil, Share2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
-import { formatNairaAmount } from "../../../../lib/commerce";
+import { formatNairaAmount, toNairaAmount } from "../../../../lib/commerce";
+import {
+  clearRegistryCart,
+  readRegistryCart,
+  removeRegistryCartItem,
+  updateRegistryCartQuantity,
+  type RegistryCartItem,
+} from "../../../../lib/registryCart";
 import {
   buildRegistryPaymentActivities,
   formatBabyGender,
@@ -24,6 +31,10 @@ import {
   type RegistryPaymentActivity,
   type RegistryRecord,
 } from "../../../../lib/registry";
+import { AuthModal } from "../../../components/auth/AuthModal";
+import { RegistryCartModal } from "../../../components/registry/RegistryCartModal";
+import { RegistryCreateModal } from "../../../components/registry/RegistryCreateModal";
+import { RegistryHeader } from "../../../components/registry/RegistryHeader";
 import { Button } from "../../../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../../../components/ui/card";
 import {
@@ -39,6 +50,68 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../../components/ui
 import { Textarea } from "../../../components/ui/textarea";
 import { useAuth } from "../../../contexts/AuthContext";
 import { hasSupabaseEnv, supabase } from "../../../lib/supabase";
+
+type AuthTab = "login" | "signup";
+
+type RegistryDetailCacheEntry = {
+  payments: RegistryPaymentActivity[];
+  registries: RegistryRecord[];
+  registry: RegistryRecord | null;
+  registryItems: RegistryItem[];
+};
+
+const registryDetailCache = new Map<string, RegistryDetailCacheEntry>();
+const REGISTRY_DETAIL_CACHE_STORAGE_PREFIX = "nbe:registry-detail:";
+
+function getRegistryDetailCacheStorageKey(registryId: string) {
+  return `${REGISTRY_DETAIL_CACHE_STORAGE_PREFIX}${registryId}`;
+}
+
+function readRegistryDetailCacheEntry(registryId: string) {
+  if (typeof window === "undefined") {
+    return undefined;
+  }
+
+  const memoryEntry = registryDetailCache.get(registryId);
+  if (memoryEntry) {
+    return memoryEntry;
+  }
+
+  try {
+    const rawValue = window.sessionStorage.getItem(
+      getRegistryDetailCacheStorageKey(registryId),
+    );
+    if (!rawValue) {
+      return undefined;
+    }
+
+    const parsed = JSON.parse(rawValue) as RegistryDetailCacheEntry;
+    registryDetailCache.set(registryId, parsed);
+    return parsed;
+  } catch {
+    return undefined;
+  }
+}
+
+function persistRegistryDetailCacheEntry(
+  registryId: string,
+  entry: RegistryDetailCacheEntry,
+) {
+  registryDetailCache.set(registryId, entry);
+
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  try {
+    window.sessionStorage.setItem(
+      getRegistryDetailCacheStorageKey(registryId),
+      JSON.stringify(entry),
+    );
+  } catch {
+    // Ignore storage failures and keep the in-memory cache.
+  }
+}
 
 function formatDateTime(value?: string | null) {
   if (!value) {
@@ -61,38 +134,73 @@ function formatDateTime(value?: string | null) {
 
 export function RegistryDetailClient({ registryId }: { registryId: string }) {
   const router = useRouter();
-  const { user, loading: authLoading } = useAuth();
-  const [loading, setLoading] = useState(Boolean(user && hasSupabaseEnv));
-  const [registry, setRegistry] = useState<RegistryRecord | null>(null);
-  const [registryItems, setRegistryItems] = useState<RegistryItem[]>([]);
-  const [payments, setPayments] = useState<RegistryPaymentActivity[]>([]);
+  const { user, loading: authLoading, isAdmin, signOut } = useAuth();
+  const cachedEntry = readRegistryDetailCacheEntry(registryId);
+
+  const [loading, setLoading] = useState(Boolean(user && hasSupabaseEnv && !cachedEntry));
+  const [registry, setRegistry] = useState<RegistryRecord | null>(cachedEntry?.registry ?? null);
+  const [registryItems, setRegistryItems] = useState<RegistryItem[]>(cachedEntry?.registryItems ?? []);
+  const [payments, setPayments] = useState<RegistryPaymentActivity[]>(cachedEntry?.payments ?? []);
+  const [userRegistries, setUserRegistries] = useState<RegistryRecord[]>(cachedEntry?.registries ?? []);
+  const [authModalOpen, setAuthModalOpen] = useState(false);
+  const [authDefaultTab, setAuthDefaultTab] = useState<AuthTab>("login");
+  const [registryCartOpen, setRegistryCartOpen] = useState(false);
+  const [registryCreateOpen, setRegistryCreateOpen] = useState(false);
+  const [registryCartItems, setRegistryCartItems] = useState<RegistryCartItem[]>([]);
   const [editItemOpen, setEditItemOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<RegistryItem | null>(null);
   const [editRequestedQuantity, setEditRequestedQuantity] = useState("1");
   const [editNote, setEditNote] = useState("");
   const [savingItem, setSavingItem] = useState(false);
-  const [togglingRegistry, setTogglingRegistry] = useState(false);
 
-  const loadRegistry = useCallback(async () => {
+  useEffect(() => {
+    const frameId = window.requestAnimationFrame(() => {
+      setRegistryCartItems(readRegistryCart());
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+    };
+  }, []);
+
+  const loadRegistry = useCallback(async (showSpinner = false) => {
     if (!user || !hasSupabaseEnv) {
       return;
     }
 
-    setLoading(true);
+    if (showSpinner) {
+      setLoading(true);
+    }
 
-    const { data: registryData } = await supabase
-      .from("registries")
-      .select("*")
-      .eq("id", registryId)
-      .eq("user_id", user.id)
-      .maybeSingle();
+    const [{ data: registriesData }, { data: registryData }] = await Promise.all([
+      supabase
+        .from("registries")
+        .select("*")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false }),
+      supabase
+        .from("registries")
+        .select("*")
+        .eq("id", registryId)
+        .eq("user_id", user.id)
+        .maybeSingle(),
+    ]);
 
+    const typedUserRegistries = (registriesData as RegistryRecord[] | null) ?? [];
     const typedRegistry = (registryData as RegistryRecord | null) ?? null;
+
+    setUserRegistries(typedUserRegistries);
     setRegistry(typedRegistry);
 
     if (!typedRegistry) {
       setRegistryItems([]);
       setPayments([]);
+      persistRegistryDetailCacheEntry(registryId, {
+        payments: [],
+        registries: typedUserRegistries,
+        registry: null,
+        registryItems: [],
+      });
       setLoading(false);
       return;
     }
@@ -137,15 +245,21 @@ export function RegistryDetailClient({ registryId }: { registryId: string }) {
         (registryOrderItemsData as RegistryOrderItemRecord[] | null) ?? [];
     }
 
+    const nextPayments = buildRegistryPaymentActivities({
+      contributions,
+      orderItems,
+      orders,
+      registryItems: items,
+    });
+
     setRegistryItems(items);
-    setPayments(
-      buildRegistryPaymentActivities({
-        contributions,
-        orderItems,
-        orders,
-        registryItems: items,
-      }),
-    );
+    setPayments(nextPayments);
+    persistRegistryDetailCacheEntry(registryId, {
+      payments: nextPayments,
+      registries: typedUserRegistries,
+      registry: typedRegistry,
+      registryItems: items,
+    });
     setLoading(false);
   }, [registryId, user]);
 
@@ -155,12 +269,82 @@ export function RegistryDetailClient({ registryId }: { registryId: string }) {
     }
 
     queueMicrotask(() => {
-      void loadRegistry();
+      void loadRegistry(!cachedEntry);
     });
-  }, [loadRegistry, user]);
+  }, [cachedEntry, loadRegistry, user]);
+
+  useEffect(() => {
+    if (!cachedEntry) {
+      return;
+    }
+
+    const frameId = window.requestAnimationFrame(() => {
+      setRegistry(cachedEntry.registry);
+      setRegistryItems(cachedEntry.registryItems);
+      setPayments(cachedEntry.payments);
+      setUserRegistries(cachedEntry.registries);
+      setLoading(false);
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+    };
+  }, [cachedEntry]);
 
   const summary = useMemo(() => summarizeRegistryItems(registryItems), [registryItems]);
   const registryIsClosed = registry?.status === "closed";
+  const minimumEditableQuantity = useMemo(() => {
+    if (!editingItem) {
+      return 1;
+    }
+
+    const unitAmount = Math.max(1, toNairaAmount(editingItem.unitPriceSnapshot));
+    const fundedAmount = getRegistryItemFundedAmount(editingItem);
+
+    return Math.max(
+      editingItem.purchasedQuantity,
+      fundedAmount > 0 ? Math.ceil(fundedAmount / unitAmount) : 0,
+      1,
+    );
+  }, [editingItem]);
+  const activeRegistries = useMemo(() => {
+    return userRegistries.filter((entry) => entry.status !== "closed");
+  }, [userRegistries]);
+  const currentRegistrySummary = registry ? [{ id: registry.id, name: registry.name }] : [];
+
+  const openAuth = (tab: AuthTab) => {
+    setAuthDefaultTab(tab);
+    setAuthModalOpen(true);
+  };
+
+  const handleOpenDashboard = () => {
+    if (!user) {
+      openAuth("login");
+      return;
+    }
+
+    router.push("/dashboard");
+  };
+
+  const handleOpenAdmin = () => {
+    if (!user) {
+      openAuth("login");
+      return;
+    }
+
+    if (!isAdmin) {
+      toast.error("Admin access is not enabled for this account.");
+      return;
+    }
+
+    router.push("/admin");
+  };
+
+  const handleSignOut = async () => {
+    await signOut();
+    toast.success("Signed out.");
+    router.push("/");
+  };
 
   const handleShareRegistry = async () => {
     if (!registry || typeof window === "undefined") {
@@ -178,7 +362,7 @@ export function RegistryDetailClient({ registryId }: { registryId: string }) {
         });
         return;
       } catch {
-          // Fall through to clipboard.
+        // Fall through to clipboard.
       }
     }
 
@@ -232,9 +416,20 @@ export function RegistryDetailClient({ registryId }: { registryId: string }) {
       return;
     }
 
+    const unitAmount = Math.max(1, toNairaAmount(editingItem.unitPriceSnapshot));
+    const fundedAmount = getRegistryItemFundedAmount(editingItem);
+    const minimumLockedQuantity = Math.max(
+      editingItem.purchasedQuantity,
+      fundedAmount > 0 ? Math.ceil(fundedAmount / unitAmount) : 0,
+    );
     const nextRequestedQuantity = Math.max(1, Math.floor(Number(editRequestedQuantity)));
-    if (nextRequestedQuantity < editingItem.purchasedQuantity) {
-      toast.error("Requested quantity cannot be lower than items already covered.");
+
+    if (nextRequestedQuantity < minimumLockedQuantity) {
+      toast.error(
+        minimumLockedQuantity === editingItem.purchasedQuantity
+          ? "You cannot reduce this item below the number already covered by gifts."
+          : "You cannot reduce this item below the quantity already paid toward.",
+      );
       return;
     }
 
@@ -285,36 +480,106 @@ export function RegistryDetailClient({ registryId }: { registryId: string }) {
     await loadRegistry();
   };
 
-  const handleToggleRegistryStatus = async () => {
-    if (!registry) {
+  const handleAddRegistryCartToExisting = async (targetRegistryId: string) => {
+    if (!user) {
+      openAuth("login");
       return;
     }
 
-    const nextStatus = registryIsClosed ? "active" : "closed";
-    const confirmMessage = registryIsClosed
-      ? "Reopen this registry so it can accept gifts again?"
-      : "Close this registry? Guests will still be able to view it, but they will no longer be able to gift items.";
-
-    if (!window.confirm(confirmMessage)) {
+    if (!targetRegistryId) {
+      toast.error("Select a registry first.");
       return;
     }
 
-    setTogglingRegistry(true);
-
-    const { error } = await supabase
-      .from("registries")
-      .update({ status: nextStatus })
-      .eq("id", registry.id);
-
-    setTogglingRegistry(false);
-
-    if (error) {
-      toast.error("Could not update the registry status.");
+    if (!hasSupabaseEnv) {
+      toast.error("Supabase is not configured yet.");
       return;
     }
 
-    toast.success(nextStatus === "closed" ? "Registry closed." : "Registry reopened.");
+    const targetRegistry = activeRegistries.find((entry) => entry.id === targetRegistryId);
+    if (!targetRegistry) {
+      toast.error("This registry is no longer available for new items.");
+      return;
+    }
+
+    const productIds = registryCartItems.map((item) => item.product.id);
+    if (productIds.length === 0) {
+      toast.info("Your registry cart is empty.");
+      return;
+    }
+
+    const { data: existingRows, error: existingError } = await supabase
+      .from("registry_items")
+      .select("id, product_id, requested_quantity")
+      .eq("registry_id", targetRegistryId)
+      .in("product_id", productIds);
+
+    if (existingError) {
+      toast.error("Could not load the existing registry items.");
+      return;
+    }
+
+    const existingByProductId = new Map<number, { id: string; requested_quantity?: number | null }>(
+      ((existingRows as Array<{ id: string; product_id: number; requested_quantity?: number | null }> | null) ?? [])
+        .map((row) => [Number(row.product_id), row]),
+    );
+
+    for (const item of registryCartItems) {
+      const existingItem = existingByProductId.get(item.product.id);
+
+      if (existingItem) {
+        const { error } = await supabase
+          .from("registry_items")
+          .update({
+            requested_quantity: Number(existingItem.requested_quantity ?? 0) + item.quantity,
+            unit_price_snapshot: item.product.price,
+          })
+          .eq("id", existingItem.id);
+
+        if (error) {
+          toast.error(`Could not update ${item.product.name} in your registry.`);
+          return;
+        }
+      } else {
+        const { error } = await supabase.from("registry_items").insert({
+          registry_id: targetRegistryId,
+          product_id: item.product.id,
+          requested_quantity: item.quantity,
+          purchased_quantity: 0,
+          funded_amount: 0,
+          unit_price_snapshot: item.product.price,
+          note: "",
+        });
+
+        if (error) {
+          toast.error(`Could not add ${item.product.name} to your registry.`);
+          return;
+        }
+      }
+    }
+
+    clearRegistryCart();
+    setRegistryCartItems([]);
+    setRegistryCartOpen(false);
+    toast.success("Registry items added successfully.");
     await loadRegistry();
+  };
+
+  const handleRemoveRegistryCartItem = (productId: number) => {
+    setRegistryCartItems(removeRegistryCartItem(productId));
+  };
+
+  const handleUpdateRegistryCartItem = (productId: number, quantity: number) => {
+    setRegistryCartItems(updateRegistryCartQuantity(productId, quantity));
+  };
+
+  const handleCreateNewRegistry = () => {
+    if (!user) {
+      openAuth("signup");
+      return;
+    }
+
+    setRegistryCreateOpen(true);
   };
 
   if (authLoading) {
@@ -323,238 +588,282 @@ export function RegistryDetailClient({ registryId }: { registryId: string }) {
 
   if (!user) {
     return (
-      <div className="container mx-auto px-4 py-10">
-        <Card className="mx-auto max-w-2xl">
-          <CardHeader>
-            <CardTitle>Sign in required</CardTitle>
-          </CardHeader>
-          <CardContent className="text-sm text-gray-600">
-            Sign in to view your registry details.
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
+      <div className="min-h-screen bg-white">
+        <RegistryHeader
+          cartItemCount={registryCartItems.length}
+          isAuthenticated={false}
+          isAdmin={isAdmin}
+          onCartClick={() => setRegistryCartOpen(true)}
+          onOpenAdmin={handleOpenAdmin}
+          onOpenDashboard={handleOpenDashboard}
+          onSignIn={() => openAuth("login")}
+          onSignOut={handleSignOut}
+          onSignUp={() => openAuth("signup")}
+        />
+        <div className="container mx-auto px-4 py-10">
+          <Card className="mx-auto max-w-2xl">
+            <CardHeader>
+              <CardTitle>Sign in required</CardTitle>
+            </CardHeader>
+            <CardContent className="text-sm text-gray-600">
+              Sign in to view your registry details.
+            </CardContent>
+          </Card>
+        </div>
 
-  if (loading) {
-    return <div className="container mx-auto px-4 py-10">Loading registry...</div>;
-  }
-
-  if (!registry) {
-    return (
-      <div className="container mx-auto px-4 py-10">
-        <Card className="mx-auto max-w-2xl">
-          <CardHeader>
-            <CardTitle>Registry not found</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4 text-sm text-gray-600">
-            <p>This registry does not belong to your account or may have been removed.</p>
-            <Button asChild>
-              <Link href="/dashboard/registries">Back to My Registries</Link>
-            </Button>
-          </CardContent>
-        </Card>
+        <AuthModal
+          open={authModalOpen}
+          onClose={() => setAuthModalOpen(false)}
+          defaultTab={authDefaultTab}
+        />
       </div>
     );
   }
 
   return (
-    <div className="container mx-auto px-4 py-10">
-      <div className="mx-auto max-w-5xl space-y-6">
-        <div className="flex flex-col gap-4 rounded-[32px] border bg-white p-6 shadow-sm md:flex-row md:items-start md:justify-between">
-          <div className="space-y-2">
-            <p className="text-sm font-semibold uppercase tracking-[0.2em] text-pink-500">
-              {registryIsClosed ? "Closed Registry" : "My Registry"}
-            </p>
-            <h1 className="text-3xl font-bold text-gray-900">{registry.name}</h1>
-            <div className="flex flex-wrap gap-3 text-sm text-gray-600">
-              <span>Code: {registry.share_code}</span>
-              <span>Due: {formatDueMonth(registry.due_month)}</span>
-              <span>Baby: {formatBabyGender(registry.baby_gender)}</span>
+    <div className="min-h-screen bg-white">
+      <RegistryHeader
+        cartItemCount={registryCartItems.length}
+        isAuthenticated
+        isAdmin={isAdmin}
+        onCartClick={() => setRegistryCartOpen(true)}
+        onOpenAdmin={handleOpenAdmin}
+        onOpenDashboard={handleOpenDashboard}
+        onSignIn={() => openAuth("login")}
+        onSignOut={handleSignOut}
+        onSignUp={() => openAuth("signup")}
+      />
+
+      <div className="container mx-auto px-4 py-10">
+        {loading ? (
+          <div>Loading registry...</div>
+        ) : !registry ? (
+          <Card className="mx-auto max-w-2xl">
+            <CardHeader>
+              <CardTitle>Registry not found</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4 text-sm text-gray-600">
+              <p>This registry does not belong to your account or may have been removed.</p>
+              <Button asChild>
+                <Link href="/dashboard/registries">Back to My Registries</Link>
+              </Button>
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="mx-auto max-w-5xl space-y-6">
+            <div className="flex flex-col gap-4 rounded-[32px] border bg-white p-6 shadow-sm md:flex-row md:items-start md:justify-between">
+              <div className="space-y-2">
+                <p className="text-sm font-semibold uppercase tracking-[0.2em] text-pink-500">
+                  {registryIsClosed ? "Closed Registry" : "My Registry"}
+                </p>
+                <h1 className="text-3xl font-bold text-gray-900">{registry.name}</h1>
+                <div className="flex flex-wrap gap-3 text-sm text-gray-600">
+                  <span>Code: {registry.share_code}</span>
+                  <span>Due: {formatDueMonth(registry.due_month)}</span>
+                  <span>Baby: {formatBabyGender(registry.baby_gender)}</span>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                <Button variant="outline" onClick={handleShareRegistry}>
+                  <Share2 className="mr-2 h-4 w-4" />
+                  Share Registry
+                </Button>
+                <Button variant="outline" onClick={handleDownloadChecklist}>
+                  <Download className="mr-2 h-4 w-4" />
+                  Download Checklist
+                </Button>
+                <Button variant="outline" onClick={() => router.push("/registry")}>
+                  <Gift className="mr-2 h-4 w-4" />
+                  Add Registry Items
+                </Button>
+              </div>
             </div>
-          </div>
 
-          <div className="flex flex-wrap gap-2">
-            <Button variant="outline" onClick={handleShareRegistry}>
-              <Share2 className="mr-2 h-4 w-4" />
-              Share Registry
-            </Button>
-            <Button variant="outline" onClick={handleDownloadChecklist}>
-              <Download className="mr-2 h-4 w-4" />
-              Download Checklist
-            </Button>
-            <Button variant="outline" onClick={() => router.push("/registry")}>
-              <Gift className="mr-2 h-4 w-4" />
-              Browse Registry Catalog
-            </Button>
-            <Button
-              variant={registryIsClosed ? "default" : "destructive"}
-              onClick={handleToggleRegistryStatus}
-              disabled={togglingRegistry}
-            >
-              {togglingRegistry
-                ? "Saving..."
-                : registryIsClosed
-                  ? "Reopen Registry"
-                  : "Close Registry"}
-            </Button>
-          </div>
-        </div>
-
-        <div className="grid gap-4 md:grid-cols-4">
-          <Card>
-            <CardContent className="p-5">
-              <p className="text-xs uppercase tracking-[0.18em] text-gray-500">Requested</p>
-              <p className="mt-2 text-3xl font-bold text-gray-900">{summary.requested}</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-5">
-              <p className="text-xs uppercase tracking-[0.18em] text-gray-500">Covered</p>
-              <p className="mt-2 text-3xl font-bold text-green-600">{summary.purchased}</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-5">
-              <p className="text-xs uppercase tracking-[0.18em] text-gray-500">Still Needed</p>
-              <p className="mt-2 text-3xl font-bold text-pink-600">{summary.remainingQuantity}</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-5">
-              <p className="text-xs uppercase tracking-[0.18em] text-gray-500">Amount Left</p>
-              <p className="mt-2 text-3xl font-bold text-purple-600">
-                {formatNairaAmount(summary.remainingAmount)}
-              </p>
-            </CardContent>
-          </Card>
-        </div>
-
-        <Tabs defaultValue="items" className="space-y-4">
-          <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="items" className="cursor-pointer">
-              Item Funding
-            </TabsTrigger>
-            <TabsTrigger value="payments" className="cursor-pointer">
-              Payment Activity
-            </TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="items">
-            <Card>
-              <CardHeader>
-                <CardTitle>Item Funding</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {registryItems.length === 0 ? (
-                  <p className="text-sm text-gray-500">
-                    No items have been added yet. Browse the registry catalog to start building.
+            <div className="grid gap-4 md:grid-cols-4">
+              <Card>
+                <CardContent className="p-5">
+                  <p className="text-xs uppercase tracking-[0.18em] text-gray-500">Requested</p>
+                  <p className="mt-2 text-3xl font-bold text-gray-900">{summary.requested}</p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="p-5">
+                  <p className="text-xs uppercase tracking-[0.18em] text-gray-500">Covered</p>
+                  <p className="mt-2 text-3xl font-bold text-green-600">{summary.purchased}</p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="p-5">
+                  <p className="text-xs uppercase tracking-[0.18em] text-gray-500">Still Needed</p>
+                  <p className="mt-2 text-3xl font-bold text-pink-600">{summary.remainingQuantity}</p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="p-5">
+                  <p className="text-xs uppercase tracking-[0.18em] text-gray-500">Amount Left</p>
+                  <p className="mt-2 text-3xl font-bold text-purple-600">
+                    {formatNairaAmount(summary.remainingAmount)}
                   </p>
-                ) : (
-                  registryItems.map((item) => (
-                    <div key={item.id} className="rounded-2xl border p-4">
-                      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                        <div className="space-y-2">
-                          <p className="text-lg font-semibold text-gray-900">
-                            {item.product?.name ?? "Registry item"}
-                          </p>
-                          <p className="text-sm text-gray-500">
-                            Requested {item.requestedQuantity}, covered {item.purchasedQuantity},
-                            remaining {getRemainingRegistryQuantity(item)}
-                          </p>
-                          {item.note ? (
-                            <p className="rounded-lg bg-gray-50 px-3 py-2 text-sm text-gray-600">
-                              {item.note}
-                            </p>
-                          ) : null}
-                        </div>
-                        <div className="space-y-3 text-sm text-gray-600 md:text-right">
-                          <p>Funded: {formatNairaAmount(getRegistryItemFundedAmount(item))}</p>
-                          <p>Left: {formatNairaAmount(getRegistryItemRemainingAmount(item))}</p>
-                          <div className="flex flex-wrap gap-2 md:justify-end">
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="outline"
-                              onClick={() => handleOpenEditItem(item)}
-                              disabled={registryIsClosed}
-                            >
-                              <Pencil className="mr-2 h-4 w-4" />
-                              Edit
-                            </Button>
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="outline"
-                              onClick={() => void handleRemoveItem(item)}
-                              disabled={registryIsClosed}
-                            >
-                              <Trash2 className="mr-2 h-4 w-4" />
-                              Remove
-                            </Button>
+                </CardContent>
+              </Card>
+            </div>
+
+            <Tabs defaultValue="items" className="space-y-4">
+              <TabsList className="grid w-full grid-cols-2">
+                <TabsTrigger value="items" className="cursor-pointer">
+                  Item Funding
+                </TabsTrigger>
+                <TabsTrigger value="payments" className="cursor-pointer">
+                  Payment Activity
+                </TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="items">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Item Funding</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    {registryItems.length === 0 ? (
+                      <p className="text-sm text-gray-500">
+                        No items have been added yet. Browse the registry catalog to start building.
+                      </p>
+                    ) : (
+                      registryItems.map((item) => (
+                        <div key={item.id} className="rounded-2xl border p-4">
+                          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                            <div className="space-y-2">
+                              <p className="text-lg font-semibold text-gray-900">
+                                {item.product?.name ?? "Registry item"}
+                              </p>
+                              <p className="text-sm text-gray-500">
+                                Requested {item.requestedQuantity}, covered {item.purchasedQuantity},
+                                remaining {getRemainingRegistryQuantity(item)}
+                              </p>
+                              {item.note ? (
+                                <p className="rounded-lg bg-gray-50 px-3 py-2 text-sm text-gray-600">
+                                  {item.note}
+                                </p>
+                              ) : null}
+                            </div>
+                            <div className="space-y-3 text-sm text-gray-600 md:text-right">
+                              <p>Funded: {formatNairaAmount(getRegistryItemFundedAmount(item))}</p>
+                              <p>Left: {formatNairaAmount(getRegistryItemRemainingAmount(item))}</p>
+                              <div className="flex flex-wrap gap-2 md:justify-end">
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => handleOpenEditItem(item)}
+                                  disabled={registryIsClosed}
+                                >
+                                  <Pencil className="mr-2 h-4 w-4" />
+                                  Edit
+                                </Button>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => void handleRemoveItem(item)}
+                                  disabled={registryIsClosed}
+                                >
+                                  <Trash2 className="mr-2 h-4 w-4" />
+                                  Remove
+                                </Button>
+                              </div>
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    </div>
-                  ))
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
+                      ))
+                    )}
+                  </CardContent>
+                </Card>
+              </TabsContent>
 
-          <TabsContent value="payments">
-            <Card>
-              <CardHeader>
-                <CardTitle>Payment Activity</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {payments.length === 0 ? (
-                  <p className="text-sm text-gray-500">
-                    No completed payments have been recorded for this registry yet.
-                  </p>
-                ) : (
-                  payments.map((payment) => (
-                    <div key={payment.id} className="rounded-2xl border p-4">
-                      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                        <div>
-                          <p className="text-lg font-semibold text-gray-900">{payment.buyerName}</p>
-                          <p className="text-sm text-gray-500">
-                            {payment.buyerEmail}
-                            {payment.buyerPhone ? ` | ${payment.buyerPhone}` : ""}
-                          </p>
-                          <div className="mt-3 space-y-1 text-sm text-gray-600">
-                            {payment.itemLabels.map((label) => (
-                              <p key={`${payment.id}-${label}`}>{label}</p>
-                            ))}
+              <TabsContent value="payments">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Payment Activity</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    {payments.length === 0 ? (
+                      <p className="text-sm text-gray-500">
+                        No completed payments have been recorded for this registry yet.
+                      </p>
+                    ) : (
+                      payments.map((payment) => (
+                        <div key={payment.id} className="rounded-2xl border p-4">
+                          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                            <div>
+                              <p className="text-lg font-semibold text-gray-900">{payment.buyerName}</p>
+                              <p className="text-sm text-gray-500">
+                                {payment.buyerEmail}
+                                {payment.buyerPhone ? ` | ${payment.buyerPhone}` : ""}
+                              </p>
+                              <div className="mt-3 space-y-1 text-sm text-gray-600">
+                                {payment.itemLabels.map((label) => (
+                                  <p key={`${payment.id}-${label}`}>{label}</p>
+                                ))}
+                              </div>
+                              {payment.buyerMessage ? (
+                                <p className="mt-3 rounded-lg bg-gray-50 px-3 py-2 text-sm text-gray-600">
+                                  &quot;{payment.buyerMessage}&quot;
+                                </p>
+                              ) : null}
+                            </div>
+                            <div className="text-sm text-gray-600 md:text-right">
+                              <p className="text-lg font-semibold text-gray-900">
+                                {formatNairaAmount(payment.totalAmount)}
+                              </p>
+                              <p>{payment.type === "item" ? "Registry item gift" : "Cash gift"}</p>
+                              <p>{formatDateTime(payment.paidAt ?? payment.createdAt)}</p>
+                              {payment.paystackReference ? (
+                                <p className="font-mono text-xs text-gray-500">
+                                  {payment.paystackReference}
+                                </p>
+                              ) : null}
+                            </div>
                           </div>
-                          {payment.buyerMessage ? (
-                            <p className="mt-3 rounded-lg bg-gray-50 px-3 py-2 text-sm text-gray-600">
-                              &quot;{payment.buyerMessage}&quot;
-                            </p>
-                          ) : null}
+                          <Separator className="mt-4" />
                         </div>
-                        <div className="text-sm text-gray-600 md:text-right">
-                          <p className="text-lg font-semibold text-gray-900">
-                            {formatNairaAmount(payment.totalAmount)}
-                          </p>
-                          <p>{payment.type === "item" ? "Registry item gift" : "Cash gift"}</p>
-                          <p>{formatDateTime(payment.paidAt ?? payment.createdAt)}</p>
-                          {payment.paystackReference ? (
-                            <p className="font-mono text-xs text-gray-500">
-                              {payment.paystackReference}
-                            </p>
-                          ) : null}
-                        </div>
-                      </div>
-                      <Separator className="mt-4" />
-                    </div>
-                  ))
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
-        </Tabs>
+                      ))
+                    )}
+                  </CardContent>
+                </Card>
+              </TabsContent>
+            </Tabs>
+          </div>
+        )}
       </div>
+
+      <RegistryCartModal
+        open={registryCartOpen}
+        onOpenChange={setRegistryCartOpen}
+        onClose={() => setRegistryCartOpen(false)}
+        isAuthenticated={Boolean(user)}
+        items={registryCartItems}
+        registries={
+          registry && registry.status !== "closed"
+            ? currentRegistrySummary
+            : activeRegistries.map((entry) => ({ id: entry.id, name: entry.name }))
+        }
+        onRequireAuth={() => openAuth("signup")}
+        onCreateNew={handleCreateNewRegistry}
+        onAddToExisting={handleAddRegistryCartToExisting}
+        onRemoveItem={handleRemoveRegistryCartItem}
+        onUpdateQuantity={handleUpdateRegistryCartItem}
+      />
+
+      <RegistryCreateModal
+        open={registryCreateOpen}
+        onOpenChange={setRegistryCreateOpen}
+        onCreated={async (createdRegistryId) => {
+          setRegistryCartItems(readRegistryCart());
+          await loadRegistry();
+          router.push(`/dashboard/registries/${createdRegistryId}`);
+        }}
+      />
 
       <Dialog open={editItemOpen} onOpenChange={setEditItemOpen}>
         <DialogContent className="max-w-lg">
@@ -568,12 +877,19 @@ export function RegistryDetailClient({ registryId }: { registryId: string }) {
               <Input
                 id="requested-quantity"
                 type="number"
-                min={editingItem?.purchasedQuantity ?? 0}
+                min={minimumEditableQuantity}
                 value={editRequestedQuantity}
                 onChange={(event) => setEditRequestedQuantity(event.target.value)}
                 required
               />
             </div>
+
+            {editingItem && minimumEditableQuantity > 1 ? (
+              <p className="text-sm text-gray-500">
+                This quantity cannot go below {minimumEditableQuantity} because gifts or
+                payments have already been recorded for it.
+              </p>
+            ) : null}
 
             <div className="space-y-2">
               <Label htmlFor="registry-item-note">Note</Label>
@@ -591,6 +907,12 @@ export function RegistryDetailClient({ registryId }: { registryId: string }) {
           </form>
         </DialogContent>
       </Dialog>
+
+      <AuthModal
+        open={authModalOpen}
+        onClose={() => setAuthModalOpen(false)}
+        defaultTab={authDefaultTab}
+      />
     </div>
   );
 }

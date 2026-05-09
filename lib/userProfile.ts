@@ -18,6 +18,57 @@ export interface UserProfileRecord {
   created_at?: string | null;
 }
 
+type SupabaseColumnErrorLike = {
+  code?: string | null;
+  message?: string | null;
+};
+
+export const USER_PROFILE_SELECT =
+  "id, email, full_name, phone, is_admin, shipping_address, account_status, deleted_at, created_at";
+
+export const USER_PROFILE_FALLBACK_SELECT =
+  "id, email, full_name, phone, is_admin, shipping_address, created_at";
+
+export function isMissingUserProfileColumnError(
+  error: unknown,
+  columnName?: string,
+) {
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+
+  const maybeError = error as SupabaseColumnErrorLike;
+  if (maybeError.code !== "42703") {
+    return false;
+  }
+
+  if (!columnName) {
+    return true;
+  }
+
+  return maybeError.message?.includes(`user_profiles.${columnName}`) ?? false;
+}
+
+export function normalizeUserProfileRecord(
+  value: Partial<UserProfileRecord> | null | undefined,
+): UserProfileRecord | null {
+  if (!value?.id) {
+    return null;
+  }
+
+  return {
+    id: value.id,
+    email: value.email ?? "",
+    full_name: value.full_name ?? null,
+    phone: value.phone ?? null,
+    is_admin: value.is_admin ?? false,
+    shipping_address: value.shipping_address ?? null,
+    account_status: value.account_status ?? "active",
+    deleted_at: value.deleted_at ?? null,
+    created_at: value.created_at ?? null,
+  };
+}
+
 export function emptyShippingAddress(): ShippingAddress {
   return {
     name: "",

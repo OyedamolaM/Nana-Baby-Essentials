@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { CATEGORIES, type StoreProduct } from "../../lib/commerce";
 import {
   addRegistryCartItem,
+  clearRegistryCart,
   readRegistryCart,
   removeRegistryCartItem,
   updateRegistryCartQuantity,
@@ -245,6 +246,7 @@ export function RegistryLandingPage({
       }
     }
 
+    clearRegistryCart();
     setRegistryCartItems([]);
     setRegistryCartOpen(false);
     toast.success("Registry items added successfully.");

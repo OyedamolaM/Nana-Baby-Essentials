@@ -46,6 +46,8 @@ export function RegistryCreateModal({
   const { session, user } = useAuth();
   const [loading, setLoading] = useState(false);
   const [registryName, setRegistryName] = useState("");
+  const [partnerEmail, setPartnerEmail] = useState("");
+  const [partnerName, setPartnerName] = useState("");
   const [whatsapp, setWhatsapp] = useState("");
   const [dueMonth, setDueMonth] = useState("");
   const [babyGender, setBabyGender] = useState("neutral");
@@ -53,6 +55,8 @@ export function RegistryCreateModal({
 
   const resetForm = () => {
     setRegistryName("");
+    setPartnerEmail("");
+    setPartnerName("");
     setWhatsapp("");
     setDueMonth("");
     setBabyGender("neutral");
@@ -91,6 +95,8 @@ export function RegistryCreateModal({
         .insert({
           user_id: user.id,
           name: registryName,
+          partner_email: partnerEmail.trim() || null,
+          partner_name: partnerName.trim() || null,
           whatsapp,
           due_month: dueMonth,
           baby_gender: babyGender,
@@ -180,6 +186,29 @@ export function RegistryCreateModal({
               placeholder="+234..."
               required
             />
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="registry-partner-name">Partner Name</Label>
+              <Input
+                id="registry-partner-name"
+                value={partnerName}
+                onChange={(event) => setPartnerName(event.target.value)}
+                placeholder="Optional"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="registry-partner-email">Partner Email</Label>
+              <Input
+                id="registry-partner-email"
+                type="email"
+                value={partnerEmail}
+                onChange={(event) => setPartnerEmail(event.target.value)}
+                placeholder="Optional"
+              />
+            </div>
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2">

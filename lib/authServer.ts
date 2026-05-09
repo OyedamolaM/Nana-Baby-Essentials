@@ -5,7 +5,10 @@ import {
   createSupabaseServerClient,
   hasSupabaseServerEnv,
 } from "./supabaseServer";
-import { type UserProfileRecord } from "./userProfile";
+import {
+  normalizeUserProfileRecord,
+  type UserProfileRecord,
+} from "./userProfile";
 
 export function getBearerToken(request: Request) {
   const authHeader = request.headers.get("authorization") ?? "";
@@ -73,17 +76,25 @@ export async function requireRouteUser(
     };
   }
 
-  const { data: profile } = await userClient
+  const profileResult = await userClient
     .from("user_profiles")
-    .select(
-      "id, email, full_name, phone, is_admin, shipping_address, account_status, deleted_at, created_at",
-    )
+    .select("*")
     .eq("id", user.id)
     .maybeSingle();
 
+  if (profileResult.error) {
+    return {
+      accessToken,
+      profile: null,
+      user,
+    };
+  }
+
   return {
     accessToken,
-    profile: (profile as UserProfileRecord | null) ?? null,
+    profile: normalizeUserProfileRecord(
+      profileResult.data as UserProfileRecord | null,
+    ),
     user,
   };
 }

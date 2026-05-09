@@ -1,5 +1,4 @@
 import { buildPageMetadata } from "../../../../lib/site";
-import { SiteHeaderShell } from "../../../components/SiteHeaderShell";
 import { RegistryDetailClient } from "./RegistryDetailClient";
 
 type RegistryDetailPageProps = {
@@ -26,10 +25,5 @@ export default async function RegistryDetailPage({
 }: RegistryDetailPageProps) {
   const { id } = await params;
 
-  return (
-    <>
-      <SiteHeaderShell />
-      <RegistryDetailClient registryId={id} />
-    </>
-  );
+  return <RegistryDetailClient registryId={id} />;
 }

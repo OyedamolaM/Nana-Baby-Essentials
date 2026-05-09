@@ -7,12 +7,12 @@ import { formatNaira } from "../../../lib/commerce";
 import { type RegistryCartItem } from "../../../lib/registryCart";
 import { Button } from "../ui/button";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "../ui/dialog";
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "../ui/sheet";
 import { Label } from "../ui/label";
 import {
   Select,
@@ -67,17 +67,25 @@ export function RegistryCartModal({
     : selectedRegistryId;
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>Registry Cart</DialogTitle>
-          <DialogDescription>
+    <Sheet
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen) {
+          setSelectedRegistryId("");
+        }
+        onOpenChange(nextOpen);
+      }}
+    >
+      <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-xl">
+        <SheetHeader>
+          <SheetTitle>Registry Cart</SheetTitle>
+          <SheetDescription>
             Review the items you want to add, then save them to your registry without
             reloading the page.
-          </DialogDescription>
-        </DialogHeader>
+          </SheetDescription>
+        </SheetHeader>
 
-        <div className="space-y-4">
+        <div className="space-y-4 px-4 pb-4">
           {items.length === 0 ? (
             <div className="rounded-2xl border border-dashed p-6 text-sm text-gray-500">
               Your registry cart is empty.
@@ -193,7 +201,7 @@ export function RegistryCartModal({
         <Button type="button" variant="ghost" onClick={onClose}>
           Close
         </Button>
-      </DialogContent>
-    </Dialog>
+      </SheetContent>
+    </Sheet>
   );
 }

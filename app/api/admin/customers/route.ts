@@ -2,7 +2,11 @@ import { NextResponse } from "next/server";
 
 import { requireAdminRoute } from "@/lib/authServer";
 import { createSupabaseServiceRoleClient, hasSupabaseServiceRoleEnv } from "@/lib/supabaseServer";
-import { normalizeShippingAddress, type ShippingAddress } from "@/lib/userProfile";
+import {
+  isMissingUserProfileColumnError,
+  normalizeShippingAddress,
+  type ShippingAddress,
+} from "@/lib/userProfile";
 
 type CreateCustomerPayload = {
   email?: string;
@@ -63,18 +67,29 @@ export async function POST(request: Request) {
     );
   }
 
-  const { error: profileError } = await serviceRoleClient.from("user_profiles").upsert(
+  const baseProfile = {
+    id: invitedUser.user.id,
+    email,
+    full_name: fullName,
+    phone,
+    shipping_address: shippingAddress,
+  };
+
+  let { error: profileError } = await serviceRoleClient.from("user_profiles").upsert(
     {
-      id: invitedUser.user.id,
-      email,
-      full_name: fullName,
-      phone,
-      shipping_address: shippingAddress,
+      ...baseProfile,
       account_status: "active",
       deleted_at: null,
     },
     { onConflict: "id" },
   );
+
+  if (profileError && isMissingUserProfileColumnError(profileError)) {
+    const fallbackResult = await serviceRoleClient
+      .from("user_profiles")
+      .upsert(baseProfile, { onConflict: "id" });
+    profileError = fallbackResult.error;
+  }
 
   if (profileError) {
     return NextResponse.json(

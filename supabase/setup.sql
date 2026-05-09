@@ -396,10 +396,14 @@ create table if not exists public.registries (
   name text not null,
   status text not null default 'active'
     check (status in ('active', 'closed')),
+  partner_name text,
+  partner_email text,
   whatsapp text,
   due_month text,
   baby_gender text,
   additional_info text,
+  closed_note text,
+  closed_at timestamptz,
   share_code text unique not null,
   created_at timestamptz default now()
 );
@@ -407,10 +411,14 @@ create table if not exists public.registries (
 alter table public.registries
   add column if not exists status text not null default 'active'
     check (status in ('active', 'closed')),
+  add column if not exists partner_name text,
+  add column if not exists partner_email text,
   add column if not exists whatsapp text,
   add column if not exists due_month text,
   add column if not exists baby_gender text,
-  add column if not exists additional_info text;
+  add column if not exists additional_info text,
+  add column if not exists closed_note text,
+  add column if not exists closed_at timestamptz;
 
 update public.registries
 set status = 'active'
