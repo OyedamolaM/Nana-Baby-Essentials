@@ -12,7 +12,13 @@ export const metadata = buildPageMetadata({
   path: "/products",
 });
 
-export default async function ProductsRoute() {
+type ProductsRouteProps = {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+};
+
+export default async function ProductsRoute({ searchParams }: ProductsRouteProps) {
+  const resolvedSearchParams = searchParams ? await searchParams : {};
+  const initialFocusSearch = resolvedSearchParams.focusSearch === "1";
   const [{ products, totalCount }, initialCategories] = await Promise.all([
     getPublicProductCatalogPage({
       page: 1,
@@ -26,6 +32,7 @@ export default async function ProductsRoute() {
 
   return (
     <ProductsPage
+      initialFocusSearch={initialFocusSearch}
       initialCategories={initialCategories}
       initialProducts={products}
       initialTotalCount={totalCount}

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Download, Gift, Search, Share2 } from "lucide-react";
 import { toast } from "sonner";
@@ -45,6 +45,11 @@ import {
 import { useAuth } from "../contexts/AuthContext";
 import { hasSupabaseEnv, supabase } from "../lib/supabase";
 import { usePaginatedProducts } from "../hooks/usePaginatedProducts";
+import {
+  clearProductDetailReturnContext,
+  getCurrentProductReturnPath,
+  readProductDetailReturnContext,
+} from "../../lib/productDetailReturn";
 
 type AuthTab = "login" | "signup";
 
@@ -134,6 +139,7 @@ export function RegistryLandingPage({
   const [productDetailOpen, setProductDetailOpen] = useState(false);
   const [registryCartItems, setRegistryCartItems] = useState<RegistryCartItem[]>([]);
   const [myRegistries, setMyRegistries] = useState<RegistryRecord[]>([]);
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
   const {
     loading: productsLoading,
     page,
@@ -164,6 +170,23 @@ export function RegistryLandingPage({
   useEffect(() => {
     const frameId = window.requestAnimationFrame(() => {
       setRegistryCartItems(readRegistryCart());
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+    };
+  }, []);
+
+  useEffect(() => {
+    const reopenContext = readProductDetailReturnContext();
+    if (!reopenContext || reopenContext.originPath !== getCurrentProductReturnPath()) {
+      return;
+    }
+
+    const frameId = window.requestAnimationFrame(() => {
+      setSelectedProduct(reopenContext.product);
+      setProductDetailOpen(true);
+      clearProductDetailReturnContext();
     });
 
     return () => {
@@ -546,18 +569,33 @@ export function RegistryLandingPage({
 
         <section className="bg-white py-20">
           <div className="container mx-auto px-4">
-            <div className="mb-10 text-center">
-              <h2 className="text-4xl font-bold text-gray-900">Registry Products</h2>
-              <p className="mt-3 text-gray-600">
-                Browse by category, add items to your registry cart, and save them once your
-                registry is ready.
-              </p>
+            <div className="mb-10 flex flex-col gap-4 text-center md:flex-row md:items-end md:justify-between md:text-left">
+              <div>
+                <h2 className="text-4xl font-bold text-gray-900">Registry Products</h2>
+                <p className="mt-3 text-gray-600">
+                  Browse by category, add items to your registry cart, and save them once your
+                  registry is ready.
+                </p>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  searchInputRef.current?.focus();
+                  searchInputRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+                }}
+                className="text-[14px] md:px-8 md:text-lg"
+              >
+                <Search className="h-4 w-4" />
+                Search Products
+              </Button>
             </div>
 
             <div className="mx-auto mb-8 max-w-2xl">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400" />
                 <Input
+                  ref={searchInputRef}
                   type="text"
                   placeholder="Search for registry products..."
                   value={searchQuery}

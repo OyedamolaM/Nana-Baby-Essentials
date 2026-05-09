@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowRight } from "lucide-react";
+import { ArrowRight, Search } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { type StoreProduct } from "../../../lib/commerce";
@@ -11,6 +11,7 @@ import { Tabs, TabsList, TabsTrigger } from "../ui/tabs";
 interface FeaturedCategoryTabsProps {
   products: StoreProduct[];
   onAddToCart: (product: StoreProduct, quantity?: number) => void;
+  onSearch?: () => void;
   onViewAll?: () => void;
   onViewProduct: (product: StoreProduct) => void;
   addLabel?: string;
@@ -23,6 +24,7 @@ interface FeaturedCategoryTabsProps {
 export function FeaturedCategoryTabs({
   products,
   onAddToCart,
+  onSearch,
   onViewAll,
   onViewProduct,
   addLabel,
@@ -73,17 +75,30 @@ export function FeaturedCategoryTabs({
             <h2 className="section-title">{sectionTitle}</h2>
             <p className="mt-3 text-base leading-7 text-gray-600">{sectionSubtitle}</p>
           </div>
-          {onViewAll ? (
-            <Button
-              type="button"
-              variant="outline"
-              onClick={onViewAll}
-              className="hidden text-[14px] md:inline-flex md:px-8 md:text-lg"
-            >
-              View All Products
-              <ArrowRight className="h-4 w-4" />
-            </Button>
-          ) : null}
+          <div className="hidden items-center gap-2 md:flex">
+            {onSearch ? (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={onSearch}
+                className="text-[14px] md:px-8 md:text-lg"
+              >
+                <Search className="h-4 w-4" />
+                Search Products
+              </Button>
+            ) : null}
+            {onViewAll ? (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={onViewAll}
+                className="text-[14px] md:px-8 md:text-lg"
+              >
+                View All Products
+                <ArrowRight className="h-4 w-4" />
+              </Button>
+            ) : null}
+          </div>
         </div>
 
         <div className="mb-6 overflow-x-auto pb-2">
@@ -114,12 +129,20 @@ export function FeaturedCategoryTabs({
           ))}
         </div>
 
-        {onViewAll ? (
-          <div className="mt-8 text-center md:hidden">
-            <Button type="button" variant="outline" onClick={onViewAll} className="text-[14px]">
-              View All Products
-              <ArrowRight className="h-4 w-4" />
-            </Button>
+        {onSearch || onViewAll ? (
+          <div className="mt-8 flex flex-col gap-2 text-center md:hidden">
+            {onSearch ? (
+              <Button type="button" variant="outline" onClick={onSearch} className="text-[14px]">
+                <Search className="h-4 w-4" />
+                Search Products
+              </Button>
+            ) : null}
+            {onViewAll ? (
+              <Button type="button" variant="outline" onClick={onViewAll} className="text-[14px]">
+                View All Products
+                <ArrowRight className="h-4 w-4" />
+              </Button>
+            ) : null}
           </div>
         ) : null}
       </div>

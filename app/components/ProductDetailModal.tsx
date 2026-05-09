@@ -7,6 +7,10 @@ import { toast } from "sonner";
 import { useAuth } from "../contexts/AuthContext";
 import { hasSupabaseEnv, supabase } from "../lib/supabase";
 import { formatNaira } from "../../lib/commerce";
+import {
+  getCurrentProductReturnPath,
+  persistProductDetailReturnContext,
+} from "../../lib/productDetailReturn";
 import { type Product } from "./ProductCard";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
@@ -138,6 +142,13 @@ export function ProductDetailModal({
     toast.success("Link copied to clipboard.");
   };
 
+  const handleOpenFullProductPage = () => {
+    persistProductDetailReturnContext({
+      originPath: getCurrentProductReturnPath(),
+      product,
+    });
+  };
+
   return (
     <Dialog open={open} onOpenChange={(nextOpen) => !nextOpen && onClose()}>
       <DialogContent className="max-h-[90vh] max-w-4xl overflow-y-auto">
@@ -226,7 +237,9 @@ export function ProductDetailModal({
               </div>
 
               <Button asChild type="button" variant="ghost" className="w-full">
-                <Link href={`/products/${product.slug}`}>Open Full Product Page</Link>
+                <Link href={`/products/${product.slug}`} onClick={handleOpenFullProductPage}>
+                  Open Full Product Page
+                </Link>
               </Button>
             </div>
 

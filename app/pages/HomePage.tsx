@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
@@ -23,6 +23,11 @@ import { useStoreCart } from "../contexts/StoreCartContext";
 import { useFeaturedProducts } from "../hooks/usePaginatedProducts";
 import { type StoreProduct } from "../../lib/commerce";
 import { type HomepageDeal } from "../../lib/content";
+import {
+  clearProductDetailReturnContext,
+  getCurrentProductReturnPath,
+  readProductDetailReturnContext,
+} from "../../lib/productDetailReturn";
 
 type AuthTab = "login" | "signup";
 
@@ -59,6 +64,23 @@ export function HomePage({
     limit: 8,
     initialProducts: initialFeaturedProducts,
   });
+
+  useEffect(() => {
+    const reopenContext = readProductDetailReturnContext();
+    if (!reopenContext || reopenContext.originPath !== getCurrentProductReturnPath()) {
+      return;
+    }
+
+    const frameId = window.requestAnimationFrame(() => {
+      setSelectedProduct(reopenContext.product);
+      setProductDetailOpen(true);
+      clearProductDetailReturnContext();
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+    };
+  }, []);
 
   const scrollToSection = (sectionId: string) => {
     if (sectionId === "home") {
@@ -191,6 +213,7 @@ export function HomePage({
           sectionId="products"
           products={featuredProducts}
           onAddToCart={handleAddToCart}
+          onSearch={() => router.push("/products?focusSearch=1")}
           onViewAll={() => router.push("/products")}
           onViewProduct={handleViewProduct}
           sectionTitle="Products"

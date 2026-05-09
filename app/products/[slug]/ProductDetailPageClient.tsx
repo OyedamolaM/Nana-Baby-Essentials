@@ -1,10 +1,12 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { ArrowLeft, HeartHandshake, ShoppingCart } from "lucide-react";
 import { toast } from "sonner";
 
 import { type StoreProduct, formatNaira } from "../../../lib/commerce";
+import { readProductDetailReturnContext } from "../../../lib/productDetailReturn";
 import { Button } from "../../components/ui/button";
 import { Badge } from "../../components/ui/badge";
 import { ImageWithFallback } from "../../components/figma/ImageWithFallback";
@@ -15,6 +17,7 @@ export function ProductDetailPageClient({
 }: {
   product: StoreProduct;
 }) {
+  const router = useRouter();
   const { addItem } = useStoreCart();
 
   const handleAddToCart = () => {
@@ -22,16 +25,19 @@ export function ProductDetailPageClient({
     toast.success(`${product.name} added to cart.`);
   };
 
+  const handleBackToPreviousProductView = () => {
+    const reopenContext = readProductDetailReturnContext();
+    router.push(reopenContext?.originPath || "/products");
+  };
+
   return (
     <div className="min-h-screen bg-white">
       <main className="bg-gradient-to-br from-white via-pink-50/40 to-blue-50/40 py-12">
         <div className="container mx-auto px-4">
           <div className="mb-8 flex flex-wrap items-center gap-3 text-sm text-gray-600">
-            <Button asChild variant="outline" size="sm">
-              <Link href="/">
-                <ArrowLeft className="mr-2 h-4 w-4" />
-                Back to Home
-              </Link>
+            <Button type="button" variant="outline" size="sm" onClick={handleBackToPreviousProductView}>
+              <ArrowLeft className="mr-2 h-4 w-4" />
+              Back to Previous Product View
             </Button>
             <Link href="/products" className="text-pink-600 hover:text-pink-700">
               View all products

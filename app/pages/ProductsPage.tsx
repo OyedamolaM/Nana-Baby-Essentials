@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Search } from "lucide-react";
 import { toast } from "sonner";
@@ -16,6 +16,11 @@ import { useAuth } from "../contexts/AuthContext";
 import { useStoreCart } from "../contexts/StoreCartContext";
 import { usePaginatedProducts } from "../hooks/usePaginatedProducts";
 import { type StoreProduct } from "../../lib/commerce";
+import {
+  clearProductDetailReturnContext,
+  getCurrentProductReturnPath,
+  readProductDetailReturnContext,
+} from "../../lib/productDetailReturn";
 import { Input } from "../components/ui/input";
 import {
   Pagination,
@@ -46,12 +51,14 @@ function buildPagination(currentPage: number, totalPages: number) {
 }
 
 interface ProductsPageProps {
+  initialFocusSearch?: boolean;
   initialCategories?: string[];
   initialProducts?: StoreProduct[];
   initialTotalCount?: number;
 }
 
 export function ProductsPage({
+  initialFocusSearch = false,
   initialCategories,
   initialProducts,
   initialTotalCount,
@@ -72,6 +79,7 @@ export function ProductsPage({
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [productDetailOpen, setProductDetailOpen] = useState(false);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
   const {
     loading,
     page,
@@ -90,6 +98,38 @@ export function ProductsPage({
   });
 
   const paginationItems = buildPagination(page, totalPages);
+
+  useEffect(() => {
+    const reopenContext = readProductDetailReturnContext();
+    if (!reopenContext || reopenContext.originPath !== getCurrentProductReturnPath()) {
+      return;
+    }
+
+    const frameId = window.requestAnimationFrame(() => {
+      setSelectedProduct(reopenContext.product);
+      setProductDetailOpen(true);
+      clearProductDetailReturnContext();
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!initialFocusSearch) {
+      return;
+    }
+
+    const frameId = window.requestAnimationFrame(() => {
+      searchInputRef.current?.focus();
+      searchInputRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+    };
+  }, [initialFocusSearch]);
 
   const openAuth = (tab: AuthTab) => {
     setAuthDefaultTab(tab);
@@ -216,6 +256,7 @@ export function ProductsPage({
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400" />
                 <Input
+                  ref={searchInputRef}
                   type="text"
                   placeholder="Search for products..."
                   value={searchQuery}
