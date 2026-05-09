@@ -9,6 +9,7 @@ export interface ShippingAddress {
 export interface UserProfileRecord {
   id: string;
   email: string;
+  campaign_opt_out?: boolean | null;
   full_name?: string | null;
   phone?: string | null;
   is_admin?: boolean | null;
@@ -24,7 +25,7 @@ type SupabaseColumnErrorLike = {
 };
 
 export const USER_PROFILE_SELECT =
-  "id, email, full_name, phone, is_admin, shipping_address, account_status, deleted_at, created_at";
+  "id, email, full_name, phone, is_admin, shipping_address, account_status, deleted_at, campaign_opt_out, created_at";
 
 export const USER_PROFILE_FALLBACK_SELECT =
   "id, email, full_name, phone, is_admin, shipping_address, created_at";
@@ -59,6 +60,7 @@ export function normalizeUserProfileRecord(
   return {
     id: value.id,
     email: value.email ?? "",
+    campaign_opt_out: value.campaign_opt_out ?? false,
     full_name: value.full_name ?? null,
     phone: value.phone ?? null,
     is_admin: value.is_admin ?? false,

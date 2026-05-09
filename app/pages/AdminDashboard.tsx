@@ -33,9 +33,6 @@ import {
 import { normalizeShippingAddress } from "../../lib/userProfile";
 import {
   buildRegistryPaymentActivities,
-  getRegistryItemFundedAmount,
-  getRegistryItemRemainingAmount,
-  getRemainingRegistryQuantity,
   mapRegistryItemRecord,
   summarizeRegistryItems,
   type RegistryContributionRecord,
@@ -46,7 +43,17 @@ import {
   type RegistryPaymentActivity,
   type RegistrySummary,
 } from "../../lib/registry";
+import {
+  buildProductCategoryOptions,
+  type ProductCategoryRecord,
+} from "../../lib/productCategories";
+import {
+  AdminCampaignManager,
+  type CampaignContactRecord,
+} from "../components/admin/AdminCampaignManager";
 import { AdminOrdersManager, type AdminOrderRecord } from "../components/admin/AdminOrdersManager";
+import { AdminProductCategoriesManager } from "../components/admin/AdminProductCategoriesManager";
+import { AdminRegistryAccountsManager } from "../components/admin/AdminRegistryAccountsManager";
 import { AdminRegistryOrdersManager } from "../components/admin/AdminRegistryOrdersManager";
 import { useAuth } from "../contexts/AuthContext";
 import { hasSupabaseEnv, supabase } from "../lib/supabase";
@@ -86,6 +93,7 @@ import { Textarea } from "../components/ui/textarea";
 type Customer = {
   id: string;
   account_status?: string | null;
+  campaign_opt_out?: boolean | null;
   full_name?: string | null;
   deleted_at?: string | null;
   email?: string | null;
@@ -120,6 +128,7 @@ type NewsletterSubscriber = {
 };
 
 type NewsletterCampaign = {
+  campaign_type?: string | null;
   id: string;
   subject: string;
   status: string;
@@ -139,32 +148,6 @@ type ShippingTier = {
   sort_order: number;
   created_at?: string;
 };
-
-function formatDueMonth(dueMonth?: string | null) {
-  if (!dueMonth) {
-    return "N/A";
-  }
-
-  const date = new Date(`${dueMonth}-01T00:00:00`);
-  return Number.isNaN(date.getTime())
-    ? dueMonth
-    : date.toLocaleDateString("en-NG", {
-        month: "long",
-        year: "numeric",
-      });
-}
-
-function formatBabyGender(value?: string | null) {
-  if (!value) {
-    return "N/A";
-  }
-
-  if (value === "neutral") {
-    return "Surprise / Neutral";
-  }
-
-  return value.charAt(0).toUpperCase() + value.slice(1);
-}
 
 function formatDate(value?: string | null) {
   if (!value) {
@@ -243,6 +226,8 @@ export function AdminDashboard() {
   const [newsletterCampaigns, setNewsletterCampaigns] = useState<
     NewsletterCampaign[]
   >([]);
+  const [campaignContacts, setCampaignContacts] = useState<CampaignContactRecord[]>([]);
+  const [productCategories, setProductCategories] = useState<ProductCategoryRecord[]>([]);
   const [shippingTiers, setShippingTiers] = useState<ShippingTier[]>([]);
 
   const [showCustomerModal, setShowCustomerModal] = useState(false);
@@ -323,6 +308,8 @@ export function AdminDashboard() {
       blogPostsResult,
       newsletterSubscribersResult,
       newsletterCampaignsResult,
+      campaignContactsResult,
+      productCategoriesResult,
       shippingTiersResult,
     ] = await Promise.all([
       supabase.from("orders").select("*").order("created_at", { ascending: false }),
@@ -361,6 +348,14 @@ export function AdminDashboard() {
         .select("*")
         .order("created_at", { ascending: false }),
       supabase
+        .from("campaign_contacts")
+        .select("*")
+        .order("created_at", { ascending: false }),
+      supabase
+        .from("product_categories")
+        .select("*")
+        .order("sort_order", { ascending: true }),
+      supabase
         .from("shipping_tiers")
         .select("*")
         .order("sort_order", { ascending: true }),
@@ -389,6 +384,16 @@ export function AdminDashboard() {
       ((newsletterCampaignsResult.error
         ? []
         : newsletterCampaignsResult.data) ?? []) as NewsletterCampaign[],
+    );
+    setCampaignContacts(
+      campaignContactsResult.error?.code === "42P01"
+        ? []
+        : ((campaignContactsResult.error ? [] : campaignContactsResult.data) ?? []) as CampaignContactRecord[],
+    );
+    setProductCategories(
+      productCategoriesResult.error?.code === "42P01"
+        ? []
+        : ((productCategoriesResult.error ? [] : productCategoriesResult.data) ?? []) as ProductCategoryRecord[],
     );
     setShippingTiers(
       ((shippingTiersResult.error ? [] : shippingTiersResult.data) ?? []) as ShippingTier[],
@@ -486,19 +491,19 @@ export function AdminDashboard() {
     });
   }, [isAdmin, loadAdminData]);
 
-  const customerLookup = useMemo(() => {
-    return Object.fromEntries(customers.map((customer) => [customer.id, customer])) as Record<
-      string,
-      Customer
-    >;
-  }, [customers]);
-
   const productLookup = useMemo(() => {
     return Object.fromEntries(products.map((product) => [product.id, product])) as Record<
       number,
       ProductRecord
     >;
   }, [products]);
+  const productCategoryOptions = useMemo(() => {
+    return buildProductCategoryOptions({
+      includeInactive: true,
+      includeProductCategories: products.map((product) => product.category),
+      records: productCategories,
+    });
+  }, [productCategories, products]);
 
   const stats = useMemo(() => {
     const paidOrders = orders.filter((order) => order.status === "paid");
@@ -535,7 +540,13 @@ export function AdminDashboard() {
     () => newsletterSubscribers.filter((subscriber) => subscriber.is_active),
     [newsletterSubscribers],
   );
-
+  const newsletterHistory = useMemo(
+    () =>
+      newsletterCampaigns.filter(
+        (campaign) => (campaign.campaign_type ?? "newsletter") !== "customer",
+      ),
+    [newsletterCampaigns],
+  );
   const getAdminAccessToken = async () => {
     const {
       data: { session },
@@ -795,7 +806,7 @@ export function AdminDashboard() {
     setProductName("");
     setProductSellingPrice("");
     setProductCostPrice("");
-    setProductCategory("Toys");
+    setProductCategory(productCategoryOptions[0] ?? "Toys");
     setProductImage("");
     setProductDescription("");
     setProductInStock(true);
@@ -824,9 +835,15 @@ export function AdminDashboard() {
 
     const sellingPrice = Number(productSellingPrice) / 1000;
     const costPrice = Number(productCostPrice) / 1000;
+    const normalizedCategory = productCategory.trim();
 
     if (!Number.isFinite(sellingPrice) || !Number.isFinite(costPrice)) {
       toast.error("Enter valid product prices.");
+      return;
+    }
+
+    if (!normalizedCategory) {
+      toast.error("Choose a product category first.");
       return;
     }
 
@@ -846,7 +863,7 @@ export function AdminDashboard() {
       price: sellingPrice,
       selling_price: sellingPrice,
       cost_price: costPrice,
-      category: productCategory,
+      category: normalizedCategory,
       image: productImage,
       description: productDescription,
       in_stock: productInStock,
@@ -1250,10 +1267,12 @@ export function AdminDashboard() {
       <Tabs defaultValue="orders" className="space-y-6">
         <TabsList className="flex h-auto flex-wrap justify-start gap-2">
           <TabsTrigger value="orders">Orders</TabsTrigger>
-          <TabsTrigger value="registries">Registries</TabsTrigger>
+          <TabsTrigger value="registries">Accounts</TabsTrigger>
           <TabsTrigger value="customers">Customers</TabsTrigger>
           <TabsTrigger value="newsletter">Newsletter</TabsTrigger>
+          <TabsTrigger value="campaigns">Campaigns</TabsTrigger>
           <TabsTrigger value="products">Products</TabsTrigger>
+          <TabsTrigger value="categories">Categories</TabsTrigger>
           <TabsTrigger value="deals">Deals</TabsTrigger>
           <TabsTrigger value="shipping">Shipping Tiers</TabsTrigger>
           <TabsTrigger value="blogs">Blogs</TabsTrigger>
@@ -1297,6 +1316,14 @@ export function AdminDashboard() {
 
         <TabsContent value="registries">
           <div className="space-y-6">
+            <AdminRegistryAccountsManager
+              customers={customers}
+              registries={registries}
+              registryItemsByRegistry={registryItemsByRegistry}
+              registryPaymentActivities={registryPaymentActivities}
+              registrySummaries={registrySummaries}
+            />
+
             <AdminRegistryOrdersManager
               customers={customers}
               getAdminAccessToken={getAdminAccessToken}
@@ -1306,189 +1333,6 @@ export function AdminDashboard() {
               registries={registries}
               registryItemsByRegistry={registryItemsByRegistry}
             />
-
-            <Card>
-              <CardHeader>
-                <CardTitle>Baby Registries</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                {registries.map((registry) => {
-                  const owner = customerLookup[registry.user_id];
-                  const summary = registrySummaries[registry.id] ?? {
-                    fundedAmount: 0,
-                    purchased: 0,
-                    remainingAmount: 0,
-                    remainingQuantity: 0,
-                    requested: 0,
-                    totalNeededAmount: 0,
-                  };
-                  const registryItems = registryItemsByRegistry[registry.id] ?? [];
-                  const payments = registryPaymentActivities[registry.id] ?? [];
-
-                  return (
-                    <div key={registry.id} className="rounded-lg border p-4">
-                      <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-                        <div>
-                          <p className="text-lg font-semibold text-gray-900">
-                            {registry.name}
-                          </p>
-                          <p className="text-sm text-gray-500">
-                            Parent: {owner?.full_name || owner?.email || "N/A"}
-                          </p>
-                          <p className="text-sm text-gray-500">
-                            Due: {formatDueMonth(registry.due_month)} /{" "}
-                            {formatBabyGender(registry.baby_gender)}
-                          </p>
-                          <p className="text-sm text-gray-500">
-                            Created: {formatDate(registry.created_at)}
-                          </p>
-                        </div>
-                        <div className="rounded-lg bg-gray-50 px-4 py-3">
-                          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-gray-500">
-                            Share Code
-                          </p>
-                          <p className="mt-1 font-mono text-lg font-bold text-pink-600">
-                            {registry.share_code}
-                          </p>
-                        </div>
-                      </div>
-
-                      <div className="mt-4 grid gap-2 text-sm sm:grid-cols-3 xl:grid-cols-6">
-                        <div className="rounded-xl bg-gray-50 px-3 py-2">
-                          <span className="font-semibold text-gray-900">Requested:</span>{" "}
-                          {summary.requested}
-                        </div>
-                        <div className="rounded-xl bg-gray-50 px-3 py-2">
-                          <span className="font-semibold text-gray-900">Covered:</span>{" "}
-                          {summary.purchased}
-                        </div>
-                        <div className="rounded-xl bg-gray-50 px-3 py-2">
-                          <span className="font-semibold text-gray-900">Units Left:</span>{" "}
-                          {summary.remainingQuantity}
-                        </div>
-                        <div className="rounded-xl bg-gray-50 px-3 py-2">
-                          <span className="font-semibold text-gray-900">Needed:</span>{" "}
-                          {formatNairaAmount(summary.totalNeededAmount)}
-                        </div>
-                        <div className="rounded-xl bg-gray-50 px-3 py-2">
-                          <span className="font-semibold text-gray-900">Funded:</span>{" "}
-                          {formatNairaAmount(summary.fundedAmount)}
-                        </div>
-                        <div className="rounded-xl bg-gray-50 px-3 py-2">
-                          <span className="font-semibold text-gray-900">Amount Left:</span>{" "}
-                          {formatNairaAmount(summary.remainingAmount)}
-                        </div>
-                      </div>
-
-                      <div className="mt-4 grid gap-4 xl:grid-cols-[0.95fr_1.05fr]">
-                        <div className="rounded-lg border p-4">
-                          <p className="text-sm font-semibold text-gray-900">
-                            Item Funding
-                          </p>
-                          <div className="mt-4 space-y-3">
-                            {registryItems.length === 0 ? (
-                              <p className="text-sm text-gray-500">
-                                No registry items yet.
-                              </p>
-                            ) : (
-                              registryItems.map((item) => (
-                                <div
-                                  key={item.id}
-                                  className="rounded-xl border border-gray-200 px-3 py-3"
-                                >
-                                  <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                                    <div>
-                                      <p className="font-medium text-gray-900">
-                                        {item.product?.name ?? "Registry item"}
-                                      </p>
-                                      <p className="text-sm text-gray-500">
-                                        {item.purchasedQuantity} covered,{" "}
-                                        {getRemainingRegistryQuantity(item)} units left
-                                      </p>
-                                    </div>
-                                    <div className="text-sm text-gray-600 sm:text-right">
-                                      <p>
-                                        Funded:{" "}
-                                        {formatNairaAmount(getRegistryItemFundedAmount(item))}
-                                      </p>
-                                      <p>
-                                        Left:{" "}
-                                        {formatNairaAmount(getRegistryItemRemainingAmount(item))}
-                                      </p>
-                                    </div>
-                                  </div>
-                                </div>
-                              ))
-                            )}
-                          </div>
-                        </div>
-
-                        <div className="rounded-lg border p-4">
-                          <p className="text-sm font-semibold text-gray-900">
-                            Payment Activity
-                          </p>
-                          <div className="mt-4 space-y-3">
-                            {payments.length === 0 ? (
-                              <p className="text-sm text-gray-500">
-                                No payments for this registry yet.
-                              </p>
-                            ) : (
-                              payments.map((payment) => (
-                                <div
-                                  key={payment.id}
-                                  className="rounded-xl border border-gray-200 px-3 py-3"
-                                >
-                                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                                    <div>
-                                      <p className="font-medium text-gray-900">
-                                        {payment.buyerName}
-                                      </p>
-                                      <p className="text-sm text-gray-500">
-                                        {payment.buyerEmail}
-                                        {payment.buyerPhone ? ` | ${payment.buyerPhone}` : ""}
-                                      </p>
-                                      <p className="mt-2 text-sm text-gray-700">
-                                        {payment.type === "item"
-                                          ? "Paid toward selected registry items"
-                                          : "General registry cash gift"}
-                                      </p>
-                                      <ul className="mt-2 space-y-1 text-sm text-gray-600">
-                                        {payment.itemLabels.map((label) => (
-                                          <li key={`${payment.id}-${label}`}>{label}</li>
-                                        ))}
-                                      </ul>
-                                      {payment.buyerMessage ? (
-                                        <p className="mt-2 rounded-lg bg-gray-50 px-3 py-2 text-sm text-gray-600">
-                                          &quot;{payment.buyerMessage}&quot;
-                                        </p>
-                                      ) : null}
-                                    </div>
-                                    <div className="text-sm text-gray-600 sm:text-right">
-                                      <p className="font-semibold text-gray-900">
-                                        {formatNairaAmount(payment.totalAmount)}
-                                      </p>
-                                      <p>{payment.status}</p>
-                                      <p>{formatDateTime(payment.paidAt ?? payment.createdAt)}</p>
-                                      {payment.paystackReference ? (
-                                        <p className="font-mono text-xs text-gray-500">
-                                          {payment.paystackReference}
-                                        </p>
-                                      ) : null}
-                                    </div>
-                                  </div>
-                                </div>
-                              ))
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-                </div>
-              </CardContent>
-            </Card>
           </div>
         </TabsContent>
 
@@ -1579,7 +1423,7 @@ export function AdminDashboard() {
                   <div className="rounded-lg border p-4">
                     <div className="text-sm text-gray-500">Campaigns Sent</div>
                     <div className="mt-2 text-3xl font-bold">
-                      {newsletterCampaigns.filter((campaign) => campaign.status === "sent").length}
+                      {newsletterHistory.filter((campaign) => campaign.status === "sent").length}
                     </div>
                   </div>
                 </div>
@@ -1655,7 +1499,7 @@ export function AdminDashboard() {
                   <CardTitle>Campaign History</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  {newsletterCampaigns.length === 0 ? (
+                  {newsletterHistory.length === 0 ? (
                     <p className="text-sm text-gray-500">No newsletter campaigns sent yet.</p>
                   ) : (
                     <Table>
@@ -1668,7 +1512,7 @@ export function AdminDashboard() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {newsletterCampaigns.slice(0, 6).map((campaign) => (
+                        {newsletterHistory.slice(0, 6).map((campaign) => (
                           <TableRow key={campaign.id}>
                             <TableCell>{campaign.subject}</TableCell>
                             <TableCell>{campaign.status}</TableCell>
@@ -1685,19 +1529,47 @@ export function AdminDashboard() {
           </div>
         </TabsContent>
 
+        <TabsContent value="campaigns">
+          <AdminCampaignManager
+            campaigns={newsletterCampaigns}
+            contacts={campaignContacts}
+            customers={customers}
+            getAdminAccessToken={getAdminAccessToken}
+            onReload={loadAdminData}
+          />
+        </TabsContent>
+
         <TabsContent value="products">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle>Products</CardTitle>
-              <Button
-                onClick={() => {
-                  resetProductForm();
-                  setShowProductModal(true);
-                }}
-              >
-                <Plus className="mr-2 h-4 w-4" />
-                Add Product
-              </Button>
+              <div>
+                <CardTitle>Products</CardTitle>
+                <p className="mt-1 text-sm text-gray-500">
+                  Choose from your admin-managed categories when adding or editing products.
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    const categoriesTabButton = document.querySelector(
+                      '[data-state][value="categories"]',
+                    ) as HTMLButtonElement | null;
+                    categoriesTabButton?.click();
+                  }}
+                >
+                  Manage Categories
+                </Button>
+                <Button
+                  onClick={() => {
+                    resetProductForm();
+                    setShowProductModal(true);
+                  }}
+                >
+                  <Plus className="mr-2 h-4 w-4" />
+                  Add Product
+                </Button>
+              </div>
             </CardHeader>
             <CardContent>
               <Table>
@@ -1764,10 +1636,26 @@ export function AdminDashboard() {
           </Card>
         </TabsContent>
 
+        <TabsContent value="categories">
+          <AdminProductCategoriesManager
+            categories={productCategories}
+            onReload={loadAdminData}
+            onRevalidateProducts={async () => {
+              await revalidatePublicTags(["products"]);
+            }}
+            products={products}
+          />
+        </TabsContent>
+
         <TabsContent value="deals">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle>Homepage Deals</CardTitle>
+              <div>
+                <CardTitle>Homepage Deals</CardTitle>
+                <p className="mt-1 text-sm text-gray-500">
+                  Lower sort-order values appear earlier on the storefront. Deals can be edited or deleted here.
+                </p>
+              </div>
               <Button
                 onClick={() => {
                   resetDealForm();
@@ -1786,6 +1674,7 @@ export function AdminDashboard() {
                     <TableHead>Product</TableHead>
                     <TableHead>Pricing</TableHead>
                     <TableHead>Window</TableHead>
+                    <TableHead>Order</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Actions</TableHead>
                   </TableRow>
@@ -1811,6 +1700,7 @@ export function AdminDashboard() {
                       <TableCell>
                         {formatDate(deal.starts_at)} to {formatDate(deal.ends_at)}
                       </TableCell>
+                      <TableCell>{Number(deal.sort_order ?? 0)}</TableCell>
                       <TableCell>{deal.is_active ? "Active" : "Inactive"}</TableCell>
                       <TableCell>
                         <div className="flex gap-2">
@@ -1841,7 +1731,12 @@ export function AdminDashboard() {
         <TabsContent value="shipping">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle>Shipping Tiers</CardTitle>
+              <div>
+                <CardTitle>Shipping Tiers</CardTitle>
+                <p className="mt-1 text-sm text-gray-500">
+                  Sort order controls which tier appears first at checkout. Shipping tiers can be edited or deleted here anytime.
+                </p>
+              </div>
               <Button
                 onClick={() => {
                   resetShippingTierForm();
@@ -1860,6 +1755,7 @@ export function AdminDashboard() {
                     <TableHead>Code</TableHead>
                     <TableHead>Fee</TableHead>
                     <TableHead>ETA</TableHead>
+                    <TableHead>Order</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Actions</TableHead>
                   </TableRow>
@@ -1876,6 +1772,7 @@ export function AdminDashboard() {
                       <TableCell>{tier.code}</TableCell>
                       <TableCell>{formatNairaAmount(Number(tier.fee ?? 0))}</TableCell>
                       <TableCell>{tier.eta || "N/A"}</TableCell>
+                      <TableCell>{Number(tier.sort_order ?? 0)}</TableCell>
                       <TableCell>{tier.is_active ? "Active" : "Inactive"}</TableCell>
                       <TableCell>
                         <div className="flex gap-2">
@@ -2113,6 +2010,9 @@ export function AdminDashboard() {
                   value={shippingTierSortOrder}
                   onChange={(event) => setShippingTierSortOrder(event.target.value)}
                 />
+                <p className="text-xs text-gray-500">
+                  Lower numbers appear earlier in checkout and admin lists.
+                </p>
               </div>
             </div>
 
@@ -2196,11 +2096,16 @@ export function AdminDashboard() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="Toys">Toys</SelectItem>
-                    <SelectItem value="Clothing">Clothing</SelectItem>
-                    <SelectItem value="Accessories">Accessories</SelectItem>
+                    {productCategoryOptions.map((category) => (
+                      <SelectItem key={category} value={category}>
+                        {category}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
+                <p className="text-xs text-gray-500">
+                  Categories are managed from the Categories tab in this admin panel.
+                </p>
               </div>
             </div>
 
@@ -2384,6 +2289,9 @@ export function AdminDashboard() {
                   value={dealSortOrder}
                   onChange={(event) => setDealSortOrder(event.target.value)}
                 />
+                <p className="text-xs text-gray-500">
+                  Lower numbers appear first in the homepage deals carousel.
+                </p>
               </div>
             </div>
 

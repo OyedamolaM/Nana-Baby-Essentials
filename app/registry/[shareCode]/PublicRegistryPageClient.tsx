@@ -46,6 +46,63 @@ interface PublicRegistryPageClientProps {
   shareCode: string;
 }
 
+type PublicRegistryCacheEntry = {
+  items: RegistryItem[];
+  registry: RegistryRecord | null;
+  shippingAddress: ShippingAddress | null;
+};
+
+const PUBLIC_REGISTRY_CACHE_STORAGE_PREFIX = "nbe:public-registry:";
+const publicRegistryCache = new Map<string, PublicRegistryCacheEntry>();
+
+function getPublicRegistryCacheKey(shareCode: string) {
+  return `${PUBLIC_REGISTRY_CACHE_STORAGE_PREFIX}${shareCode.toUpperCase()}`;
+}
+
+function readPublicRegistryCache(shareCode: string) {
+  const cacheKey = getPublicRegistryCacheKey(shareCode);
+
+  if (typeof window === "undefined") {
+    return undefined;
+  }
+
+  const memoryEntry = publicRegistryCache.get(cacheKey);
+  if (memoryEntry) {
+    return memoryEntry;
+  }
+
+  try {
+    const rawValue = window.sessionStorage.getItem(cacheKey);
+    if (!rawValue) {
+      return undefined;
+    }
+
+    const parsed = JSON.parse(rawValue) as PublicRegistryCacheEntry;
+    publicRegistryCache.set(cacheKey, parsed);
+    return parsed;
+  } catch {
+    return undefined;
+  }
+}
+
+function persistPublicRegistryCache(
+  shareCode: string,
+  entry: PublicRegistryCacheEntry,
+) {
+  const cacheKey = getPublicRegistryCacheKey(shareCode);
+  publicRegistryCache.set(cacheKey, entry);
+
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  try {
+    window.sessionStorage.setItem(cacheKey, JSON.stringify(entry));
+  } catch {
+    // Ignore storage failures and keep the in-memory cache.
+  }
+}
+
 export function PublicRegistryPageClient({
   initialItems,
   initialRegistry,
@@ -57,11 +114,36 @@ export function PublicRegistryPageClient({
   );
   const [registry, setRegistry] = useState<RegistryRecord | null>(initialRegistry);
   const [registryItems, setRegistryItems] = useState<RegistryItem[]>(initialItems);
+  const [shippingAddress, setShippingAddress] = useState<ShippingAddress | null>(
+    initialShippingAddress,
+  );
   const skipInitialLoadRef = useRef(Boolean(initialRegistry));
   const [giftQuantities, setGiftQuantities] = useState<Record<string, number>>({});
   const [paymentAmountInput, setPaymentAmountInput] = useState("");
   const [giftModalOpen, setGiftModalOpen] = useState(false);
   const [paymentMode, setPaymentMode] = useState<"auto" | "custom">("auto");
+
+  useEffect(() => {
+    if (initialRegistry || !shareCode) {
+      return;
+    }
+
+    const cachedEntry = readPublicRegistryCache(shareCode);
+    if (!cachedEntry) {
+      return;
+    }
+
+    const frameId = window.requestAnimationFrame(() => {
+      setRegistry(cachedEntry.registry);
+      setRegistryItems(cachedEntry.items);
+      setShippingAddress(cachedEntry.shippingAddress);
+      setLoading(false);
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+    };
+  }, [initialRegistry, shareCode]);
 
   useEffect(() => {
     if (!shareCode || !hasSupabaseEnv) {
@@ -86,6 +168,7 @@ export function PublicRegistryPageClient({
 
       if (!typedRegistry) {
         setRegistryItems([]);
+        setShippingAddress(null);
         setLoading(false);
         return;
       }
@@ -104,6 +187,18 @@ export function PublicRegistryPageClient({
 
     void loadRegistry();
   }, [shareCode]);
+
+  useEffect(() => {
+    if (!shareCode) {
+      return;
+    }
+
+    persistPublicRegistryCache(shareCode, {
+      items: registryItems,
+      registry,
+      shippingAddress,
+    });
+  }, [registry, registryItems, shareCode, shippingAddress]);
 
   const selectedItems = useMemo<RegistryGiftSelection[]>(() => {
     return registryItems
@@ -212,9 +307,14 @@ export function PublicRegistryPageClient({
         <div className="container mx-auto flex h-14 items-center justify-between px-3 md:h-16 md:px-4">
           <Link href="/" className="flex min-w-0 items-center gap-2">
             <Baby className="h-7 w-7 flex-shrink-0 text-pink-500 md:h-8 md:w-8" />
-            <span className="truncate text-lg font-semibold text-gray-900 md:text-2xl">
-              Baby Registry
-            </span>
+            <div className="flex min-w-0 flex-col leading-tight">
+              <span className="truncate text-sm font-semibold text-gray-900 md:text-lg">
+                Nana&apos;s Baby
+              </span>
+              <span className="truncate text-xs text-gray-700 md:text-sm">
+                Registry
+              </span>
+            </div>
           </Link>
 
           <div className="flex shrink-0 items-center gap-2">
@@ -643,7 +743,7 @@ export function PublicRegistryPageClient({
           open={giftModalOpen}
           onClose={() => setGiftModalOpen(false)}
           registry={registry}
-          shippingAddress={initialShippingAddress}
+          shippingAddress={shippingAddress}
           selectedItems={selectedItems}
           paymentAmount={paymentAmount}
           onCheckoutComplete={() => {

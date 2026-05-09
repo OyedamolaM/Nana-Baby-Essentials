@@ -1,16 +1,21 @@
 "use client";
 
+import { ArrowRight } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { type StoreProduct } from "../../../lib/commerce";
 import { ProductCard } from "../ProductCard";
+import { Button } from "../ui/button";
 import { Tabs, TabsList, TabsTrigger } from "../ui/tabs";
 
 interface FeaturedCategoryTabsProps {
   products: StoreProduct[];
   onAddToCart: (product: StoreProduct, quantity?: number) => void;
+  onViewAll?: () => void;
   onViewProduct: (product: StoreProduct) => void;
   addLabel?: string;
+  categories?: string[];
+  sectionId?: string;
   sectionTitle?: string;
   sectionSubtitle?: string;
 }
@@ -18,8 +23,11 @@ interface FeaturedCategoryTabsProps {
 export function FeaturedCategoryTabs({
   products,
   onAddToCart,
+  onViewAll,
   onViewProduct,
   addLabel,
+  categories: initialCategories,
+  sectionId,
   sectionTitle = "Featured Categories",
   sectionSubtitle = "Browse featured products by category without leaving the page.",
 }: FeaturedCategoryTabsProps) {
@@ -33,8 +41,16 @@ export function FeaturedCategoryTabs({
   }, [products]);
 
   const categories = useMemo(() => {
-    return ["All", ...Array.from(new Set(featuredProducts.map((product) => product.category)))];
-  }, [featuredProducts]);
+    const labels = new Set<string>(
+      (initialCategories ?? []).filter((category) => category !== "All"),
+    );
+
+    for (const product of featuredProducts) {
+      labels.add(product.category);
+    }
+
+    return ["All", ...Array.from(labels)];
+  }, [featuredProducts, initialCategories]);
 
   const [activeCategory, setActiveCategory] = useState<string>(categories[0] ?? "All");
   const visibleCategory = categories.includes(activeCategory)
@@ -50,11 +66,24 @@ export function FeaturedCategoryTabs({
   }
 
   return (
-    <section className="bg-white py-20">
+    <section id={sectionId} className="section-spacing bg-white">
       <div className="container mx-auto px-4">
-        <div className="mb-10 text-center">
-          <h2 className="text-4xl font-bold text-gray-900">{sectionTitle}</h2>
-          <p className="mt-3 text-gray-600">{sectionSubtitle}</p>
+        <div className="mb-10 flex flex-col gap-4 text-center md:flex-row md:items-end md:justify-between md:text-left">
+          <div>
+            <h2 className="section-title">{sectionTitle}</h2>
+            <p className="mt-3 text-base leading-7 text-gray-600">{sectionSubtitle}</p>
+          </div>
+          {onViewAll ? (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={onViewAll}
+              className="hidden text-[14px] md:inline-flex md:px-8 md:text-lg"
+            >
+              View All Products
+              <ArrowRight className="h-4 w-4" />
+            </Button>
+          ) : null}
         </div>
 
         <div className="mb-6 overflow-x-auto pb-2">
@@ -64,7 +93,7 @@ export function FeaturedCategoryTabs({
                 <TabsTrigger
                   key={category}
                   value={category}
-                  className="cursor-pointer rounded-full px-4"
+                  className="cursor-pointer shrink-0 whitespace-nowrap rounded-full px-4"
                 >
                   {category}
                 </TabsTrigger>
@@ -84,6 +113,15 @@ export function FeaturedCategoryTabs({
             />
           ))}
         </div>
+
+        {onViewAll ? (
+          <div className="mt-8 text-center md:hidden">
+            <Button type="button" variant="outline" onClick={onViewAll} className="text-[14px]">
+              View All Products
+              <ArrowRight className="h-4 w-4" />
+            </Button>
+          </div>
+        ) : null}
       </div>
     </section>
   );

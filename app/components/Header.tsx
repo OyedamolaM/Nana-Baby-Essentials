@@ -68,10 +68,10 @@ export function Header({
             <Baby className="h-7 w-7 sm:h-8 sm:w-8 text-pink-500 shrink-0" />
 
             <div className="flex flex-col leading-tight">
-              <p className="text-sm sm:text-lg font-semibold text-gray-900 leading-tight">
+              <p className="text-sm font-semibold leading-tight text-gray-900 sm:text-lg">
                 Nana&apos;s Baby
               </p>
-              <p className="text-xs sm:text-sm text-gray-700 leading-tight">
+              <p className="text-xs leading-tight text-gray-700 sm:text-sm">
                 Essentials
               </p>
             </div>

@@ -13,6 +13,10 @@ import {
   type StoreProduct,
 } from "./commerce";
 import {
+  buildFilterCategoryOptions,
+  type ProductCategoryRecord,
+} from "./productCategories";
+import {
   mapRegistryItemRecord,
   type RegistryItem,
   type RegistryItemRecord,
@@ -39,6 +43,10 @@ type DealRow = HomeDealRecord & ProductJoinRow;
 type ProductCatalogSnapshot = {
   products: StoreProduct[];
   totalCount: number;
+};
+
+type ProductCategorySnapshot = {
+  categories: string[];
 };
 
 type RegistrySnapshot = {
@@ -212,6 +220,57 @@ const getProductCatalogPageCached = unstable_cache(
     } satisfies ProductCatalogSnapshot;
   },
   ["public-product-catalog-page"],
+  { revalidate: 300, tags: ["products"] },
+);
+
+const getProductCategoriesCached = unstable_cache(
+  async () => {
+    const fallbackCategories = buildFilterCategoryOptions({
+      includeProductCategories: SEED_PRODUCTS.map((product) => product.category),
+      records: [],
+    });
+
+    if (!hasSupabaseServerEnv) {
+      return {
+        categories: fallbackCategories,
+      } satisfies ProductCategorySnapshot;
+    }
+
+    const client = createSupabaseServerClient();
+    if (!client) {
+      return {
+        categories: fallbackCategories,
+      } satisfies ProductCategorySnapshot;
+    }
+
+    const [categoryResult, productResult] = await Promise.all([
+      client
+        .from("product_categories")
+        .select("*")
+        .order("sort_order", { ascending: true })
+        .order("created_at", { ascending: false }),
+      client.from("products").select("category").order("created_at", { ascending: false }),
+    ]);
+
+    const categoryRecords =
+      categoryResult.error?.code === "42P01"
+        ? []
+        : ((categoryResult.data ?? []) as ProductCategoryRecord[]);
+    const productCategories =
+      (productResult.error
+        ? []
+        : ((productResult.data ?? []) as Array<{ category?: string | null }>))
+        .map((product) => product.category?.trim() ?? "")
+        .filter(Boolean);
+
+    return {
+      categories: buildFilterCategoryOptions({
+        includeProductCategories: productCategories,
+        records: categoryRecords,
+      }),
+    } satisfies ProductCategorySnapshot;
+  },
+  ["public-product-categories"],
   { revalidate: 300, tags: ["products"] },
 );
 
@@ -467,6 +526,11 @@ export async function getPublicProductCatalogPage(options?: {
 
 export async function getHomepageDeals() {
   return getHomepageDealsCached();
+}
+
+export async function getPublicProductCategories() {
+  const snapshot = await getProductCategoriesCached();
+  return snapshot.categories;
 }
 
 export async function getPublishedBlogPosts() {

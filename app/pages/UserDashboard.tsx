@@ -7,6 +7,7 @@ import { Gift, Lock, MapPin, Package, Pencil, Share2, Trash2, User } from "lucid
 import { toast } from "sonner";
 import { formatNairaAmount } from "../../lib/commerce";
 import {
+  buildRegistryDashboardPath,
   buildRegistryPaymentActivities,
   getRegistryItemFundedAmount,
   getRegistryItemRemainingAmount,
@@ -58,6 +59,7 @@ type UserOrder = {
 };
 
 type UserProfile = {
+  campaign_opt_out?: boolean | null;
   full_name?: string | null;
   phone?: string | null;
   shipping_address?: {
@@ -82,6 +84,7 @@ type RegistryRecord = {
 };
 
 type DashboardCacheEntry = {
+  campaignOptOut: boolean;
   fullName: string;
   orders: UserOrder[];
   phone: string;
@@ -162,7 +165,7 @@ function formatBabyGender(value?: string | null) {
   }
 
   if (value === "neutral") {
-    return "Surprise / Neutral";
+    return "Surprise";
   }
 
   return value.charAt(0).toUpperCase() + value.slice(1);
@@ -227,6 +230,7 @@ export function UserDashboard({
 
   const [fullName, setFullName] = useState(cachedEntry?.fullName ?? "");
   const [phone, setPhone] = useState(cachedEntry?.phone ?? "");
+  const [campaignOptOut, setCampaignOptOut] = useState(cachedEntry?.campaignOptOut ?? false);
 
   const [shippingAddress, setShippingAddress] = useState(cachedEntry?.shippingAddress ?? "");
   const [shippingCity, setShippingCity] = useState(cachedEntry?.shippingCity ?? "");
@@ -241,6 +245,7 @@ export function UserDashboard({
   const [closingRegistryNote, setClosingRegistryNote] = useState("");
   const [profileEditOpen, setProfileEditOpen] = useState(false);
   const [savingRegistryStatus, setSavingRegistryStatus] = useState(false);
+  const [savingCampaignPreference, setSavingCampaignPreference] = useState(false);
 
   useEffect(() => {
     if (!cachedEntry) {
@@ -255,6 +260,7 @@ export function UserDashboard({
       setRegistryPaymentActivities(cachedEntry.registryPaymentActivities);
       setFullName(cachedEntry.fullName);
       setPhone(cachedEntry.phone);
+      setCampaignOptOut(cachedEntry.campaignOptOut);
       setShippingAddress(cachedEntry.shippingAddress);
       setShippingCity(cachedEntry.shippingCity);
       setShippingState(cachedEntry.shippingState);
@@ -306,6 +312,7 @@ export function UserDashboard({
     if (typedProfile) {
       setFullName(typedProfile.full_name ?? "");
       setPhone(typedProfile.phone ?? "");
+      setCampaignOptOut(Boolean(typedProfile.campaign_opt_out));
       if (typedProfile.shipping_address) {
         setShippingAddress(typedProfile.shipping_address.address ?? "");
         setShippingCity(typedProfile.shipping_address.city ?? "");
@@ -409,6 +416,7 @@ export function UserDashboard({
     setRegistrySummaries(registrySummaryMap);
     setRegistryPaymentActivities(registryPaymentsMap);
     persistDashboardCacheEntry(user.id, {
+      campaignOptOut: Boolean(typedProfile?.campaign_opt_out),
       fullName: typedProfile?.full_name ?? "",
       orders: (ordersData as UserOrder[] | null) ?? [],
       phone: typedProfile?.phone ?? "",
@@ -488,6 +496,29 @@ export function UserDashboard({
       toast.success("Address updated successfully.");
       await loadUserData();
     }
+  };
+
+  const handleToggleCampaignEmails = async (nextOptOut: boolean) => {
+    setSavingCampaignPreference(true);
+
+    const { error } = await updateProfile({
+      campaign_opt_out: nextOptOut,
+    });
+
+    setSavingCampaignPreference(false);
+
+    if (error) {
+      toast.error("Could not update your campaign email preference.");
+      return;
+    }
+
+    setCampaignOptOut(nextOptOut);
+    toast.success(
+      nextOptOut
+        ? "You will no longer receive customer campaigns."
+        : "Customer campaigns are turned back on for your account.",
+    );
+    await loadUserData();
   };
 
   const handleChangePassword = async (event: React.FormEvent) => {
@@ -809,14 +840,14 @@ export function UserDashboard({
 
           <TabsContent value="registries">
             <Card>
-              <CardHeader className="flex flex-row items-center justify-between">
+              <CardHeader className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                 <div>
                   <CardTitle>My Registries</CardTitle>
                   <p className="mt-1 text-sm text-gray-500">
                     Open each registry detail page to review funded items and payment history.
                   </p>
                 </div>
-                <div className="flex flex-wrap gap-2">
+                <div className="flex w-full flex-col gap-2 sm:flex-row lg:w-auto">
                   <Button asChild variant="outline">
                     <Link href="/registry">Browse Registry Catalog</Link>
                   </Button>
@@ -848,7 +879,7 @@ export function UserDashboard({
 
                       return (
                         <div key={registry.id} className="rounded-lg border p-4">
-                          <div className="mb-2 flex items-start justify-between gap-4">
+                          <div className="mb-2 flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
                             <div>
                               <p className="text-lg font-semibold">
                                 {registry.name}
@@ -887,7 +918,7 @@ export function UserDashboard({
                                 </div>
                               </div>
                             </div>
-                            <div className="flex flex-col gap-2">
+                            <div className="flex w-full flex-col gap-2 sm:flex-row xl:w-auto">
                               <Button
                                 variant="outline"
                                 size="sm"
@@ -897,7 +928,7 @@ export function UserDashboard({
                                 Share
                               </Button>
                               <Button asChild size="sm">
-                                <Link href={`/dashboard/registries/${registry.id}`}>
+                                <Link href={buildRegistryDashboardPath(registry)}>
                                   Open Registry
                                 </Link>
                               </Button>
@@ -1016,7 +1047,7 @@ export function UserDashboard({
 
                           <div className="mt-4 flex flex-wrap gap-2">
                             <Button asChild variant="outline" size="sm">
-                              <Link href={`/dashboard/registries/${registry.id}`}>
+                              <Link href={buildRegistryDashboardPath(registry)}>
                                 <Pencil className="mr-2 h-4 w-4" />
                                 Manage Registry
                               </Link>
@@ -1172,6 +1203,40 @@ export function UserDashboard({
           <TabsContent value="security">
             <Card className="mb-4">
               <CardHeader>
+                <CardTitle>Campaign Emails</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <p className="text-sm text-gray-600">
+                  Customer campaigns are different from newsletters. You can opt out here, or use the unsubscribe link at the bottom of any campaign email.
+                </p>
+                <div className="flex flex-col gap-3 rounded-xl border px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="font-medium text-gray-900">
+                      {campaignOptOut ? "Campaign emails turned off" : "Campaign emails turned on"}
+                    </p>
+                    <p className="text-sm text-gray-500">
+                      {campaignOptOut
+                        ? "You will stop receiving promotional customer campaigns until you turn them back on."
+                        : "You can still receive order emails. This only controls promotional customer campaigns."}
+                    </p>
+                  </div>
+                  <Button
+                    variant={campaignOptOut ? "default" : "outline"}
+                    disabled={savingCampaignPreference}
+                    onClick={() => void handleToggleCampaignEmails(!campaignOptOut)}
+                  >
+                    {savingCampaignPreference
+                      ? "Saving..."
+                      : campaignOptOut
+                        ? "Turn Campaigns Back On"
+                        : "Opt Out of Campaigns"}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="mb-4">
+              <CardHeader>
                 <CardTitle>Change Password</CardTitle>
               </CardHeader>
               <CardContent>
@@ -1236,9 +1301,9 @@ export function UserDashboard({
       <RegistryCreateModal
         open={registryCreateOpen}
         onOpenChange={setRegistryCreateOpen}
-        onCreated={(registryId) => {
+        onCreated={(registry) => {
           void loadUserData();
-          router.push(`/dashboard/registries/${registryId}`);
+          router.push(registry.dashboardPath);
         }}
       />
 

@@ -4,26 +4,35 @@ import { Button } from "./ui/button";
 
 interface HeroProps {
   onCreateRegistry: () => void;
+  onShopNow: () => void;
 }
 
-export function Hero({ onCreateRegistry }: HeroProps) {
+export function Hero({ onCreateRegistry, onShopNow }: HeroProps) {
   return (
     <section className="relative overflow-hidden bg-gradient-to-br from-pink-100 via-purple-50 to-blue-100 py-20 lg:py-32">
       <div className="container mx-auto px-4">
         <div className="grid items-center gap-12 lg:grid-cols-2">
           <div className="space-y-6">
-            <h1 className="text-5xl font-bold leading-tight text-gray-900 lg:text-6xl">
+            <h1 className="max-w-2xl text-5xl font-bold leading-tight text-gray-900 lg:text-6xl">
               Everything Your
               <span className="text-pink-600"> Little One </span>
               Deserves
             </h1>
-            <p className="text-xl leading-relaxed text-gray-600">
+            <p className="max-w-2xl text-xl leading-relaxed text-gray-600">
               Premium baby products curated with love and care. From adorable clothing to educational toys, we&apos;ve got everything to make parenting easier and more joyful.
             </p>
             <div className="flex flex-wrap gap-4">
               <Button
                 size="lg"
-                className="px-8 text-lg"
+                variant="outline"
+                className="px-6 text-[14px] md:px-8 md:text-lg"
+                onClick={onShopNow}
+              >
+                Shop Now
+              </Button>
+              <Button
+                size="lg"
+                className="px-6 text-[14px] md:px-8 md:text-lg"
                 onClick={onCreateRegistry}
               >
                 Create New Registry

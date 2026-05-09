@@ -22,6 +22,7 @@ import {
   getRegistryItemRemainingAmount,
   getRemainingRegistryQuantity,
   mapRegistryItemRecord,
+  resolveRegistryDashboardLookup,
   summarizeRegistryItems,
   type RegistryContributionRecord,
   type RegistryItem,
@@ -172,18 +173,21 @@ export function RegistryDetailClient({ registryId }: { registryId: string }) {
       setLoading(true);
     }
 
+    const lookup = resolveRegistryDashboardLookup(registryId);
+    const registryLookupQuery = supabase
+      .from("registries")
+      .select("*")
+      .eq("user_id", user.id);
+
     const [{ data: registriesData }, { data: registryData }] = await Promise.all([
       supabase
         .from("registries")
         .select("*")
         .eq("user_id", user.id)
         .order("created_at", { ascending: false }),
-      supabase
-        .from("registries")
-        .select("*")
-        .eq("id", registryId)
-        .eq("user_id", user.id)
-        .maybeSingle(),
+      lookup.field === "id"
+        ? registryLookupQuery.eq("id", lookup.value).maybeSingle()
+        : registryLookupQuery.eq("share_code", lookup.value).maybeSingle(),
     ]);
 
     const typedUserRegistries = (registriesData as RegistryRecord[] | null) ?? [];
@@ -664,23 +668,35 @@ export function RegistryDetailClient({ registryId }: { registryId: string }) {
                 </div>
               </div>
 
-              <div className="flex flex-wrap gap-2">
-                <Button variant="outline" onClick={handleShareRegistry}>
+              <div className="grid grid-cols-2 gap-2 md:flex md:flex-nowrap md:justify-end">
+                <Button
+                  variant="outline"
+                  className="w-full md:w-auto"
+                  onClick={handleShareRegistry}
+                >
                   <Share2 className="mr-2 h-4 w-4" />
                   Share Registry
                 </Button>
-                <Button variant="outline" onClick={handleDownloadChecklist}>
-                  <Download className="mr-2 h-4 w-4" />
-                  Download Checklist
-                </Button>
-                <Button variant="outline" onClick={() => router.push("/registry")}>
+                <Button
+                  variant="outline"
+                  className="w-full md:w-auto"
+                  onClick={() => router.push("/registry")}
+                >
                   <Gift className="mr-2 h-4 w-4" />
                   Add Registry Items
+                </Button>
+                <Button
+                  variant="outline"
+                  className="col-span-2 w-full md:col-span-1 md:w-auto"
+                  onClick={handleDownloadChecklist}
+                >
+                  <Download className="mr-2 h-4 w-4" />
+                  Download Checklist
                 </Button>
               </div>
             </div>
 
-            <div className="grid gap-4 md:grid-cols-4">
+            <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
               <Card>
                 <CardContent className="p-5">
                   <p className="text-xs uppercase tracking-[0.18em] text-gray-500">Requested</p>
@@ -858,10 +874,10 @@ export function RegistryDetailClient({ registryId }: { registryId: string }) {
       <RegistryCreateModal
         open={registryCreateOpen}
         onOpenChange={setRegistryCreateOpen}
-        onCreated={async (createdRegistryId) => {
+        onCreated={async (registry) => {
           setRegistryCartItems(readRegistryCart());
           await loadRegistry();
-          router.push(`/dashboard/registries/${createdRegistryId}`);
+          router.push(registry.dashboardPath);
         }}
       />
 

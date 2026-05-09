@@ -1,8 +1,9 @@
 import { formatNairaAmount } from "./commerce";
 
-type NewsletterTemplateOptions = {
+type BroadcastTemplateOptions = {
   body: string;
   subject: string;
+  unsubscribeUrl?: string;
 };
 
 type RegistryCreatedEmailOptions = {
@@ -121,7 +122,7 @@ function formatBabyGender(value?: string | null) {
     return "Girl";
   }
 
-  return "Surprise / Neutral";
+  return "Surprise";
 }
 
 function formatShippingTier(value?: string | null) {
@@ -232,7 +233,7 @@ function renderOrderItems(items: StoreOrderItem[]) {
 export function renderNewsletterHtml({
   subject,
   body,
-}: NewsletterTemplateOptions) {
+}: BroadcastTemplateOptions) {
   return renderEmailShell({
     bodyHtml: renderParagraphs(body),
     eyebrow: "Nana's Baby Essentials",
@@ -246,8 +247,43 @@ export function renderNewsletterHtml({
 export function renderNewsletterText({
   subject,
   body,
-}: NewsletterTemplateOptions) {
+}: BroadcastTemplateOptions) {
   return `${subject}\n\n${body.trim()}\n\nSent by Nana's Baby Essentials.`;
+}
+
+export function renderCustomerCampaignHtml({
+  subject,
+  body,
+  unsubscribeUrl,
+}: BroadcastTemplateOptions) {
+  const unsubscribeHtml = unsubscribeUrl
+    ? `<p style="margin:24px 0 0;font-size:13px;line-height:1.7;color:#64748b;">
+        If you no longer want these campaign emails, you can
+        <a href="${escapeHtml(unsubscribeUrl)}" style="color:#db2777;text-decoration:none;">unsubscribe here</a>.
+      </p>`
+    : "";
+
+  return renderEmailShell({
+    bodyHtml: `${renderParagraphs(body)}${unsubscribeHtml}`,
+    eyebrow: "Customer Campaign",
+    footerText:
+      "Sent to Nana's Baby Essentials customers. You can also manage campaign preferences from your dashboard when signed in.",
+    subtitle:
+      "Store-wide announcements, special launches, and important updates for every customer account.",
+    title: subject,
+  });
+}
+
+export function renderCustomerCampaignText({
+  subject,
+  body,
+  unsubscribeUrl,
+}: BroadcastTemplateOptions) {
+  return `${subject}\n\n${body.trim()}${
+    unsubscribeUrl
+      ? `\n\nUnsubscribe from campaign emails: ${unsubscribeUrl}`
+      : ""
+  }\n\nSent to Nana's Baby Essentials customers.`;
 }
 
 export function renderRegistryCreatedEmail({

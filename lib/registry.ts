@@ -5,6 +5,7 @@ import {
   type ProductRecord,
   type StoreProduct,
 } from "./commerce";
+import { createSlug } from "./content";
 
 export interface RegistryRecord {
   id: string;
@@ -112,6 +113,39 @@ export interface RegistryPaymentActivity {
   status: string;
   totalAmount: number;
   type: "item" | "cash";
+}
+
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+export function buildRegistryDashboardPath(registry: {
+  id?: string | null;
+  name?: string | null;
+  share_code?: string | null;
+}) {
+  const shareCode = registry.share_code?.trim() || registry.id?.trim() || "registry";
+  const slug = createSlug(registry.name?.trim() || "registry");
+  const readableSegment = slug ? `${slug}-${shareCode}` : shareCode;
+
+  return `/dashboard/registries/${readableSegment}`;
+}
+
+export function resolveRegistryDashboardLookup(routeParam: string) {
+  const normalized = routeParam.trim();
+
+  if (UUID_PATTERN.test(normalized)) {
+    return {
+      field: "id" as const,
+      value: normalized,
+    };
+  }
+
+  const shareCodeMatch = normalized.match(/-([A-Za-z0-9]{6,20})$/);
+
+  return {
+    field: "share_code" as const,
+    value: (shareCodeMatch?.[1] ?? normalized).toUpperCase(),
+  };
 }
 
 export function mapRegistryItemRecord(record: RegistryItemRecord): RegistryItem {
@@ -318,7 +352,7 @@ export function formatBabyGender(value?: string | null) {
   }
 
   if (value === "neutral") {
-    return "Surprise / Neutral";
+    return "Surprise";
   }
 
   return value.charAt(0).toUpperCase() + value.slice(1);

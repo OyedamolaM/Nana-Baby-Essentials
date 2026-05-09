@@ -27,13 +27,19 @@ import {
 import { Textarea } from "../ui/textarea";
 import { useAuth } from "../../contexts/AuthContext";
 import { hasSupabaseEnv, supabase } from "../../lib/supabase";
+import { buildRegistryDashboardPath } from "../../../lib/registry";
 
 function generateShareCode() {
   return Math.random().toString(36).slice(2, 10).toUpperCase();
 }
 
 interface RegistryCreateModalProps {
-  onCreated?: (registryId: string) => void;
+  onCreated?: (registry: {
+    dashboardPath: string;
+    id: string;
+    name: string;
+    shareCode: string;
+  }) => void;
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
@@ -103,7 +109,7 @@ export function RegistryCreateModal({
           additional_info: additionalInfo,
           share_code: shareCode,
         })
-        .select("id")
+        .select("id, name, share_code")
         .single();
 
       if (error || !registry) {
@@ -144,7 +150,12 @@ export function RegistryCreateModal({
       toast.success("Your registry is ready.");
       resetForm();
       onOpenChange(false);
-      onCreated?.(registry.id);
+      onCreated?.({
+        dashboardPath: buildRegistryDashboardPath(registry),
+        id: registry.id,
+        name: registry.name,
+        shareCode: registry.share_code,
+      });
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Failed to create registry.";
@@ -232,7 +243,7 @@ export function RegistryCreateModal({
                 <SelectContent>
                   <SelectItem value="male">Boy</SelectItem>
                   <SelectItem value="female">Girl</SelectItem>
-                  <SelectItem value="neutral">Surprise / Neutral</SelectItem>
+                  <SelectItem value="neutral">Surprise</SelectItem>
                 </SelectContent>
               </Select>
             </div>

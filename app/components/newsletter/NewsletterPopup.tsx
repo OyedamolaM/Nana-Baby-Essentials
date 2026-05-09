@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { usePathname } from "next/navigation";
 import { toast } from "sonner";
 
+import { useCookieConsent } from "../cookies/CookieConsentManager";
 import { Button } from "../ui/button";
 import {
   Dialog,
@@ -37,6 +38,7 @@ function isSuppressed() {
 
 export function NewsletterPopup() {
   const pathname = usePathname();
+  const { consent } = useCookieConsent();
   const [open, setOpen] = useState(false);
   const [email, setEmail] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -48,7 +50,8 @@ export function NewsletterPopup() {
       pathname.startsWith("/complete-profile")
     );
   }, [pathname]);
-  const canShowPopup = isPublicRoute && !isSuppressed();
+  const canShowPopup =
+    consent === "accepted" && isPublicRoute && !isSuppressed();
 
   useEffect(() => {
     if (!canShowPopup) {

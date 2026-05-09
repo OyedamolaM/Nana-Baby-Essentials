@@ -78,6 +78,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const syncUserProfile = useCallback(async (nextUser: User) => {
     const profilePayload: {
+      campaign_opt_out?: boolean;
       id: string;
       email: string;
       full_name?: string;

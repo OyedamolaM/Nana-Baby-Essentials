@@ -19,6 +19,43 @@ type SendNewsletterPayload = {
   body?: string;
 };
 
+async function recordCampaign(args: {
+  adminClient: NonNullable<ReturnType<typeof createSupabaseServerClient>>;
+  body: string;
+  campaignType: "newsletter" | "customer";
+  createdBy: string;
+  recipientCount: number;
+  sentAt?: string;
+  status: "failed" | "sent";
+  subject: string;
+}) {
+  const payload = {
+    body: args.body,
+    campaign_type: args.campaignType,
+    created_by: args.createdBy,
+    recipient_count: args.recipientCount,
+    sent_at: args.sentAt ?? null,
+    status: args.status,
+    subject: args.subject,
+  };
+
+  const { error } = await args.adminClient.from("newsletter_campaigns").insert(payload);
+  if (!error) {
+    return;
+  }
+
+  if (error.code === "42703") {
+    await args.adminClient.from("newsletter_campaigns").insert({
+      body: args.body,
+      created_by: args.createdBy,
+      recipient_count: args.recipientCount,
+      sent_at: args.sentAt ?? null,
+      status: args.status,
+      subject: args.subject,
+    });
+  }
+}
+
 function getBearerToken(request: Request) {
   const authHeader = request.headers.get("authorization") ?? "";
 
@@ -141,12 +178,14 @@ export async function POST(request: Request) {
   } catch (error) {
     console.error("Failed to send newsletter email.", error);
 
-    await adminClient.from("newsletter_campaigns").insert({
-      subject,
+    await recordCampaign({
+      adminClient,
       body,
+      campaignType: "newsletter",
+      createdBy: user.id,
+      recipientCount: sentRecipients.length,
       status: "failed",
-      recipient_count: sentRecipients.length,
-      created_by: user.id,
+      subject,
     });
 
     if (sentRecipients.length > 0) {
@@ -171,13 +210,15 @@ export async function POST(request: Request) {
 
   const sentAt = new Date().toISOString();
 
-  await adminClient.from("newsletter_campaigns").insert({
-    subject,
+  await recordCampaign({
+    adminClient,
     body,
+    campaignType: "newsletter",
+    createdBy: user.id,
+    recipientCount: sentRecipients.length,
+    sentAt,
     status: "sent",
-    recipient_count: sentRecipients.length,
-    sent_at: sentAt,
-    created_by: user.id,
+    subject,
   });
 
   await adminClient

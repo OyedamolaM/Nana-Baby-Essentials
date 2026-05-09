@@ -1,5 +1,8 @@
 import { ProductsPage } from "../pages/ProductsPage";
-import { getPublicProductCatalogPage } from "../../lib/publicData";
+import {
+  getPublicProductCatalogPage,
+  getPublicProductCategories,
+} from "../../lib/publicData";
 import { buildPageMetadata } from "../../lib/site";
 
 export const metadata = buildPageMetadata({
@@ -10,13 +13,22 @@ export const metadata = buildPageMetadata({
 });
 
 export default async function ProductsRoute() {
-  const { products, totalCount } = await getPublicProductCatalogPage({
-    page: 1,
-    pageSize: 16,
-    onlyInStock: false,
-    selectedCategory: "All",
-    searchQuery: "",
-  });
+  const [{ products, totalCount }, initialCategories] = await Promise.all([
+    getPublicProductCatalogPage({
+      page: 1,
+      pageSize: 16,
+      onlyInStock: false,
+      selectedCategory: "All",
+      searchQuery: "",
+    }),
+    getPublicProductCategories(),
+  ]);
 
-  return <ProductsPage initialProducts={products} initialTotalCount={totalCount} />;
+  return (
+    <ProductsPage
+      initialCategories={initialCategories}
+      initialProducts={products}
+      initialTotalCount={totalCount}
+    />
+  );
 }

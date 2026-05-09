@@ -76,8 +76,11 @@ export function RegistryCartModal({
         onOpenChange(nextOpen);
       }}
     >
-      <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-xl">
-        <SheetHeader>
+      <SheetContent
+        side="right"
+        className="flex h-full w-full flex-col overflow-hidden px-0 sm:max-w-xl"
+      >
+        <SheetHeader className="border-b px-5 pb-4 pt-6 sm:px-6">
           <SheetTitle>Registry Cart</SheetTitle>
           <SheetDescription>
             Review the items you want to add, then save them to your registry without
@@ -85,7 +88,7 @@ export function RegistryCartModal({
           </SheetDescription>
         </SheetHeader>
 
-        <div className="space-y-4 px-4 pb-4">
+        <div className="flex-1 space-y-4 overflow-y-auto px-5 py-5 sm:px-6">
           {items.length === 0 ? (
             <div className="rounded-2xl border border-dashed p-6 text-sm text-gray-500">
               Your registry cart is empty.
@@ -144,63 +147,66 @@ export function RegistryCartModal({
           )}
         </div>
 
-        <div className="rounded-2xl bg-gray-50 p-4 text-sm text-gray-600">
-          {totalItems} item{totalItems === 1 ? "" : "s"} ready for your registry.
-        </div>
-
-        {!isAuthenticated ? (
-          <Button type="button" className="w-full" onClick={onRequireAuth}>
-            Sign In to Continue
-          </Button>
-        ) : (
-          <div className="space-y-4">
-            {hasRegistries ? (
-              <div className="space-y-2">
-                <Label htmlFor="existing-registry">Add to Registry</Label>
-                <div className="flex flex-col gap-3 sm:flex-row">
-                  {registries.length > 1 ? (
-                    <Select value={selectedRegistryId} onValueChange={setSelectedRegistryId}>
-                      <SelectTrigger id="existing-registry" className="sm:flex-1">
-                        <SelectValue placeholder="Choose a registry" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {registries.map((registry) => (
-                          <SelectItem key={registry.id} value={registry.id}>
-                            {registry.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  ) : (
-                    <div className="rounded-md border px-3 py-2 text-sm text-gray-700 sm:flex-1">
-                      {registries[0]?.name}
-                    </div>
-                  )}
-                  <Button
-                    type="button"
-                    onClick={() => onAddToExisting(resolvedRegistryId)}
-                    disabled={!resolvedRegistryId || items.length === 0}
-                  >
-                    Add to Registry
-                  </Button>
-                </div>
-              </div>
-            ) : (
-              <Button
-                type="button"
-                className="w-full"
-                onClick={onCreateNew}
-                disabled={items.length === 0}
-              >
-                Create New Registry
-              </Button>
-            )}
+        <div className="space-y-4 border-t bg-white px-5 py-5 sm:px-6">
+          <div className="rounded-2xl bg-gray-50 p-4 text-sm text-gray-600">
+            {totalItems} item{totalItems === 1 ? "" : "s"} ready for your registry.
           </div>
-        )}
 
-        <Button type="button" variant="ghost" onClick={onClose}>
-          Close
-        </Button>
+          {!isAuthenticated ? (
+            <Button type="button" className="w-full" onClick={onRequireAuth}>
+              Sign In to Continue
+            </Button>
+          ) : (
+            <div className="space-y-4">
+              {hasRegistries ? (
+                <div className="space-y-2">
+                  <Label htmlFor="existing-registry">Add to Registry</Label>
+                  <div className="flex flex-col gap-3">
+                    {registries.length > 1 ? (
+                      <Select value={selectedRegistryId} onValueChange={setSelectedRegistryId}>
+                        <SelectTrigger id="existing-registry" className="w-full">
+                          <SelectValue placeholder="Choose a registry" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {registries.map((registry) => (
+                            <SelectItem key={registry.id} value={registry.id}>
+                              {registry.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <div className="rounded-md border px-3 py-2 text-sm text-gray-700">
+                        {registries[0]?.name}
+                      </div>
+                    )}
+                    <Button
+                      type="button"
+                      className="w-full"
+                      onClick={() => onAddToExisting(resolvedRegistryId)}
+                      disabled={!resolvedRegistryId || items.length === 0}
+                    >
+                      Add to Registry
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <Button
+                  type="button"
+                  className="w-full"
+                  onClick={onCreateNew}
+                  disabled={items.length === 0}
+                >
+                  Create New Registry
+                </Button>
+              )}
+            </div>
+          )}
+
+          <Button type="button" variant="ghost" className="w-full" onClick={onClose}>
+            Close
+          </Button>
+        </div>
       </SheetContent>
     </Sheet>
   );

@@ -16,6 +16,7 @@ import {
   type RegistryCartItem,
 } from "../../lib/registryCart";
 import {
+  buildRegistryDashboardPath,
   formatBabyGender,
   formatDueMonth,
   type RegistryRecord,
@@ -47,6 +48,55 @@ import { usePaginatedProducts } from "../hooks/usePaginatedProducts";
 
 type AuthTab = "login" | "signup";
 
+type RegistryLandingCacheEntry = {
+  registries: RegistryRecord[];
+};
+
+const REGISTRY_LANDING_CACHE_STORAGE_PREFIX = "nbe:registry-landing:";
+const registryLandingCache = new Map<string, RegistryLandingCacheEntry>();
+
+function getRegistryLandingCacheKey(userId: string) {
+  return `${REGISTRY_LANDING_CACHE_STORAGE_PREFIX}${userId}`;
+}
+
+function readRegistryLandingCache(userId: string) {
+  if (typeof window === "undefined") {
+    return undefined;
+  }
+
+  const memoryEntry = registryLandingCache.get(userId);
+  if (memoryEntry) {
+    return memoryEntry;
+  }
+
+  try {
+    const rawValue = window.sessionStorage.getItem(getRegistryLandingCacheKey(userId));
+    if (!rawValue) {
+      return undefined;
+    }
+
+    const parsed = JSON.parse(rawValue) as RegistryLandingCacheEntry;
+    registryLandingCache.set(userId, parsed);
+    return parsed;
+  } catch {
+    return undefined;
+  }
+}
+
+function persistRegistryLandingCache(userId: string, entry: RegistryLandingCacheEntry) {
+  registryLandingCache.set(userId, entry);
+
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  try {
+    window.sessionStorage.setItem(getRegistryLandingCacheKey(userId), JSON.stringify(entry));
+  } catch {
+    // Ignore storage failures and keep the in-memory cache.
+  }
+}
+
 function buildPagination(currentPage: number, totalPages: number) {
   if (totalPages <= 5) {
     return Array.from({ length: totalPages }, (_, index) => index + 1);
@@ -64,11 +114,13 @@ function buildPagination(currentPage: number, totalPages: number) {
 }
 
 interface RegistryLandingPageProps {
+  initialCategories?: string[];
   initialProducts?: StoreProduct[];
   initialTotalCount?: number;
 }
 
 export function RegistryLandingPage({
+  initialCategories,
   initialProducts,
   initialTotalCount,
 }: RegistryLandingPageProps) {
@@ -130,6 +182,11 @@ export function RegistryLandingPage({
         return;
       }
 
+      const cachedEntry = readRegistryLandingCache(user.id);
+      if (cachedEntry && !cancelled) {
+        setMyRegistries(cachedEntry.registries);
+      }
+
       const { data } = await supabase
         .from("registries")
         .select("*")
@@ -137,7 +194,11 @@ export function RegistryLandingPage({
         .order("created_at", { ascending: false });
 
       if (!cancelled) {
-        setMyRegistries((data as RegistryRecord[] | null) ?? []);
+        const nextRegistries = (data as RegistryRecord[] | null) ?? [];
+        setMyRegistries(nextRegistries);
+        persistRegistryLandingCache(user.id, {
+          registries: nextRegistries,
+        });
       }
     };
 
@@ -250,7 +311,7 @@ export function RegistryLandingPage({
     setRegistryCartItems([]);
     setRegistryCartOpen(false);
     toast.success("Registry items added successfully.");
-    router.push(`/dashboard/registries/${registryId}`);
+    router.push(buildRegistryDashboardPath(targetRegistry));
   };
 
   const handleCreateNewRegistry = () => {
@@ -343,18 +404,22 @@ export function RegistryLandingPage({
       />
 
       <main>
-        <section className="bg-gradient-to-br from-pink-50 via-white to-blue-50 py-20">
+        <section className="bg-gradient-to-br from-pink-50 via-white to-blue-50 py-16 md:py-20">
           <div className="container mx-auto px-4">
             <div className="mx-auto max-w-4xl text-center">
-              <h1 className="text-5xl font-bold leading-tight text-gray-900 md:text-6xl">
+              <h1 className="text-3xl font-bold leading-tight text-gray-900 md:text-5xl">
                 Create a Baby Registry That Loved Ones Can Shop From Anywhere
               </h1>
-              <p className="mt-6 text-lg leading-relaxed text-gray-600 md:text-xl">
+              <p className="mx-auto mt-4 max-w-3xl text-base leading-relaxed text-gray-600 md:mt-6 md:text-lg">
                 Start your registry, then add the baby products you really want and share one
                 simple public link.
               </p>
               <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
-                <Button size="lg" onClick={handleCreateNewRegistry} className="px-8 text-lg">
+                <Button
+                  size="lg"
+                  onClick={handleCreateNewRegistry}
+                  className="px-6 text-[14px] md:px-8 md:text-lg"
+                >
                   <Gift className="mr-2 h-5 w-5" />
                   Create New Registry
                 </Button>
@@ -400,13 +465,15 @@ export function RegistryLandingPage({
                 </div>
                 <div className="flex flex-wrap gap-2">
                   {latestRegistry ? (
-                    <Button asChild variant="outline">
-                      <Link href={`/dashboard/registries/${latestRegistry.id}`}>
+                    <Button asChild variant="outline" className="w-full sm:w-auto">
+                      <Link href="/dashboard/registries">
                         Open Existing Registry
                       </Link>
                     </Button>
                   ) : null}
-                  <Button onClick={handleCreateNewRegistry}>Create New Registry</Button>
+                  <Button onClick={handleCreateNewRegistry} className="w-full sm:w-auto">
+                    Create New Registry
+                  </Button>
                 </div>
               </div>
 
@@ -434,13 +501,17 @@ export function RegistryLandingPage({
                           <p>Baby Gender: {formatBabyGender(registry.baby_gender)}</p>
                         </div>
 
-                        <div className="flex flex-wrap gap-2">
-                          <Button asChild>
-                            <Link href={`/dashboard/registries/${registry.id}`}>
+                        <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
+                          <Button className="w-full sm:w-auto" asChild>
+                            <Link href={buildRegistryDashboardPath(registry)}>
                               Open Existing Registry
                             </Link>
                           </Button>
-                          <Button variant="outline" onClick={() => handleShareRegistry(registry)}>
+                          <Button
+                            variant="outline"
+                            className="w-full sm:w-auto"
+                            onClick={() => handleShareRegistry(registry)}
+                          >
                             <Share2 className="mr-2 h-4 w-4" />
                             Share Registry
                           </Button>
@@ -497,7 +568,7 @@ export function RegistryLandingPage({
             </div>
 
             <CategoryFilter
-              categories={[...CATEGORIES]}
+              categories={initialCategories?.length ? initialCategories : [...CATEGORIES]}
               selectedCategory={selectedCategory}
               onSelectCategory={setSelectedCategory}
             />
@@ -618,17 +689,23 @@ export function RegistryLandingPage({
       <RegistryCreateModal
         open={registryCreateOpen}
         onOpenChange={setRegistryCreateOpen}
-        onCreated={(registryId) => {
+        onCreated={(registry) => {
           void supabase
             .from("registries")
             .select("*")
             .eq("user_id", user?.id ?? "")
             .order("created_at", { ascending: false })
             .then(({ data }) => {
-              setMyRegistries((data as RegistryRecord[] | null) ?? []);
+              const nextRegistries = (data as RegistryRecord[] | null) ?? [];
+              setMyRegistries(nextRegistries);
+              if (user?.id) {
+                persistRegistryLandingCache(user.id, {
+                  registries: nextRegistries,
+                });
+              }
             });
           setRegistryCartItems(readRegistryCart());
-          router.push(`/dashboard/registries/${registryId}`);
+          router.push(registry.dashboardPath);
         }}
       />
 

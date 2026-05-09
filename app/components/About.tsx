@@ -33,7 +33,7 @@ export function About() {
               Your Trusted Partner in Parenting
             </h2>
             <p className="text-lg text-gray-600 mb-6 leading-relaxed">
-              At Baby Bliss, we understand that every parent wants the best for their little one. That&apos;s why we&apos;ve carefully selected premium baby products that combine safety, comfort, and style.
+              At Nana&apos;s Baby Essentials, we understand that every parent wants the best for their little one. That&apos;s why we&apos;ve carefully selected premium baby products that combine safety, comfort, and style.
             </p>
             <p className="text-lg text-gray-600 mb-8 leading-relaxed">
               From the first onesie to their favorite teddy bear, we&apos;re here to make your parenting journey easier and more joyful. Our commitment to quality and customer satisfaction has made us Nigeria&apos;s most trusted baby store.

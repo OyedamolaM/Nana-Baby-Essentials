@@ -7,6 +7,7 @@ import { Minus, Plus } from "lucide-react";
 import { toast } from "sonner";
 
 import { formatNaira } from "../../../lib/commerce";
+import { buildRegistryDashboardPath } from "../../../lib/registry";
 import {
   clearRegistryCart,
   readRegistryCart,
@@ -90,7 +91,7 @@ export function RegistryCreatePageClient() {
           additional_info: additionalInfo,
           share_code: shareCode,
         })
-        .select("id, share_code")
+        .select("id, name, share_code")
         .single();
 
       if (error || !registry) {
@@ -128,7 +129,7 @@ export function RegistryCreatePageClient() {
 
       clearRegistryCart();
       toast.success("Your registry is ready.");
-      router.push(`/dashboard/registries/${registry.id}`);
+      router.push(buildRegistryDashboardPath(registry));
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Failed to create registry.";
@@ -212,7 +213,7 @@ export function RegistryCreatePageClient() {
                       <SelectContent>
                         <SelectItem value="male">Boy</SelectItem>
                         <SelectItem value="female">Girl</SelectItem>
-                        <SelectItem value="neutral">Surprise / Neutral</SelectItem>
+                        <SelectItem value="neutral">Surprise</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>

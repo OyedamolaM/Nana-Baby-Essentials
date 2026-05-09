@@ -39,6 +39,7 @@ import {
   TableHeader,
   TableRow,
 } from "../ui/table";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/tabs";
 
 type AdminOrderItem = {
   name?: string;
@@ -189,6 +190,12 @@ export function AdminOrdersManager({
   const totalAmount = useMemo(() => {
     return normalizedItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
   }, [normalizedItems]);
+  const paidOrders = useMemo(() => {
+    return orders.filter((order) => order.status === "paid");
+  }, [orders]);
+  const unpaidOrders = useMemo(() => {
+    return orders.filter((order) => order.status !== "paid");
+  }, [orders]);
 
   const applyCustomerSnapshot = (customerId: string) => {
     setSelectedCustomerId(customerId);
@@ -436,71 +443,97 @@ export function AdminOrdersManager({
           {orders.length === 0 ? (
             <p className="text-sm text-gray-500">No store orders yet.</p>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Order</TableHead>
-                  <TableHead>Customer</TableHead>
-                  <TableHead>Shipping</TableHead>
-                  <TableHead>Total</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Created</TableHead>
-                  <TableHead>Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {orders.map((order) => {
-                  const savedAddress = normalizeShippingAddress(order.shipping_address);
-                  return (
-                    <TableRow key={order.id}>
-                      <TableCell>
-                        <div className="font-mono text-sm">{order.id.slice(0, 8)}</div>
-                        <div className="text-xs text-gray-500">
-                          {order.shipping_tier || "No shipping tier"}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="font-medium">
-                          {order.customer_name ?? savedAddress.name ?? "N/A"}
-                        </div>
-                        <div className="text-xs text-gray-500">
-                          {order.customer_email ?? "No email"}
-                        </div>
-                        <div className="text-xs text-gray-500">
-                          {order.customer_phone ?? savedAddress.phone ?? "No phone"}
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-sm text-gray-600">
-                        {savedAddress.address
-                          ? `${savedAddress.address}, ${savedAddress.city}, ${savedAddress.state}`
-                          : "N/A"}
-                      </TableCell>
-                      <TableCell>{formatNairaAmount(Number(order.total ?? 0))}</TableCell>
-                      <TableCell>{order.status}</TableCell>
-                      <TableCell>{formatDateTime(order.created_at)}</TableCell>
-                      <TableCell>
-                        <div className="flex gap-2">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handleEditOrder(order)}
-                          >
-                            <Edit className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="destructive"
-                            size="sm"
-                            onClick={() => handleDeleteOrder(order.id)}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
+            <Tabs defaultValue={paidOrders.length > 0 ? "paid" : "unpaid"} className="space-y-4">
+              <TabsList className="grid w-full grid-cols-2">
+                <TabsTrigger value="paid" className="cursor-pointer">
+                  Paid Orders ({paidOrders.length})
+                </TabsTrigger>
+                <TabsTrigger value="unpaid" className="cursor-pointer">
+                  Unpaid Orders ({unpaidOrders.length})
+                </TabsTrigger>
+              </TabsList>
+
+              {[
+                { emptyMessage: "No paid store orders yet.", value: "paid", rows: paidOrders },
+                {
+                  emptyMessage: "No unpaid store orders right now.",
+                  value: "unpaid",
+                  rows: unpaidOrders,
+                },
+              ].map((group) => (
+                <TabsContent key={group.value} value={group.value}>
+                  {group.rows.length === 0 ? (
+                    <p className="text-sm text-gray-500">{group.emptyMessage}</p>
+                  ) : (
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Order</TableHead>
+                          <TableHead>Customer</TableHead>
+                          <TableHead>Shipping</TableHead>
+                          <TableHead>Total</TableHead>
+                          <TableHead>Status</TableHead>
+                          <TableHead>Created</TableHead>
+                          <TableHead>Actions</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {group.rows.map((order) => {
+                          const savedAddress = normalizeShippingAddress(order.shipping_address);
+                          return (
+                            <TableRow key={order.id}>
+                              <TableCell>
+                                <div className="font-mono text-sm">{order.id.slice(0, 8)}</div>
+                                <div className="text-xs text-gray-500">
+                                  {order.shipping_tier || "No shipping tier"}
+                                </div>
+                              </TableCell>
+                              <TableCell>
+                                <div className="font-medium">
+                                  {order.customer_name ?? savedAddress.name ?? "N/A"}
+                                </div>
+                                <div className="text-xs text-gray-500">
+                                  {order.customer_email ?? "No email"}
+                                </div>
+                                <div className="text-xs text-gray-500">
+                                  {order.customer_phone ?? savedAddress.phone ?? "No phone"}
+                                </div>
+                              </TableCell>
+                              <TableCell className="text-sm text-gray-600">
+                                {savedAddress.address
+                                  ? `${savedAddress.address}, ${savedAddress.city}, ${savedAddress.state}`
+                                  : "N/A"}
+                              </TableCell>
+                              <TableCell>{formatNairaAmount(Number(order.total ?? 0))}</TableCell>
+                              <TableCell>{order.status}</TableCell>
+                              <TableCell>{formatDateTime(order.created_at)}</TableCell>
+                              <TableCell>
+                                <div className="flex gap-2">
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => handleEditOrder(order)}
+                                  >
+                                    <Edit className="h-4 w-4" />
+                                  </Button>
+                                  <Button
+                                    variant="destructive"
+                                    size="sm"
+                                    onClick={() => handleDeleteOrder(order.id)}
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  )}
+                </TabsContent>
+              ))}
+            </Tabs>
           )}
         </CardContent>
       </Card>

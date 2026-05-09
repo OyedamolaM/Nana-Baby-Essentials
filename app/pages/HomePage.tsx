@@ -28,11 +28,13 @@ type AuthTab = "login" | "signup";
 
 interface HomePageProps {
   initialDeals?: HomepageDeal[];
+  initialProductCategories?: string[];
   initialFeaturedProducts?: StoreProduct[];
 }
 
 export function HomePage({
   initialDeals,
+  initialProductCategories,
   initialFeaturedProducts,
 }: HomePageProps) {
   const router = useRouter();
@@ -150,6 +152,10 @@ export function HomePage({
     setRegistryCreateOpen(true);
   };
 
+  const handleShopNow = () => {
+    scrollToSection("products");
+  };
+
   return (
     <div className="min-h-screen bg-white">
       <Header
@@ -167,7 +173,7 @@ export function HomePage({
 
       <main>
         <section id="home">
-          <Hero onCreateRegistry={handleCreateRegistry} />
+          <Hero onCreateRegistry={handleCreateRegistry} onShopNow={handleShopNow} />
         </section>
 
         <section id="registry">
@@ -181,8 +187,11 @@ export function HomePage({
         />
 
         <FeaturedCategoryTabs
+          categories={initialProductCategories}
+          sectionId="products"
           products={featuredProducts}
           onAddToCart={handleAddToCart}
+          onViewAll={() => router.push("/products")}
           onViewProduct={handleViewProduct}
           sectionTitle="Products"
           sectionSubtitle="Browse our baby essentials by category, including an easy all-products view."
@@ -234,7 +243,7 @@ export function HomePage({
       <RegistryCreateModal
         open={registryCreateOpen}
         onOpenChange={setRegistryCreateOpen}
-        onCreated={(registryId) => router.push(`/dashboard/registries/${registryId}`)}
+        onCreated={(registry) => router.push(registry.dashboardPath)}
       />
     </div>
   );

@@ -132,7 +132,7 @@
   }
 
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground font-sans;
   }
 
   html {
@@ -141,26 +141,30 @@
 
   h1 {
     font-size: var(--text-2xl);
-    font-weight: var(--font-weight-medium);
-    line-height: 1.5;
+    font-weight: 700;
+    letter-spacing: -0.04em;
+    line-height: 1.05;
   }
 
   h2 {
     font-size: var(--text-xl);
-    font-weight: var(--font-weight-medium);
-    line-height: 1.5;
+    font-weight: 700;
+    letter-spacing: -0.03em;
+    line-height: 1.1;
   }
 
   h3 {
     font-size: var(--text-lg);
-    font-weight: var(--font-weight-medium);
-    line-height: 1.5;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    line-height: 1.15;
   }
 
   h4 {
     font-size: var(--text-base);
-    font-weight: var(--font-weight-medium);
-    line-height: 1.5;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    line-height: 1.2;
   }
 
   label {
@@ -170,14 +174,41 @@
   }
 
   button {
-    font-size: var(--text-base);
+    font-size: 0.875rem;
     font-weight: var(--font-weight-medium);
     line-height: 1.5;
+  }
+
+  button:not(:disabled):active {
+    filter: brightness(0.96);
   }
 
   input {
     font-size: var(--text-base);
     font-weight: var(--font-weight-normal);
     line-height: 1.5;
+  }
+}
+
+@layer components {
+  .section-spacing {
+    @apply py-14 md:py-20;
+  }
+
+  .section-title {
+    @apply text-3xl font-bold tracking-[-0.03em] text-gray-900 md:text-4xl;
+  }
+
+  .hero-title {
+    @apply text-5xl font-bold leading-[0.92] tracking-[-0.05em] text-gray-900 lg:text-6xl;
+  }
+
+  .hero-copy {
+    @apply text-xl font-medium leading-[1.6] tracking-[0.01em] text-gray-700 sm:text-2xl;
+  }
+
+  .brand-mark {
+    font-weight: 700;
+    letter-spacing: -0.03em;
   }
 }

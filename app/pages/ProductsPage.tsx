@@ -15,7 +15,7 @@ import { CheckoutModal } from "../components/checkout/CheckoutModal";
 import { useAuth } from "../contexts/AuthContext";
 import { useStoreCart } from "../contexts/StoreCartContext";
 import { usePaginatedProducts } from "../hooks/usePaginatedProducts";
-import { CATEGORIES, type StoreProduct } from "../../lib/commerce";
+import { type StoreProduct } from "../../lib/commerce";
 import { Input } from "../components/ui/input";
 import {
   Pagination,
@@ -46,11 +46,13 @@ function buildPagination(currentPage: number, totalPages: number) {
 }
 
 interface ProductsPageProps {
+  initialCategories?: string[];
   initialProducts?: StoreProduct[];
   initialTotalCount?: number;
 }
 
 export function ProductsPage({
+  initialCategories,
   initialProducts,
   initialTotalCount,
 }: ProductsPageProps) {
@@ -224,7 +226,7 @@ export function ProductsPage({
             </div>
 
             <CategoryFilter
-              categories={[...CATEGORIES]}
+              categories={initialCategories?.length ? initialCategories : ["All"]}
               selectedCategory={selectedCategory}
               onSelectCategory={setSelectedCategory}
             />

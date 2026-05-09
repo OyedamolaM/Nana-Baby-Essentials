@@ -1,5 +1,8 @@
 import { RegistryLandingPage } from "../pages/RegistryLandingPage";
-import { getPublicProductCatalogPage } from "../../lib/publicData";
+import {
+  getPublicProductCatalogPage,
+  getPublicProductCategories,
+} from "../../lib/publicData";
 import { buildPageMetadata } from "../../lib/site";
 
 export const metadata = buildPageMetadata({
@@ -10,16 +13,20 @@ export const metadata = buildPageMetadata({
 });
 
 export default async function RegistryPage() {
-  const initialProductPage = await getPublicProductCatalogPage({
-    page: 1,
-    pageSize: 16,
-    onlyInStock: true,
-    selectedCategory: "All",
-    searchQuery: "",
-  });
+  const [initialProductPage, initialCategories] = await Promise.all([
+    getPublicProductCatalogPage({
+      page: 1,
+      pageSize: 16,
+      onlyInStock: true,
+      selectedCategory: "All",
+      searchQuery: "",
+    }),
+    getPublicProductCategories(),
+  ]);
 
   return (
     <RegistryLandingPage
+      initialCategories={initialCategories}
       initialProducts={initialProductPage.products}
       initialTotalCount={initialProductPage.totalCount}
     />
