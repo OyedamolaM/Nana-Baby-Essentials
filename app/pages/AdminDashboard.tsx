@@ -6,8 +6,8 @@ import {
   DollarSign,
   Edit,
   ExternalLink,
-  LayoutGrid,
   Mail,
+  MapPin,
   Package,
   Plus,
   ShoppingBag,
@@ -19,10 +19,10 @@ import { toast } from "sonner";
 import {
   createSlug,
   type BlogPostRecord,
-  type CollectionRecord,
   type HomeDealRecord,
 } from "../../lib/content";
 import {
+  createProductSlug,
   formatNaira,
   formatNairaAmount,
   getProductCostPrice,
@@ -30,6 +30,7 @@ import {
   toNairaAmount,
   type ProductRecord,
 } from "../../lib/commerce";
+import { normalizeShippingAddress } from "../../lib/userProfile";
 import {
   buildRegistryPaymentActivities,
   getRegistryItemFundedAmount,
@@ -45,6 +46,8 @@ import {
   type RegistryPaymentActivity,
   type RegistrySummary,
 } from "../../lib/registry";
+import { AdminOrdersManager, type AdminOrderRecord } from "../components/admin/AdminOrdersManager";
+import { AdminRegistryOrdersManager } from "../components/admin/AdminRegistryOrdersManager";
 import { useAuth } from "../contexts/AuthContext";
 import { hasSupabaseEnv, supabase } from "../lib/supabase";
 import { Button } from "../components/ui/button";
@@ -80,21 +83,20 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { Textarea } from "../components/ui/textarea";
 
-type AdminOrder = {
-  id: string;
-  created_at: string;
-  total: number;
-  status: string;
-  shipping_address?: {
-    name?: string;
-  } | null;
-};
-
 type Customer = {
   id: string;
+  account_status?: string | null;
   full_name?: string | null;
+  deleted_at?: string | null;
   email?: string | null;
   phone?: string | null;
+  shipping_address?: {
+    address?: string;
+    city?: string;
+    name?: string;
+    phone?: string;
+    state?: string;
+  } | null;
   created_at: string;
 };
 
@@ -106,12 +108,6 @@ type RegistryRecord = {
   baby_gender?: string | null;
   share_code: string;
   created_at: string;
-};
-
-type CollectionProductRow = {
-  collection_id: string;
-  product_id: number;
-  sort_order: number;
 };
 
 type NewsletterSubscriber = {
@@ -130,6 +126,18 @@ type NewsletterCampaign = {
   recipient_count: number;
   created_at: string;
   sent_at?: string | null;
+};
+
+type ShippingTier = {
+  id: string;
+  code: string;
+  label: string;
+  fee: number;
+  eta?: string | null;
+  description?: string | null;
+  is_active: boolean;
+  sort_order: number;
+  created_at?: string;
 };
 
 function formatDueMonth(dueMonth?: string | null) {
@@ -210,12 +218,16 @@ function toDatetimeLocalValue(value?: string | null) {
 }
 
 export function AdminDashboard() {
-  const { isAdmin } = useAuth();
+  const { isAdmin, loading: authLoading } = useAuth();
   const [loading, setLoading] = useState(Boolean(isAdmin && hasSupabaseEnv));
-  const [orders, setOrders] = useState<AdminOrder[]>([]);
+  const [orders, setOrders] = useState<AdminOrderRecord[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [products, setProducts] = useState<ProductRecord[]>([]);
   const [registries, setRegistries] = useState<RegistryRecord[]>([]);
+  const [registryOrders, setRegistryOrders] = useState<RegistryOrderRecord[]>([]);
+  const [registryOrderItemsByOrder, setRegistryOrderItemsByOrder] = useState<
+    Record<string, RegistryOrderItemRecord[]>
+  >({});
   const [registryItemsByRegistry, setRegistryItemsByRegistry] = useState<
     Record<string, RegistryItem[]>
   >({});
@@ -224,10 +236,6 @@ export function AdminDashboard() {
     Record<string, RegistryPaymentActivity[]>
   >({});
   const [deals, setDeals] = useState<HomeDealRecord[]>([]);
-  const [collections, setCollections] = useState<CollectionRecord[]>([]);
-  const [collectionAssignments, setCollectionAssignments] = useState<
-    CollectionProductRow[]
-  >([]);
   const [blogPosts, setBlogPosts] = useState<BlogPostRecord[]>([]);
   const [newsletterSubscribers, setNewsletterSubscribers] = useState<
     NewsletterSubscriber[]
@@ -235,6 +243,17 @@ export function AdminDashboard() {
   const [newsletterCampaigns, setNewsletterCampaigns] = useState<
     NewsletterCampaign[]
   >([]);
+  const [shippingTiers, setShippingTiers] = useState<ShippingTier[]>([]);
+
+  const [showCustomerModal, setShowCustomerModal] = useState(false);
+  const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
+  const [customerFullName, setCustomerFullName] = useState("");
+  const [customerEmail, setCustomerEmail] = useState("");
+  const [customerPhone, setCustomerPhone] = useState("");
+  const [customerAddress, setCustomerAddress] = useState("");
+  const [customerCity, setCustomerCity] = useState("");
+  const [customerState, setCustomerState] = useState("");
+  const [savingCustomer, setSavingCustomer] = useState(false);
 
   const [showProductModal, setShowProductModal] = useState(false);
   const [editingProduct, setEditingProduct] = useState<ProductRecord | null>(null);
@@ -245,7 +264,8 @@ export function AdminDashboard() {
   const [productImage, setProductImage] = useState("");
   const [productDescription, setProductDescription] = useState("");
   const [productInStock, setProductInStock] = useState(true);
-  const [productCollectionIds, setProductCollectionIds] = useState<string[]>([]);
+  const [productIsFeatured, setProductIsFeatured] = useState(false);
+  const [productFeaturedSortOrder, setProductFeaturedSortOrder] = useState("0");
 
   const [showDealModal, setShowDealModal] = useState(false);
   const [editingDeal, setEditingDeal] = useState<HomeDealRecord | null>(null);
@@ -260,17 +280,18 @@ export function AdminDashboard() {
   const [dealEndsAt, setDealEndsAt] = useState("");
   const [dealSortOrder, setDealSortOrder] = useState("0");
   const [dealIsActive, setDealIsActive] = useState(true);
+  const [dealImageFile, setDealImageFile] = useState<File | null>(null);
 
-  const [showCollectionModal, setShowCollectionModal] = useState(false);
-  const [editingCollection, setEditingCollection] = useState<CollectionRecord | null>(
-    null,
-  );
-  const [collectionName, setCollectionName] = useState("");
-  const [collectionSlug, setCollectionSlug] = useState("");
-  const [collectionDescription, setCollectionDescription] = useState("");
-  const [collectionHeroImage, setCollectionHeroImage] = useState("");
-  const [collectionSortOrder, setCollectionSortOrder] = useState("0");
-  const [collectionIsActive, setCollectionIsActive] = useState(true);
+  const [showShippingTierModal, setShowShippingTierModal] = useState(false);
+  const [editingShippingTier, setEditingShippingTier] = useState<ShippingTier | null>(null);
+  const [shippingTierCode, setShippingTierCode] = useState("");
+  const [shippingTierLabel, setShippingTierLabel] = useState("");
+  const [shippingTierFee, setShippingTierFee] = useState("");
+  const [shippingTierEta, setShippingTierEta] = useState("");
+  const [shippingTierDescription, setShippingTierDescription] = useState("");
+  const [shippingTierSortOrder, setShippingTierSortOrder] = useState("0");
+  const [shippingTierIsActive, setShippingTierIsActive] = useState(true);
+  const [savingShippingTier, setSavingShippingTier] = useState(false);
 
   const [showBlogModal, setShowBlogModal] = useState(false);
   const [editingBlog, setEditingBlog] = useState<BlogPostRecord | null>(null);
@@ -299,11 +320,10 @@ export function AdminDashboard() {
       registryOrdersResult,
       registryContributionsResult,
       dealsResult,
-      collectionsResult,
-      collectionAssignmentsResult,
       blogPostsResult,
       newsletterSubscribersResult,
       newsletterCampaignsResult,
+      shippingTiersResult,
     ] = await Promise.all([
       supabase.from("orders").select("*").order("created_at", { ascending: false }),
       supabase
@@ -329,14 +349,6 @@ export function AdminDashboard() {
         .select("*")
         .order("sort_order", { ascending: true }),
       supabase
-        .from("collections")
-        .select("*")
-        .order("sort_order", { ascending: true }),
-      supabase
-        .from("collection_products")
-        .select("collection_id, product_id, sort_order")
-        .order("sort_order", { ascending: true }),
-      supabase
         .from("blog_posts")
         .select("*")
         .order("created_at", { ascending: false }),
@@ -348,9 +360,13 @@ export function AdminDashboard() {
         .from("newsletter_campaigns")
         .select("*")
         .order("created_at", { ascending: false }),
+      supabase
+        .from("shipping_tiers")
+        .select("*")
+        .order("sort_order", { ascending: true }),
     ]);
 
-    setOrders(((ordersResult.error ? [] : ordersResult.data) ?? []) as AdminOrder[]);
+    setOrders(((ordersResult.error ? [] : ordersResult.data) ?? []) as AdminOrderRecord[]);
     setCustomers(
       ((customersResult.error ? [] : customersResult.data) ?? []) as Customer[],
     );
@@ -361,14 +377,6 @@ export function AdminDashboard() {
       ((registriesResult.error ? [] : registriesResult.data) ?? []) as RegistryRecord[],
     );
     setDeals(((dealsResult.error ? [] : dealsResult.data) ?? []) as HomeDealRecord[]);
-    setCollections(
-      ((collectionsResult.error ? [] : collectionsResult.data) ?? []) as CollectionRecord[],
-    );
-    setCollectionAssignments(
-      ((collectionAssignmentsResult.error
-        ? []
-        : collectionAssignmentsResult.data) ?? []) as CollectionProductRow[],
-    );
     setBlogPosts(
       ((blogPostsResult.error ? [] : blogPostsResult.data) ?? []) as BlogPostRecord[],
     );
@@ -381,6 +389,9 @@ export function AdminDashboard() {
       ((newsletterCampaignsResult.error
         ? []
         : newsletterCampaignsResult.data) ?? []) as NewsletterCampaign[],
+    );
+    setShippingTiers(
+      ((shippingTiersResult.error ? [] : shippingTiersResult.data) ?? []) as ShippingTier[],
     );
 
     const registryItems = ((registryItemsResult.error
@@ -408,6 +419,7 @@ export function AdminDashboard() {
 
     const registryOrders =
       ((registryOrdersResult.error ? [] : registryOrdersResult.data) ?? []) as RegistryOrderRecord[];
+    setRegistryOrders(registryOrders);
     const registryContributions =
       ((registryContributionsResult.error
         ? []
@@ -426,6 +438,16 @@ export function AdminDashboard() {
       registryOrderItems = ((registryOrderItemsError ? [] : registryOrderItemsData) ?? []) as
         RegistryOrderItemRecord[];
     }
+
+    const registryOrderItemsMap = registryOrderItems.reduce<
+      Record<string, RegistryOrderItemRecord[]>
+    >((accumulator, item) => {
+      const existing = accumulator[item.registry_order_id] ?? [];
+      existing.push(item);
+      accumulator[item.registry_order_id] = existing;
+      return accumulator;
+    }, {});
+    setRegistryOrderItemsByOrder(registryOrderItemsMap);
 
     const registryPaymentsMap = (((registriesResult.error ? [] : registriesResult.data) ?? []) as
       RegistryRecord[]).reduce<Record<string, RegistryPaymentActivity[]>>(
@@ -478,28 +500,6 @@ export function AdminDashboard() {
     >;
   }, [products]);
 
-  const collectionLookup = useMemo(() => {
-    return Object.fromEntries(
-      collections.map((collection) => [collection.id, collection]),
-    ) as Record<string, CollectionRecord>;
-  }, [collections]);
-
-  const productCollections = useMemo(() => {
-    return collectionAssignments.reduce<Record<number, string[]>>((accumulator, row) => {
-      const existing = accumulator[row.product_id] ?? [];
-      existing.push(row.collection_id);
-      accumulator[row.product_id] = existing;
-      return accumulator;
-    }, {});
-  }, [collectionAssignments]);
-
-  const collectionCounts = useMemo(() => {
-    return collectionAssignments.reduce<Record<string, number>>((accumulator, row) => {
-      accumulator[row.collection_id] = (accumulator[row.collection_id] ?? 0) + 1;
-      return accumulator;
-    }, {});
-  }, [collectionAssignments]);
-
   const stats = useMemo(() => {
     const paidOrders = orders.filter((order) => order.status === "paid");
 
@@ -536,12 +536,258 @@ export function AdminDashboard() {
     [newsletterSubscribers],
   );
 
-  const toggleProductCollection = (collectionId: string) => {
-    setProductCollectionIds((current) =>
-      current.includes(collectionId)
-        ? current.filter((value) => value !== collectionId)
-        : [...current, collectionId],
-    );
+  const getAdminAccessToken = async () => {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+
+    return session?.access_token ?? null;
+  };
+
+  const revalidatePublicTags = async (tags: string[]) => {
+    const accessToken = await getAdminAccessToken();
+    if (!accessToken || tags.length === 0) {
+      return;
+    }
+
+    await fetch("/api/admin/revalidate", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({ tags }),
+    }).catch(() => null);
+  };
+
+  const resetCustomerForm = () => {
+    setEditingCustomer(null);
+    setCustomerFullName("");
+    setCustomerEmail("");
+    setCustomerPhone("");
+    setCustomerAddress("");
+    setCustomerCity("");
+    setCustomerState("");
+  };
+
+  const handleEditCustomer = (customer: Customer) => {
+    const shippingAddress = normalizeShippingAddress(customer.shipping_address);
+    setEditingCustomer(customer);
+    setCustomerFullName(customer.full_name ?? "");
+    setCustomerEmail(customer.email ?? "");
+    setCustomerPhone(customer.phone ?? "");
+    setCustomerAddress(shippingAddress.address);
+    setCustomerCity(shippingAddress.city);
+    setCustomerState(shippingAddress.state);
+    setShowCustomerModal(true);
+  };
+
+  const handleSaveCustomer = async (event: React.FormEvent) => {
+    event.preventDefault();
+
+    const accessToken = await getAdminAccessToken();
+    if (!accessToken) {
+      toast.error("Sign in again to manage customers.");
+      return;
+    }
+
+    setSavingCustomer(true);
+
+    try {
+      const response = await fetch(
+        editingCustomer
+          ? `/api/admin/customers/${editingCustomer.id}`
+          : "/api/admin/customers",
+        {
+          method: editingCustomer ? "PATCH" : "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${accessToken}`,
+          },
+          body: JSON.stringify({
+            fullName: customerFullName,
+            email: customerEmail,
+            phone: customerPhone,
+            shippingAddress: {
+              name: customerFullName,
+              phone: customerPhone,
+              address: customerAddress,
+              city: customerCity,
+              state: customerState,
+            },
+          }),
+        },
+      );
+
+      const result = (await response.json().catch(() => null)) as
+        | { message?: string }
+        | null;
+
+      if (!response.ok) {
+        toast.error(result?.message ?? "Could not save the customer.");
+        return;
+      }
+
+      toast.success(result?.message ?? (editingCustomer ? "Customer updated." : "Customer created."));
+      setShowCustomerModal(false);
+      resetCustomerForm();
+      void loadAdminData();
+    } catch (error) {
+      console.error("Failed to save customer.", error);
+      toast.error("Could not save the customer.");
+    } finally {
+      setSavingCustomer(false);
+    }
+  };
+
+  const handleDeleteCustomer = async (customerId: string) => {
+    if (!window.confirm("Disable this customer account? Their order history will remain available.")) {
+      return;
+    }
+
+    const accessToken = await getAdminAccessToken();
+    if (!accessToken) {
+      toast.error("Sign in again to manage customers.");
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/admin/customers/${customerId}`, {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      });
+
+      const result = (await response.json().catch(() => null)) as
+        | { message?: string }
+        | null;
+
+      if (!response.ok) {
+        toast.error(result?.message ?? "Could not disable the customer.");
+        return;
+      }
+
+      toast.success(result?.message ?? "Customer disabled.");
+      void loadAdminData();
+    } catch (error) {
+      console.error("Failed to disable customer.", error);
+      toast.error("Could not disable the customer.");
+    }
+  };
+
+  const resetShippingTierForm = () => {
+    setEditingShippingTier(null);
+    setShippingTierCode("");
+    setShippingTierLabel("");
+    setShippingTierFee("");
+    setShippingTierEta("");
+    setShippingTierDescription("");
+    setShippingTierSortOrder("0");
+    setShippingTierIsActive(true);
+  };
+
+  const handleEditShippingTier = (tier: ShippingTier) => {
+    setEditingShippingTier(tier);
+    setShippingTierCode(tier.code);
+    setShippingTierLabel(tier.label);
+    setShippingTierFee(String(Number(tier.fee ?? 0)));
+    setShippingTierEta(tier.eta ?? "");
+    setShippingTierDescription(tier.description ?? "");
+    setShippingTierSortOrder(String(tier.sort_order ?? 0));
+    setShippingTierIsActive(Boolean(tier.is_active));
+    setShowShippingTierModal(true);
+  };
+
+  const handleSaveShippingTier = async (event: React.FormEvent) => {
+    event.preventDefault();
+
+    const accessToken = await getAdminAccessToken();
+    if (!accessToken) {
+      toast.error("Sign in again to manage shipping tiers.");
+      return;
+    }
+
+    setSavingShippingTier(true);
+
+    try {
+      const response = await fetch(
+        editingShippingTier
+          ? `/api/admin/shipping-tiers/${editingShippingTier.id}`
+          : "/api/admin/shipping-tiers",
+        {
+          method: editingShippingTier ? "PATCH" : "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${accessToken}`,
+          },
+          body: JSON.stringify({
+            code: shippingTierCode,
+            label: shippingTierLabel,
+            fee: Number(shippingTierFee || 0),
+            eta: shippingTierEta,
+            description: shippingTierDescription,
+            sortOrder: Number(shippingTierSortOrder || 0),
+            isActive: shippingTierIsActive,
+          }),
+        },
+      );
+
+      const result = (await response.json().catch(() => null)) as
+        | { message?: string }
+        | null;
+
+      if (!response.ok) {
+        toast.error(result?.message ?? "Could not save the shipping tier.");
+        return;
+      }
+
+      toast.success(result?.message ?? (editingShippingTier ? "Shipping tier updated." : "Shipping tier created."));
+      setShowShippingTierModal(false);
+      resetShippingTierForm();
+      void loadAdminData();
+    } catch (error) {
+      console.error("Failed to save shipping tier.", error);
+      toast.error("Could not save the shipping tier.");
+    } finally {
+      setSavingShippingTier(false);
+    }
+  };
+
+  const handleDeleteShippingTier = async (tierId: string) => {
+    if (!window.confirm("Delete this shipping tier?")) {
+      return;
+    }
+
+    const accessToken = await getAdminAccessToken();
+    if (!accessToken) {
+      toast.error("Sign in again to manage shipping tiers.");
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/admin/shipping-tiers/${tierId}`, {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      });
+
+      const result = (await response.json().catch(() => null)) as
+        | { message?: string }
+        | null;
+
+      if (!response.ok) {
+        toast.error(result?.message ?? "Could not delete the shipping tier.");
+        return;
+      }
+
+      toast.success(result?.message ?? "Shipping tier deleted.");
+      void loadAdminData();
+    } catch (error) {
+      console.error("Failed to delete shipping tier.", error);
+      toast.error("Could not delete the shipping tier.");
+    }
   };
 
   const resetProductForm = () => {
@@ -553,7 +799,8 @@ export function AdminDashboard() {
     setProductImage("");
     setProductDescription("");
     setProductInStock(true);
-    setProductCollectionIds([]);
+    setProductIsFeatured(false);
+    setProductFeaturedSortOrder("0");
   };
 
   const handleEditProduct = (product: ProductRecord) => {
@@ -567,7 +814,8 @@ export function AdminDashboard() {
     setProductImage(product.image);
     setProductDescription(product.description);
     setProductInStock(Boolean(product.in_stock));
-    setProductCollectionIds(productCollections[product.id] ?? []);
+    setProductIsFeatured(Boolean(product.is_featured));
+    setProductFeaturedSortOrder(String(product.featured_sort_order ?? 0));
     setShowProductModal(true);
   };
 
@@ -582,8 +830,19 @@ export function AdminDashboard() {
       return;
     }
 
+    const baseProductSlug = createProductSlug(productName) || "product";
+    const nextProductSlug = products.some((product) => {
+      return (
+        product.id !== editingProduct?.id &&
+        (product.slug?.trim() || createProductSlug(product.name)) === baseProductSlug
+      );
+    })
+      ? `${baseProductSlug}-${editingProduct?.id ?? Date.now()}`
+      : baseProductSlug;
+
     const productPayload = {
       name: productName,
+      slug: nextProductSlug,
       price: sellingPrice,
       selling_price: sellingPrice,
       cost_price: costPrice,
@@ -591,6 +850,8 @@ export function AdminDashboard() {
       image: productImage,
       description: productDescription,
       in_stock: productInStock,
+      is_featured: productIsFeatured,
+      featured_sort_order: Number(productFeaturedSortOrder || 0),
     };
 
     const { data: savedProduct, error } = editingProduct
@@ -607,29 +868,22 @@ export function AdminDashboard() {
       return;
     }
 
-    const productId = Number((savedProduct as ProductRecord).id);
+    if (!editingProduct && nextProductSlug !== baseProductSlug) {
+      const canonicalSlug = `${baseProductSlug}-${savedProduct.id}`;
+      const { error: slugUpdateError } = await supabase
+        .from("products")
+        .update({ slug: canonicalSlug })
+        .eq("id", savedProduct.id);
 
-    await supabase.from("collection_products").delete().eq("product_id", productId);
-
-    if (productCollectionIds.length > 0) {
-      const { error: collectionLinkError } = await supabase
-        .from("collection_products")
-        .insert(
-          productCollectionIds.map((collectionId, index) => ({
-            collection_id: collectionId,
-            product_id: productId,
-            sort_order: index,
-          })),
-        );
-
-      if (collectionLinkError) {
-        toast.error("Product saved, but collection assignment failed.");
+      if (slugUpdateError) {
+        toast.error("Product saved, but its slug could not be finalized.");
       }
     }
 
     toast.success(editingProduct ? "Product updated." : "Product created.");
     setShowProductModal(false);
     resetProductForm();
+    await revalidatePublicTags(["products"]);
     void loadAdminData();
   };
 
@@ -645,6 +899,7 @@ export function AdminDashboard() {
     }
 
     toast.success("Product deleted.");
+    await revalidatePublicTags(["products"]);
     void loadAdminData();
   };
 
@@ -655,6 +910,7 @@ export function AdminDashboard() {
     setDealSubtitle("");
     setDealBadgeText("");
     setDealImage("");
+    setDealImageFile(null);
     setDealSalePrice("");
     setDealCompareAtPrice("");
     setDealStartsAt("");
@@ -670,6 +926,7 @@ export function AdminDashboard() {
     setDealSubtitle(deal.subtitle ?? "");
     setDealBadgeText(deal.badge_text ?? "");
     setDealImage(deal.override_image ?? "");
+    setDealImageFile(null);
     setDealSalePrice(String(toNairaAmount(Number(deal.sale_price))));
     setDealCompareAtPrice(
       deal.compare_at_price ? String(toNairaAmount(Number(deal.compare_at_price))) : "",
@@ -684,12 +941,44 @@ export function AdminDashboard() {
   const handleSaveDeal = async (event: React.FormEvent) => {
     event.preventDefault();
 
+    let overrideImage = dealImage || null;
+
+    if (dealImageFile) {
+      const accessToken = await getAdminAccessToken();
+      if (!accessToken) {
+        toast.error("Sign in again to upload deal images.");
+        return;
+      }
+
+      const uploadFormData = new FormData();
+      uploadFormData.append("image", dealImageFile);
+
+      const uploadResponse = await fetch("/api/admin/deals/upload", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: uploadFormData,
+      });
+
+      const uploadResult = (await uploadResponse.json().catch(() => null)) as
+        | { dataUrl?: string; message?: string }
+        | null;
+
+      if (!uploadResponse.ok || !uploadResult?.dataUrl) {
+        toast.error(uploadResult?.message ?? "Could not upload the deal image.");
+        return;
+      }
+
+      overrideImage = uploadResult.dataUrl;
+    }
+
     const payload = {
       product_id: Number(dealProductId),
       title: dealTitle,
       subtitle: dealSubtitle || null,
       badge_text: dealBadgeText || null,
-      override_image: dealImage || null,
+      override_image: overrideImage,
       sale_price: Number(dealSalePrice) / 1000,
       compare_at_price: dealCompareAtPrice ? Number(dealCompareAtPrice) / 1000 : null,
       starts_at: dealStartsAt ? new Date(dealStartsAt).toISOString() : null,
@@ -710,6 +999,7 @@ export function AdminDashboard() {
     toast.success(editingDeal ? "Deal updated." : "Deal created.");
     setShowDealModal(false);
     resetDealForm();
+    await revalidatePublicTags(["products"]);
     void loadAdminData();
   };
 
@@ -725,69 +1015,7 @@ export function AdminDashboard() {
     }
 
     toast.success("Deal deleted.");
-    void loadAdminData();
-  };
-
-  const resetCollectionForm = () => {
-    setEditingCollection(null);
-    setCollectionName("");
-    setCollectionSlug("");
-    setCollectionDescription("");
-    setCollectionHeroImage("");
-    setCollectionSortOrder("0");
-    setCollectionIsActive(true);
-  };
-
-  const handleEditCollection = (collection: CollectionRecord) => {
-    setEditingCollection(collection);
-    setCollectionName(collection.name);
-    setCollectionSlug(collection.slug);
-    setCollectionDescription(collection.description ?? "");
-    setCollectionHeroImage(collection.hero_image ?? "");
-    setCollectionSortOrder(String(collection.sort_order ?? 0));
-    setCollectionIsActive(Boolean(collection.is_active));
-    setShowCollectionModal(true);
-  };
-
-  const handleSaveCollection = async (event: React.FormEvent) => {
-    event.preventDefault();
-
-    const payload = {
-      name: collectionName,
-      slug: collectionSlug || createSlug(collectionName),
-      description: collectionDescription || null,
-      hero_image: collectionHeroImage || null,
-      is_active: collectionIsActive,
-      sort_order: Number(collectionSortOrder || 0),
-    };
-
-    const { error } = editingCollection
-      ? await supabase.from("collections").update(payload).eq("id", editingCollection.id)
-      : await supabase.from("collections").insert(payload);
-
-    if (error) {
-      toast.error("Failed to save collection.");
-      return;
-    }
-
-    toast.success(editingCollection ? "Collection updated." : "Collection created.");
-    setShowCollectionModal(false);
-    resetCollectionForm();
-    void loadAdminData();
-  };
-
-  const handleDeleteCollection = async (collectionId: string) => {
-    if (!window.confirm("Delete this collection?")) {
-      return;
-    }
-
-    const { error } = await supabase.from("collections").delete().eq("id", collectionId);
-    if (error) {
-      toast.error("Failed to delete collection.");
-      return;
-    }
-
-    toast.success("Collection deleted.");
+    await revalidatePublicTags(["products"]);
     void loadAdminData();
   };
 
@@ -852,6 +1080,7 @@ export function AdminDashboard() {
     toast.success(editingBlog ? "Blog post updated." : "Blog post created.");
     setShowBlogModal(false);
     resetBlogForm();
+    await revalidatePublicTags(["blog"]);
     void loadAdminData();
   };
 
@@ -867,6 +1096,7 @@ export function AdminDashboard() {
     }
 
     toast.success("Blog post deleted.");
+    await revalidatePublicTags(["blog"]);
     void loadAdminData();
   };
 
@@ -929,38 +1159,13 @@ export function AdminDashboard() {
     }
   };
 
-  const renderOrderTable = (items: AdminOrder[], emptyMessage: string) => {
-    if (items.length === 0) {
-      return <p className="text-sm text-gray-500">{emptyMessage}</p>;
-    }
-
+  if (authLoading) {
     return (
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Order ID</TableHead>
-            <TableHead>Customer</TableHead>
-            <TableHead>Date</TableHead>
-            <TableHead>Total</TableHead>
-            <TableHead>Status</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {items.map((order) => (
-            <TableRow key={order.id}>
-              <TableCell className="font-mono text-sm">
-                {order.id.substring(0, 8)}
-              </TableCell>
-              <TableCell>{order.shipping_address?.name ?? "N/A"}</TableCell>
-              <TableCell>{formatDate(order.created_at)}</TableCell>
-              <TableCell>{formatNairaAmount(Number(order.total))}</TableCell>
-              <TableCell>{order.status}</TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
+      <div className="container mx-auto px-4 py-8">
+        <p className="text-center text-gray-500">Loading admin dashboard...</p>
+      </div>
     );
-  };
+  }
 
   if (!isAdmin) {
     return (
@@ -1050,50 +1255,64 @@ export function AdminDashboard() {
           <TabsTrigger value="newsletter">Newsletter</TabsTrigger>
           <TabsTrigger value="products">Products</TabsTrigger>
           <TabsTrigger value="deals">Deals</TabsTrigger>
-          <TabsTrigger value="collections">Collections</TabsTrigger>
+          <TabsTrigger value="shipping">Shipping Tiers</TabsTrigger>
           <TabsTrigger value="blogs">Blogs</TabsTrigger>
         </TabsList>
 
         <TabsContent value="orders">
-          <Card>
-            <CardHeader>
-              <CardTitle>Recent Orders</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <Tabs
-                defaultValue={paidOrders.length > 0 ? "paid" : "unfinished"}
-                className="space-y-4"
-              >
-                <TabsList className="grid w-full grid-cols-2">
-                  <TabsTrigger value="paid">
-                    Paid Orders ({paidOrders.length})
-                  </TabsTrigger>
-                  <TabsTrigger value="unfinished">
-                    Unfinished ({unfinishedOrders.length})
-                  </TabsTrigger>
-                  
-                </TabsList>
-                  <TabsContent value="paid">
-                    {renderOrderTable(paidOrders, "No paid orders yet.")}
-                  </TabsContent>
-                  <TabsContent value="unfinished">
-                    {renderOrderTable(
-                      unfinishedOrders,
-                      "No unfinished orders right now.",
-                    )}
-                  </TabsContent>
-              </Tabs>
-            </CardContent>
-          </Card>
+          <div className="space-y-6">
+            <div className="grid gap-4 md:grid-cols-2">
+              <Card>
+                <CardContent className="p-5">
+                  <p className="text-xs uppercase tracking-[0.18em] text-gray-500">
+                    Paid Orders
+                  </p>
+                  <p className="mt-2 text-3xl font-bold text-green-600">
+                    {paidOrders.length}
+                  </p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="p-5">
+                  <p className="text-xs uppercase tracking-[0.18em] text-gray-500">
+                    Unfinished Orders
+                  </p>
+                  <p className="mt-2 text-3xl font-bold text-amber-600">
+                    {unfinishedOrders.length}
+                  </p>
+                </CardContent>
+              </Card>
+            </div>
+
+            <AdminOrdersManager
+              customers={customers}
+              getAdminAccessToken={getAdminAccessToken}
+              onReload={loadAdminData}
+              orders={orders}
+              products={products}
+              shippingTiers={shippingTiers}
+            />
+          </div>
         </TabsContent>
 
         <TabsContent value="registries">
-          <Card>
-            <CardHeader>
-              <CardTitle>Baby Registries</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
+          <div className="space-y-6">
+            <AdminRegistryOrdersManager
+              customers={customers}
+              getAdminAccessToken={getAdminAccessToken}
+              onReload={loadAdminData}
+              orderItemsByOrderId={registryOrderItemsByOrder}
+              orders={registryOrders}
+              registries={registries}
+              registryItemsByRegistry={registryItemsByRegistry}
+            />
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Baby Registries</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
                 {registries.map((registry) => {
                   const owner = customerLookup[registry.user_id];
                   const summary = registrySummaries[registry.id] ?? {
@@ -1267,15 +1486,25 @@ export function AdminDashboard() {
                     </div>
                   );
                 })}
-              </div>
-            </CardContent>
-          </Card>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
         </TabsContent>
 
         <TabsContent value="customers">
           <Card>
-            <CardHeader>
+            <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle>Customers</CardTitle>
+              <Button
+                onClick={() => {
+                  resetCustomerForm();
+                  setShowCustomerModal(true);
+                }}
+              >
+                <Users className="mr-2 h-4 w-4" />
+                Add Customer
+              </Button>
             </CardHeader>
             <CardContent>
               <Table>
@@ -1284,7 +1513,10 @@ export function AdminDashboard() {
                     <TableHead>Name</TableHead>
                     <TableHead>Email</TableHead>
                     <TableHead>Phone</TableHead>
+                    <TableHead>Address</TableHead>
+                    <TableHead>Status</TableHead>
                     <TableHead>Joined</TableHead>
+                    <TableHead>Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -1293,7 +1525,35 @@ export function AdminDashboard() {
                       <TableCell>{customer.full_name ?? "N/A"}</TableCell>
                       <TableCell>{customer.email ?? "N/A"}</TableCell>
                       <TableCell>{customer.phone ?? "N/A"}</TableCell>
+                      <TableCell>
+                        {customer.shipping_address?.address
+                          ? `${customer.shipping_address.address}, ${customer.shipping_address.city ?? ""} ${customer.shipping_address.state ?? ""}`.trim()
+                          : "N/A"}
+                      </TableCell>
+                      <TableCell>
+                        {customer.account_status === "disabled" || customer.deleted_at
+                          ? "Disabled"
+                          : "Active"}
+                      </TableCell>
                       <TableCell>{formatDate(customer.created_at)}</TableCell>
+                      <TableCell>
+                        <div className="flex gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleEditCustomer(customer)}
+                          >
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="destructive"
+                            size="sm"
+                            onClick={() => handleDeleteCustomer(customer.id)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -1445,7 +1705,7 @@ export function AdminDashboard() {
                   <TableRow>
                     <TableHead>Name</TableHead>
                     <TableHead>Category</TableHead>
-                    <TableHead>Collections</TableHead>
+                    <TableHead>Featured</TableHead>
                     <TableHead>Selling</TableHead>
                     <TableHead>Cost</TableHead>
                     <TableHead>Stock</TableHead>
@@ -1455,13 +1715,19 @@ export function AdminDashboard() {
                 <TableBody>
                   {products.map((product) => (
                     <TableRow key={product.id}>
-                      <TableCell>{product.name}</TableCell>
+                      <TableCell>
+                        <div className="font-medium">{product.name}</div>
+                        <div className="text-xs text-gray-500">
+                          /products/{product.slug?.trim() || createProductSlug(product.name)}
+                        </div>
+                      </TableCell>
                       <TableCell>{product.category}</TableCell>
                       <TableCell>
-                        {(productCollections[product.id] ?? [])
-                          .map((collectionId) => collectionLookup[collectionId]?.name)
-                          .filter(Boolean)
-                          .join(", ") || "None"}
+                        {product.is_featured
+                          ? `Yes${Number(product.featured_sort_order ?? 0) > 0
+                            ? ` (${product.featured_sort_order})`
+                            : ""}`
+                          : "No"}
                       </TableCell>
                       <TableCell>
                         {formatNaira(getProductSellingPrice(product))}
@@ -1572,56 +1838,58 @@ export function AdminDashboard() {
           </Card>
         </TabsContent>
 
-        <TabsContent value="collections">
+        <TabsContent value="shipping">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle>Collections</CardTitle>
+              <CardTitle>Shipping Tiers</CardTitle>
               <Button
                 onClick={() => {
-                  resetCollectionForm();
-                  setShowCollectionModal(true);
+                  resetShippingTierForm();
+                  setShowShippingTierModal(true);
                 }}
               >
-                <LayoutGrid className="mr-2 h-4 w-4" />
-                Add Collection
+                <MapPin className="mr-2 h-4 w-4" />
+                Add Shipping Tier
               </Button>
             </CardHeader>
             <CardContent>
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Name</TableHead>
-                    <TableHead>Slug</TableHead>
-                    <TableHead>Assigned Products</TableHead>
+                    <TableHead>Label</TableHead>
+                    <TableHead>Code</TableHead>
+                    <TableHead>Fee</TableHead>
+                    <TableHead>ETA</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {collections.map((collection) => (
-                    <TableRow key={collection.id}>
+                  {shippingTiers.map((tier) => (
+                    <TableRow key={tier.id}>
                       <TableCell>
-                        <div className="font-medium">{collection.name}</div>
+                        <div className="font-medium">{tier.label}</div>
                         <div className="text-xs text-gray-500">
-                          {collection.description || "No description"}
+                          {tier.description || "No description"}
                         </div>
                       </TableCell>
-                      <TableCell>{collection.slug}</TableCell>
-                      <TableCell>{collectionCounts[collection.id] ?? 0}</TableCell>
-                      <TableCell>{collection.is_active ? "Active" : "Inactive"}</TableCell>
+                      <TableCell>{tier.code}</TableCell>
+                      <TableCell>{formatNairaAmount(Number(tier.fee ?? 0))}</TableCell>
+                      <TableCell>{tier.eta || "N/A"}</TableCell>
+                      <TableCell>{tier.is_active ? "Active" : "Inactive"}</TableCell>
                       <TableCell>
                         <div className="flex gap-2">
                           <Button
                             variant="outline"
                             size="sm"
-                            onClick={() => handleEditCollection(collection)}
+                            onClick={() => handleEditShippingTier(tier)}
                           >
                             <Edit className="h-4 w-4" />
                           </Button>
                           <Button
                             variant="destructive"
                             size="sm"
-                            onClick={() => handleDeleteCollection(collection.id)}
+                            onClick={() => handleDeleteShippingTier(tier.id)}
                           >
                             <Trash2 className="h-4 w-4" />
                           </Button>
@@ -1706,6 +1974,178 @@ export function AdminDashboard() {
         </TabsContent>
       </Tabs>
 
+      <Dialog open={showCustomerModal} onOpenChange={setShowCustomerModal}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>{editingCustomer ? "Edit Customer" : "Add Customer"}</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleSaveCustomer} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="customer-full-name">Full Name</Label>
+              <Input
+                id="customer-full-name"
+                value={customerFullName}
+                onChange={(event) => setCustomerFullName(event.target.value)}
+                required
+              />
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="customer-email">Email</Label>
+                <Input
+                  id="customer-email"
+                  type="email"
+                  value={customerEmail}
+                  onChange={(event) => setCustomerEmail(event.target.value)}
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="customer-phone">Phone</Label>
+                <Input
+                  id="customer-phone"
+                  value={customerPhone}
+                  onChange={(event) => setCustomerPhone(event.target.value)}
+                  required
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="customer-address">Shipping Address</Label>
+              <Input
+                id="customer-address"
+                value={customerAddress}
+                onChange={(event) => setCustomerAddress(event.target.value)}
+                placeholder="Street address"
+              />
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="customer-city">City</Label>
+                <Input
+                  id="customer-city"
+                  value={customerCity}
+                  onChange={(event) => setCustomerCity(event.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="customer-state">State</Label>
+                <Input
+                  id="customer-state"
+                  value={customerState}
+                  onChange={(event) => setCustomerState(event.target.value)}
+                />
+              </div>
+            </div>
+
+            <Button type="submit" className="w-full" disabled={savingCustomer}>
+              {savingCustomer
+                ? "Saving..."
+                : editingCustomer
+                  ? "Update Customer"
+                  : "Create Customer and Send Invite"}
+            </Button>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showShippingTierModal} onOpenChange={setShowShippingTierModal}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>
+              {editingShippingTier ? "Edit Shipping Tier" : "Add Shipping Tier"}
+            </DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleSaveShippingTier} className="space-y-4">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="shipping-tier-code">Code</Label>
+                <Input
+                  id="shipping-tier-code"
+                  value={shippingTierCode}
+                  onChange={(event) => setShippingTierCode(event.target.value)}
+                  placeholder="lagos"
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="shipping-tier-label">Label</Label>
+                <Input
+                  id="shipping-tier-label"
+                  value={shippingTierLabel}
+                  onChange={(event) => setShippingTierLabel(event.target.value)}
+                  placeholder="Lagos"
+                  required
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+              <div className="space-y-2">
+                <Label htmlFor="shipping-tier-fee">Fee (NGN amount)</Label>
+                <Input
+                  id="shipping-tier-fee"
+                  type="number"
+                  min="0"
+                  value={shippingTierFee}
+                  onChange={(event) => setShippingTierFee(event.target.value)}
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="shipping-tier-eta">ETA</Label>
+                <Input
+                  id="shipping-tier-eta"
+                  value={shippingTierEta}
+                  onChange={(event) => setShippingTierEta(event.target.value)}
+                  placeholder="2-3 days"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="shipping-tier-sort-order">Sort Order</Label>
+                <Input
+                  id="shipping-tier-sort-order"
+                  type="number"
+                  min="0"
+                  value={shippingTierSortOrder}
+                  onChange={(event) => setShippingTierSortOrder(event.target.value)}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="shipping-tier-description">Description</Label>
+              <Textarea
+                id="shipping-tier-description"
+                value={shippingTierDescription}
+                onChange={(event) => setShippingTierDescription(event.target.value)}
+                rows={3}
+              />
+            </div>
+
+            <label className="flex items-center gap-2 text-sm text-gray-700">
+              <input
+                type="checkbox"
+                checked={shippingTierIsActive}
+                onChange={(event) => setShippingTierIsActive(event.target.checked)}
+              />
+              Shipping tier is active
+            </label>
+
+            <Button type="submit" className="w-full" disabled={savingShippingTier}>
+              {savingShippingTier
+                ? "Saving..."
+                : editingShippingTier
+                  ? "Update Shipping Tier"
+                  : "Create Shipping Tier"}
+            </Button>
+          </form>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={showProductModal} onOpenChange={setShowProductModal}>
         <DialogContent className="max-w-3xl">
           <DialogHeader>
@@ -1785,30 +2225,27 @@ export function AdminDashboard() {
               />
             </div>
 
-            <div className="space-y-2">
-              <Label>Collections</Label>
-              <div className="grid gap-2 rounded-lg border p-4 md:grid-cols-2">
-                {collections.length === 0 ? (
-                  <p className="text-sm text-gray-500">
-                    Create a collection first, then assign this product to it.
-                  </p>
-                ) : (
-                  collections.map((collection) => (
-                    <label
-                      key={collection.id}
-                      className="flex items-center gap-2 text-sm text-gray-700"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={productCollectionIds.includes(collection.id)}
-                        onChange={() => toggleProductCollection(collection.id)}
-                      />
-                      {collection.name}
-                    </label>
-                  ))
-                )}
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="product-featured-order">Featured Sort Order</Label>
+                <Input
+                  id="product-featured-order"
+                  type="number"
+                  min="0"
+                  value={productFeaturedSortOrder}
+                  onChange={(event) => setProductFeaturedSortOrder(event.target.value)}
+                />
               </div>
             </div>
+
+            <label className="flex items-center gap-2 text-sm text-gray-700">
+              <input
+                type="checkbox"
+                checked={productIsFeatured}
+                onChange={(event) => setProductIsFeatured(event.target.checked)}
+              />
+              Show this product in featured category tabs
+            </label>
 
             <label className="flex items-center gap-2 text-sm text-gray-700">
               <input
@@ -1903,12 +2340,21 @@ export function AdminDashboard() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="deal-image">Override Image URL</Label>
+              <Label htmlFor="deal-image">Deal Image Upload</Label>
               <Input
                 id="deal-image"
-                value={dealImage}
-                onChange={(event) => setDealImage(event.target.value)}
+                type="file"
+                accept="image/*"
+                onChange={(event) => setDealImageFile(event.target.files?.[0] ?? null)}
               />
+              <p className="text-xs text-gray-500">
+                Upload an image file up to 500KB. URLs are no longer supported.
+              </p>
+              {dealImage ? (
+                <p className="text-xs text-gray-500">
+                  Existing image will stay in place unless you upload a new one.
+                </p>
+              ) : null}
             </div>
 
             <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
@@ -1952,86 +2398,6 @@ export function AdminDashboard() {
 
             <Button type="submit" className="w-full">
               {editingDeal ? "Update Deal" : "Create Deal"}
-            </Button>
-          </form>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={showCollectionModal} onOpenChange={setShowCollectionModal}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>
-              {editingCollection ? "Edit Collection" : "Add Collection"}
-            </DialogTitle>
-          </DialogHeader>
-          <form onSubmit={handleSaveCollection} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="collection-name">Collection Name</Label>
-              <Input
-                id="collection-name"
-                value={collectionName}
-                onChange={(event) => {
-                  const nextName = event.target.value;
-                  setCollectionName(nextName);
-                  if (!editingCollection) {
-                    setCollectionSlug(createSlug(nextName));
-                  }
-                }}
-                required
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="collection-slug">Slug</Label>
-              <Input
-                id="collection-slug"
-                value={collectionSlug}
-                onChange={(event) => setCollectionSlug(createSlug(event.target.value))}
-                required
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="collection-description">Description</Label>
-              <Textarea
-                id="collection-description"
-                value={collectionDescription}
-                onChange={(event) => setCollectionDescription(event.target.value)}
-                rows={4}
-              />
-            </div>
-
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="collection-image">Hero Image URL</Label>
-                <Input
-                  id="collection-image"
-                  value={collectionHeroImage}
-                  onChange={(event) => setCollectionHeroImage(event.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="collection-sort-order">Sort Order</Label>
-                <Input
-                  id="collection-sort-order"
-                  type="number"
-                  value={collectionSortOrder}
-                  onChange={(event) => setCollectionSortOrder(event.target.value)}
-                />
-              </div>
-            </div>
-
-            <label className="flex items-center gap-2 text-sm text-gray-700">
-              <input
-                type="checkbox"
-                checked={collectionIsActive}
-                onChange={(event) => setCollectionIsActive(event.target.checked)}
-              />
-              Collection is active
-            </label>
-
-            <Button type="submit" className="w-full">
-              {editingCollection ? "Update Collection" : "Create Collection"}
             </Button>
           </form>
         </DialogContent>

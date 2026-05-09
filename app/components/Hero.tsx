@@ -1,14 +1,12 @@
 'use client'
 
-import { ArrowRight } from "lucide-react";
 import { Button } from "./ui/button";
 
 interface HeroProps {
-  onShopNow: () => void;
   onCreateRegistry: () => void;
 }
 
-export function Hero({ onShopNow, onCreateRegistry }: HeroProps) {
+export function Hero({ onCreateRegistry }: HeroProps) {
   return (
     <section className="relative overflow-hidden bg-gradient-to-br from-pink-100 via-purple-50 to-blue-100 py-20 lg:py-32">
       <div className="container mx-auto px-4">
@@ -23,17 +21,12 @@ export function Hero({ onShopNow, onCreateRegistry }: HeroProps) {
               Premium baby products curated with love and care. From adorable clothing to educational toys, we&apos;ve got everything to make parenting easier and more joyful.
             </p>
             <div className="flex flex-wrap gap-4">
-              <Button size="lg" onClick={onShopNow} className="px-8 text-lg">
-                Shop Now
-                <ArrowRight className="ml-2 h-5 w-5" />
-              </Button>
               <Button
                 size="lg"
-                variant="outline"
                 className="px-8 text-lg"
                 onClick={onCreateRegistry}
               >
-                Create Registry
+                Create New Registry
               </Button>
             </div>
             <div className="flex gap-8 pt-4">

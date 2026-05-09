@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Gift, Lock, MapPin, Package, Share2, Trash2, User } from "lucide-react";
+import { Gift, Lock, MapPin, Package, Pencil, Share2, Trash2, User } from "lucide-react";
 import { toast } from "sonner";
 import { formatNairaAmount } from "../../lib/commerce";
 import {
@@ -22,7 +23,6 @@ import {
 } from "../../lib/registry";
 import { useAuth } from "../contexts/AuthContext";
 import { hasSupabaseEnv, supabase } from "../lib/supabase";
-import { CreateRegistryModal } from "../components/registry/CreateRegistryModal";
 import { Button } from "../components/ui/button";
 import {
   Card,
@@ -32,6 +32,7 @@ import {
 } from "../components/ui/card";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
+import { RegistryCreateModal } from "../components/registry/RegistryCreateModal";
 import { Separator } from "../components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
 
@@ -55,6 +56,8 @@ type UserProfile = {
   shipping_address?: {
     address?: string;
     city?: string;
+    name?: string;
+    phone?: string;
     state?: string;
   } | null;
 };
@@ -63,6 +66,7 @@ type RegistryRecord = {
   id: string;
   name: string;
   share_code: string;
+  status?: string | null;
   due_month?: string | null;
   baby_gender?: string | null;
   created_at: string;
@@ -113,8 +117,30 @@ function formatDateTime(value?: string | null) {
   });
 }
 
-export function UserDashboard() {
-  const { user, signOut, updateProfile } = useAuth();
+type DashboardTab = "orders" | "registries" | "profile" | "address" | "security";
+
+function getDashboardTabRoute(tab: DashboardTab) {
+  switch (tab) {
+    case "orders":
+      return "/dashboard/orders";
+    case "registries":
+      return "/dashboard/registries";
+    case "profile":
+    case "address":
+    case "security":
+      return "/dashboard/profile";
+    default:
+      return "/dashboard/orders";
+  }
+}
+
+export function UserDashboard({
+  initialTab = "orders",
+}: {
+  initialTab?: DashboardTab;
+}) {
+  const router = useRouter();
+  const { user, signOut, updateProfile, loading: authLoading } = useAuth();
   const [orders, setOrders] = useState<UserOrder[]>([]);
   const [registries, setRegistries] = useState<RegistryRecord[]>([]);
   const [registryItemsByRegistry, setRegistryItemsByRegistry] = useState<
@@ -125,7 +151,6 @@ export function UserDashboard() {
     Record<string, RegistryPaymentActivity[]>
   >({});
   const [loading, setLoading] = useState(Boolean(user && hasSupabaseEnv));
-  const [showCreateRegistryModal, setShowCreateRegistryModal] = useState(false);
 
   const [fullName, setFullName] = useState("");
   const [phone, setPhone] = useState("");
@@ -134,8 +159,11 @@ export function UserDashboard() {
   const [shippingCity, setShippingCity] = useState("");
   const [shippingState, setShippingState] = useState("");
 
+  const [oldPassword, setOldPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [activeTab, setActiveTab] = useState<DashboardTab>(initialTab);
+  const [registryCreateOpen, setRegistryCreateOpen] = useState(false);
 
   const unfinishedOrders = useMemo(
     () => orders.filter((order) => order.status !== "paid"),
@@ -330,6 +358,8 @@ export function UserDashboard() {
     event.preventDefault();
     const { error } = await updateProfile({
       shipping_address: {
+        name: fullName,
+        phone,
         address: shippingAddress,
         city: shippingCity,
         state: shippingState,
@@ -346,6 +376,16 @@ export function UserDashboard() {
   const handleChangePassword = async (event: React.FormEvent) => {
     event.preventDefault();
 
+    if (!user) {
+      toast.error("Please sign in again before changing your password.");
+      return;
+    }
+
+    if (!oldPassword) {
+      toast.error("Enter your current password first.");
+      return;
+    }
+
     if (newPassword !== confirmPassword) {
       toast.error("Passwords do not match.");
       return;
@@ -361,6 +401,22 @@ export function UserDashboard() {
       return;
     }
 
+    const email = user.email?.trim() ?? "";
+    if (!email) {
+      toast.error("This account does not have an email address yet.");
+      return;
+    }
+
+    const { error: reauthError } = await supabase.auth.signInWithPassword({
+      email,
+      password: oldPassword,
+    });
+
+    if (reauthError) {
+      toast.error("Your current password is incorrect.");
+      return;
+    }
+
     const { error } = await supabase.auth.updateUser({
       password: newPassword,
     });
@@ -369,6 +425,7 @@ export function UserDashboard() {
       toast.error("Failed to change password.");
     } else {
       toast.success("Password changed successfully.");
+      setOldPassword("");
       setNewPassword("");
       setConfirmPassword("");
     }
@@ -451,6 +508,20 @@ export function UserDashboard() {
     );
   };
 
+  const handleTabChange = (nextTab: string) => {
+    const normalizedTab = nextTab as DashboardTab;
+    setActiveTab(normalizedTab);
+    router.push(getDashboardTabRoute(normalizedTab));
+  };
+
+  if (authLoading) {
+    return (
+      <div className="container mx-auto px-4 py-8">
+        <p className="text-center text-gray-500">Loading your dashboard...</p>
+      </div>
+    );
+  }
+
   if (!user) {
     return (
       <div className="container mx-auto px-4 py-8">
@@ -481,39 +552,39 @@ export function UserDashboard() {
       <div className="mx-auto max-w-4xl">
         <h1 className="mb-8 text-3xl font-bold">My Dashboard</h1>
 
-        <Tabs defaultValue="orders" className="space-y-6">
+        <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-6">
           <TabsList className="flex w-full overflow-x-auto gap-2 justify-start no-scrollbar h-14 items-center px-2">
             <TabsTrigger
               value="orders"
-              className="flex items-center gap-2 whitespace-nowrap px-4 py-3 text-sm h-10"
+              className="flex cursor-pointer items-center gap-2 whitespace-nowrap px-4 py-3 text-sm h-10"
             >
               <Package className="h-4 w-4" />
               Orders
             </TabsTrigger>
             <TabsTrigger 
               value="registries"
-              className="flex items-center gap-2 whitespace-nowrap px-4 py-3 text-sm h-10"
+              className="flex cursor-pointer items-center gap-2 whitespace-nowrap px-4 py-3 text-sm h-10"
             >
               <Gift className="h-4 w-4" />
               Registries
             </TabsTrigger>
             <TabsTrigger 
               value="profile"
-              className="flex items-center gap-2 whitespace-nowrap px-4 py-3 text-sm h-10"
+              className="flex cursor-pointer items-center gap-2 whitespace-nowrap px-4 py-3 text-sm h-10"
             >
               <User className="h-4 w-4" />
               Profile
             </TabsTrigger>
             <TabsTrigger 
               value="address"
-              className="flex items-center gap-2 whitespace-nowrap px-4 py-3 text-sm h-10"
+              className="flex cursor-pointer items-center gap-2 whitespace-nowrap px-4 py-3 text-sm h-10"
             >
               <MapPin className="h-4 w-4" />
               Address
             </TabsTrigger>
             <TabsTrigger 
               value="security"
-              className="flex items-center gap-2 whitespace-nowrap px-4 py-3 text-sm h-10"
+              className="flex cursor-pointer items-center gap-2 whitespace-nowrap px-4 py-3 text-sm h-10"
             >
               <Lock className="h-4 w-4" />
               Security
@@ -560,14 +631,14 @@ export function UserDashboard() {
                 <div>
                   <CardTitle>My Registries</CardTitle>
                   <p className="mt-1 text-sm text-gray-500">
-                    Share your public link and manage the latest registry builder from the registry page.
+                    Open each registry detail page to review funded items and payment history.
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <Button asChild variant="outline">
-                    <Link href="/registry">Open Registry Builder</Link>
+                    <Link href="/registry">Browse Registry Catalog</Link>
                   </Button>
-                  <Button onClick={() => setShowCreateRegistryModal(true)}>
+                  <Button onClick={() => setRegistryCreateOpen(true)}>
                     <Gift className="mr-2 h-4 w-4" />
                     Create New Registry
                   </Button>
@@ -577,9 +648,7 @@ export function UserDashboard() {
                 {registries.length === 0 ? (
                   <div className="py-8 text-center">
                     <p className="mb-4 text-gray-500">No registries yet.</p>
-                    <Button onClick={() => setShowCreateRegistryModal(true)}>
-                      Create Your First Registry
-                    </Button>
+                    <Button onClick={() => setRegistryCreateOpen(true)}>Create Your First Registry</Button>
                   </div>
                 ) : (
                   <div className="space-y-4">
@@ -610,6 +679,11 @@ export function UserDashboard() {
                                 Created:{" "}
                                 {new Date(registry.created_at).toLocaleDateString()}
                               </p>
+                              {registry.status === "closed" ? (
+                                <p className="mt-2 inline-flex rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-gray-700">
+                                  Closed
+                                </p>
+                              ) : null}
                               <div className="mt-3 grid gap-2 text-sm sm:grid-cols-3">
                                 <div className="rounded-xl bg-gray-50 px-3 py-2">
                                   <span className="font-semibold text-gray-900">
@@ -640,11 +714,11 @@ export function UserDashboard() {
                                 <Share2 className="mr-2 h-4 w-4" />
                                 Share
                               </Button>
-                              {registries[0]?.id === registry.id ? (
-                                <Button asChild size="sm">
-                                  <Link href="/registry">Manage Active Registry</Link>
-                                </Button>
-                              ) : null}
+                              <Button asChild size="sm">
+                                <Link href={`/dashboard/registries/${registry.id}`}>
+                                  Open Registry
+                                </Link>
+                              </Button>
                             </div>
                           </div>
                           <Separator className="my-2" />
@@ -656,13 +730,18 @@ export function UserDashboard() {
                               {registry.share_code}
                             </p>
                           </div>
-
-                          <div className="mt-4 grid gap-4 xl:grid-cols-[0.95fr_1.05fr]">
-                            <div className="rounded-lg border p-4">
-                              <p className="text-sm font-semibold text-gray-900">
+                          <Tabs defaultValue="funding" className="mt-4 space-y-4">
+                            <TabsList className="grid w-full grid-cols-2">
+                              <TabsTrigger value="funding" className="cursor-pointer">
                                 Item Funding
-                              </p>
-                              <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                              </TabsTrigger>
+                              <TabsTrigger value="payments" className="cursor-pointer">
+                                Payment Activity
+                              </TabsTrigger>
+                            </TabsList>
+
+                            <TabsContent value="funding" className="space-y-3">
+                              <div className="grid gap-2 sm:grid-cols-3">
                                 <div className="rounded-xl bg-gray-50 px-3 py-2 text-sm">
                                   <span className="font-semibold text-gray-900">
                                     Needed:
@@ -683,102 +762,83 @@ export function UserDashboard() {
                                 </div>
                               </div>
 
-                              <div className="mt-4 space-y-3">
-                                {registryItems.length === 0 ? (
-                                  <p className="text-sm text-gray-500">
-                                    No registry items yet.
-                                  </p>
-                                ) : (
-                                  registryItems.map((item) => (
-                                    <div
-                                      key={item.id}
-                                      className="rounded-xl border border-gray-200 px-3 py-3"
-                                    >
-                                      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                                        <div>
-                                          <p className="font-medium text-gray-900">
-                                            {item.product?.name ?? "Registry item"}
-                                          </p>
-                                          <p className="text-sm text-gray-500">
-                                            {item.purchasedQuantity} covered,{" "}
-                                            {getRemainingRegistryQuantity(item)} units left
-                                          </p>
-                                        </div>
-                                        <div className="text-sm text-gray-600 sm:text-right">
-                                          <p>
-                                            Funded:{" "}
-                                            {formatNairaAmount(getRegistryItemFundedAmount(item))}
-                                          </p>
-                                          <p>
-                                            Left:{" "}
-                                            {formatNairaAmount(getRegistryItemRemainingAmount(item))}
-                                          </p>
-                                        </div>
+                              {registryItems.length === 0 ? (
+                                <p className="text-sm text-gray-500">
+                                  No registry items yet.
+                                </p>
+                              ) : (
+                                registryItems.slice(0, 3).map((item) => (
+                                  <div
+                                    key={item.id}
+                                    className="rounded-xl border border-gray-200 px-3 py-3"
+                                  >
+                                    <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                                      <div>
+                                        <p className="font-medium text-gray-900">
+                                          {item.product?.name ?? "Registry item"}
+                                        </p>
+                                        <p className="text-sm text-gray-500">
+                                          {item.purchasedQuantity} covered,{" "}
+                                          {getRemainingRegistryQuantity(item)} units left
+                                        </p>
+                                      </div>
+                                      <div className="text-sm text-gray-600 sm:text-right">
+                                        <p>
+                                          Funded:{" "}
+                                          {formatNairaAmount(getRegistryItemFundedAmount(item))}
+                                        </p>
+                                        <p>
+                                          Left:{" "}
+                                          {formatNairaAmount(getRegistryItemRemainingAmount(item))}
+                                        </p>
                                       </div>
                                     </div>
-                                  ))
-                                )}
-                              </div>
-                            </div>
+                                  </div>
+                                ))
+                              )}
+                            </TabsContent>
 
-                            <div className="rounded-lg border p-4">
-                              <p className="text-sm font-semibold text-gray-900">
-                                Payment Activity
-                              </p>
-                              <div className="mt-4 space-y-3">
-                                {payments.length === 0 ? (
-                                  <p className="text-sm text-gray-500">
-                                    No payments for this registry yet.
-                                  </p>
-                                ) : (
-                                  payments.map((payment) => (
-                                    <div
-                                      key={payment.id}
-                                      className="rounded-xl border border-gray-200 px-3 py-3"
-                                    >
-                                      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                                        <div>
-                                          <p className="font-medium text-gray-900">
-                                            {payment.buyerName}
-                                          </p>
-                                          <p className="text-sm text-gray-500">
-                                            {payment.buyerEmail}
-                                            {payment.buyerPhone ? ` | ${payment.buyerPhone}` : ""}
-                                          </p>
-                                          <p className="mt-2 text-sm text-gray-700">
-                                            {payment.type === "item"
-                                              ? "Paid toward selected registry items"
-                                              : "General registry cash gift"}
-                                          </p>
-                                          <ul className="mt-2 space-y-1 text-sm text-gray-600">
-                                            {payment.itemLabels.map((label) => (
-                                              <li key={`${payment.id}-${label}`}>{label}</li>
-                                            ))}
-                                          </ul>
-                                          {payment.buyerMessage ? (
-                                            <p className="mt-2 rounded-lg bg-gray-50 px-3 py-2 text-sm text-gray-600">
-                                              &quot;{payment.buyerMessage}&quot;
-                                            </p>
-                                          ) : null}
-                                        </div>
-                                        <div className="text-sm text-gray-600 sm:text-right">
-                                          <p className="font-semibold text-gray-900">
-                                            {formatNairaAmount(payment.totalAmount)}
-                                          </p>
-                                          <p>{payment.status}</p>
-                                          <p>{formatDateTime(payment.paidAt ?? payment.createdAt)}</p>
-                                          {payment.paystackReference ? (
-                                            <p className="font-mono text-xs text-gray-500">
-                                              {payment.paystackReference}
-                                            </p>
-                                          ) : null}
-                                        </div>
+                            <TabsContent value="payments" className="space-y-3">
+                              {payments.length === 0 ? (
+                                <p className="text-sm text-gray-500">
+                                  No payments for this registry yet.
+                                </p>
+                              ) : (
+                                payments.slice(0, 3).map((payment) => (
+                                  <div
+                                    key={payment.id}
+                                    className="rounded-xl border border-gray-200 px-3 py-3"
+                                  >
+                                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                                      <div>
+                                        <p className="font-medium text-gray-900">
+                                          {payment.buyerName}
+                                        </p>
+                                        <p className="text-sm text-gray-500">
+                                          {payment.buyerEmail}
+                                          {payment.buyerPhone ? ` | ${payment.buyerPhone}` : ""}
+                                        </p>
+                                      </div>
+                                      <div className="text-sm text-gray-600 sm:text-right">
+                                        <p className="font-semibold text-gray-900">
+                                          {formatNairaAmount(payment.totalAmount)}
+                                        </p>
+                                        <p>{formatDateTime(payment.paidAt ?? payment.createdAt)}</p>
                                       </div>
                                     </div>
-                                  ))
-                                )}
-                              </div>
-                            </div>
+                                  </div>
+                                ))
+                              )}
+                            </TabsContent>
+                          </Tabs>
+
+                          <div className="mt-4 flex flex-wrap gap-2">
+                            <Button asChild variant="outline" size="sm">
+                              <Link href={`/dashboard/registries/${registry.id}`}>
+                                <Pencil className="mr-2 h-4 w-4" />
+                                Manage Registry
+                              </Link>
+                            </Button>
                           </div>
                         </div>
                       );
@@ -876,6 +936,17 @@ export function UserDashboard() {
               <CardContent>
                 <form onSubmit={handleChangePassword} className="space-y-4">
                   <div className="space-y-2">
+                    <Label htmlFor="old-password">Current Password</Label>
+                    <Input
+                      id="old-password"
+                      type="password"
+                      value={oldPassword}
+                      onChange={(event) => setOldPassword(event.target.value)}
+                      minLength={6}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
                     <Label htmlFor="new-password">New Password</Label>
                     <Input
                       id="new-password"
@@ -921,11 +992,12 @@ export function UserDashboard() {
         </Tabs>
       </div>
 
-      <CreateRegistryModal
-        open={showCreateRegistryModal}
-        onClose={() => setShowCreateRegistryModal(false)}
-        onCreated={() => {
+      <RegistryCreateModal
+        open={registryCreateOpen}
+        onOpenChange={setRegistryCreateOpen}
+        onCreated={(registryId) => {
           void loadUserData();
+          router.push(`/dashboard/registries/${registryId}`);
         }}
       />
     </div>

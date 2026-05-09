@@ -6,6 +6,7 @@ import { useAuth } from "../../contexts/AuthContext";
 import { hasSupabaseEnv, supabase } from "../../lib/supabase";
 import { loadPaystackScript } from "../../lib/loadPaystack";
 import { formatNairaAmount, toNairaAmount } from "../../../lib/commerce";
+import { normalizeShippingAddress } from "../../../lib/userProfile";
 import { type Product } from "../ProductCard";
 import { Button } from "../ui/button";
 import {
@@ -40,15 +41,13 @@ interface CheckoutModalProps {
   onCheckoutComplete: () => void;
 }
 
-const SHIPPING_TIERS = [
-  { value: "lagos", label: "Lagos (2-3 days)", fee: 2000 },
-  { value: "southwest", label: "South West (3-5 days)", fee: 3500 },
-  { value: "southeast", label: "South East (4-6 days)", fee: 4000 },
-  { value: "northcentral", label: "North Central (4-6 days)", fee: 4500 },
-  { value: "northeast", label: "North East (5-7 days)", fee: 5000 },
-  { value: "northwest", label: "North West (5-7 days)", fee: 5000 },
-  { value: "southsouth", label: "South South (4-6 days)", fee: 4000 },
-];
+type ShippingTierOption = {
+  description?: string | null;
+  eta?: string | null;
+  fee: number;
+  label: string;
+  value: string;
+};
 
 export function CheckoutModal({
   open,
@@ -56,11 +55,14 @@ export function CheckoutModal({
   cartItems,
   onCheckoutComplete,
 }: CheckoutModalProps) {
-  const { session, user } = useAuth();
+  const { profile, refreshProfile, session, user } = useAuth();
   const [loading, setLoading] = useState(false);
   const [paystackLoaded, setPaystackLoaded] = useState(false);
   const [paystackActive, setPaystackActive] = useState(false);
-  const [shippingTier, setShippingTier] = useState("lagos");
+  const [shippingTier, setShippingTier] = useState("");
+  const [shippingTiers, setShippingTiers] = useState<ShippingTierOption[]>([]);
+  const [shippingTierLoading, setShippingTierLoading] = useState(false);
+  const [shippingTierError, setShippingTierError] = useState<string | null>(null);
 
   const [shippingName, setShippingName] = useState("");
   const [shippingPhone, setShippingPhone] = useState("");
@@ -85,6 +87,95 @@ export function CheckoutModal({
   }, [open]);
 
   useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    const savedAddress = normalizeShippingAddress(profile?.shipping_address);
+    const frameId = window.requestAnimationFrame(() => {
+      setShippingName(savedAddress.name || profile?.full_name || "");
+      setShippingPhone(savedAddress.phone || profile?.phone || "");
+      setShippingAddress(savedAddress.address);
+      setShippingCity(savedAddress.city);
+      setShippingState(savedAddress.state);
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+    };
+  }, [open, profile]);
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    if (!hasSupabaseEnv) {
+      const frameId = window.requestAnimationFrame(() => {
+        setShippingTiers([]);
+        setShippingTier("");
+        setShippingTierLoading(false);
+        setShippingTierError(
+          "Shipping tiers are not configured yet. Please contact support before checkout.",
+        );
+      });
+
+      return () => {
+        window.cancelAnimationFrame(frameId);
+      };
+    }
+
+    let cancelled = false;
+
+    const loadShippingTiers = async () => {
+      setShippingTierLoading(true);
+      setShippingTierError(null);
+
+      const { data, error } = await supabase
+        .from("shipping_tiers")
+        .select("code, label, fee, eta, description")
+        .eq("is_active", true)
+        .order("sort_order", { ascending: true });
+
+      if (error || !data || data.length === 0) {
+        if (!cancelled) {
+          setShippingTiers([]);
+          setShippingTier("");
+          setShippingTierError(
+            "Shipping tiers are not configured yet. Please contact support before checkout.",
+          );
+          setShippingTierLoading(false);
+        }
+        return;
+      }
+
+      const nextTiers = data.map((tier) => ({
+        value: tier.code,
+        label: tier.eta?.trim() ? `${tier.label} (${tier.eta})` : tier.label,
+        fee: Number(tier.fee ?? 0),
+        eta: tier.eta,
+        description: tier.description,
+      })) satisfies ShippingTierOption[];
+
+      if (!cancelled) {
+        setShippingTiers(nextTiers);
+        setShippingTier((currentTier) => {
+          return nextTiers.some((tier) => tier.value === currentTier)
+            ? currentTier
+            : (nextTiers[0]?.value ?? "");
+        });
+        setShippingTierLoading(false);
+      }
+    };
+
+    void loadShippingTiers();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
+
+  useEffect(() => {
     if (!paystackActive || !pendingHandlerRef.current) {
       return;
     }
@@ -100,8 +191,8 @@ export function CheckoutModal({
   }, [paystackActive]);
 
   const selectedTier = useMemo(
-    () => SHIPPING_TIERS.find((tier) => tier.value === shippingTier),
-    [shippingTier],
+    () => shippingTiers.find((tier) => tier.value === shippingTier),
+    [shippingTier, shippingTiers],
   );
 
   const subtotalAmount = cartItems.reduce(
@@ -133,6 +224,19 @@ export function CheckoutModal({
 
     if (!paystackLoaded || !window.PaystackPop) {
       toast.error("Paystack is still loading. Please try again.");
+      return;
+    }
+
+    if (shippingTierLoading) {
+      toast.info("Shipping tiers are still loading.");
+      return;
+    }
+
+    if (!selectedTier) {
+      toast.error(
+        shippingTierError ??
+          "Shipping tiers are not configured yet. Please contact support before checkout.",
+      );
       return;
     }
 
@@ -171,6 +275,7 @@ export function CheckoutModal({
       }
 
       activeOrderIdRef.current = orderId;
+      void refreshProfile();
 
       const onPaymentSuccess = async (response: { reference: string }) => {
         const { error: paymentError } = await supabase.rpc(
@@ -369,18 +474,40 @@ export function CheckoutModal({
 
           <div className="space-y-2">
             <Label>Shipping Zone</Label>
-            <Select value={shippingTier} onValueChange={setShippingTier}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {SHIPPING_TIERS.map((tier) => (
-                  <SelectItem key={tier.value} value={tier.value}>
-                    {tier.label} - {formatNairaAmount(tier.fee)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            {shippingTiers.length > 0 ? (
+              <>
+                <Select
+                  value={shippingTier}
+                  onValueChange={setShippingTier}
+                  disabled={shippingTierLoading}
+                >
+                  <SelectTrigger>
+                    <SelectValue
+                      placeholder={
+                        shippingTierLoading
+                          ? "Loading shipping tiers..."
+                          : "Select shipping tier"
+                      }
+                    />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {shippingTiers.map((tier) => (
+                      <SelectItem key={tier.value} value={tier.value}>
+                        {tier.label} - {formatNairaAmount(tier.fee)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {selectedTier?.description ? (
+                  <p className="text-sm text-gray-500">{selectedTier.description}</p>
+                ) : null}
+              </>
+            ) : (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                {shippingTierError ??
+                  "Shipping tiers are not available yet. Please contact support before checkout."}
+              </div>
+            )}
           </div>
 
           <div className="space-y-4">
@@ -404,6 +531,11 @@ export function CheckoutModal({
                   onChange={(event) => setShippingPhone(event.target.value)}
                   required
                 />
+                {!profile?.phone?.trim() ? (
+                  <p className="text-xs text-gray-500">
+                    We&apos;ll save this number to your account when you continue with checkout.
+                  </p>
+                ) : null}
               </div>
             </div>
 
@@ -443,7 +575,12 @@ export function CheckoutModal({
             type="submit"
             className="w-full"
             size="lg"
-            disabled={loading || cartItems.length === 0}
+            disabled={
+              loading ||
+              cartItems.length === 0 ||
+              shippingTierLoading ||
+              !selectedTier
+            }
           >
             {paystackActive
               ? "Paystack checkout open..."

@@ -1,9 +1,14 @@
 import { NextResponse } from "next/server";
+import { revalidateTag } from "next/cache";
 
 import {
   createSupabaseServiceRoleClient,
   hasSupabaseServiceRoleEnv,
 } from "@/lib/supabaseServer";
+import {
+  hasSavedShippingAddress,
+  normalizeShippingAddress,
+} from "@/lib/userProfile";
 import {
   hasPaystackServerEnv,
   verifyPaystackTransaction,
@@ -24,6 +29,7 @@ type InitiateRegistryCheckoutPayload = {
   paymentAmount?: number | string;
   registryId?: string;
   selectedItems?: RegistryCheckoutItemInput[];
+  shippingAddress?: Record<string, unknown> | null;
 };
 
 type VerifyRegistryCheckoutPayload = {
@@ -63,6 +69,7 @@ type RegistryCheckoutCompletion = {
 };
 
 type SupabaseRpcErrorLike = {
+  code?: string | null;
   message?: string | null;
 };
 
@@ -83,6 +90,19 @@ function getErrorMessage(error: unknown, fallback: string) {
   }
 
   return fallback;
+}
+
+function isMissingFunctionError(error: unknown, functionName: string) {
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+
+  const maybeError = error as SupabaseRpcErrorLike;
+  return (
+    maybeError.code === "PGRST202" ||
+    maybeError.message?.includes(`function public.${functionName}`) ||
+    maybeError.message?.includes(`Could not find the function public.${functionName}`)
+  );
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -204,6 +224,9 @@ async function handleInitiateCheckout(
   const buyerMessage = payload.buyerMessage?.trim() ?? "";
   const selectedItems = normalizeSelectedItems(payload.selectedItems);
   const paymentAmount = normalizePaymentAmount(payload.paymentAmount);
+  const shippingAddress = normalizeShippingAddress(
+    isRecord(payload.shippingAddress) ? payload.shippingAddress : null,
+  );
 
   if (!registryId) {
     return jsonError("Registry id is required.", 400);
@@ -215,6 +238,17 @@ async function handleInitiateCheckout(
 
   if (!buyerEmail) {
     return jsonError("Buyer email is required.", 400);
+  }
+
+  if (!buyerPhone) {
+    return jsonError("Buyer phone number is required.", 400);
+  }
+
+  if (!hasSavedShippingAddress(shippingAddress)) {
+    return jsonError(
+      "This registry cannot accept gifts until the owner saves a shipping address.",
+      400,
+    );
   }
 
   if (selectedItems.length === 0 && paymentAmount <= 0) {
@@ -231,17 +265,63 @@ async function handleInitiateCheckout(
 
   const reference = createPaystackReference();
   const { data, error } = await adminClient.rpc("create_registry_checkout", {
+    p_cash_amount: paymentAmount,
     p_buyer_email: buyerEmail,
     p_buyer_message: buyerMessage || null,
     p_buyer_name: buyerName,
     p_buyer_phone: buyerPhone || null,
-    p_payment_amount: paymentAmount,
     p_paystack_reference: reference,
     p_registry_id: registryId,
     p_selected_items: selectedItems,
   });
 
   if (error) {
+    if (isMissingFunctionError(error, "create_registry_checkout")) {
+      const contributionType =
+        selectedItems.length > 0 ? (paymentAmount > 0 ? "mixed" : "items") : "cash";
+
+      const { data: fallbackOrderId, error: fallbackError } = await adminClient.rpc(
+        "create_registry_order",
+        {
+          p_buyer_email: buyerEmail,
+          p_buyer_message: buyerMessage || null,
+          p_buyer_name: buyerName,
+          p_buyer_phone: buyerPhone || null,
+          p_contribution_type: contributionType,
+          p_registry_id: registryId,
+          p_selected_items: selectedItems,
+          p_total: paymentAmount,
+        },
+      );
+
+      if (fallbackError || typeof fallbackOrderId !== "string") {
+        return jsonError(
+          getErrorMessage(fallbackError, "Registry checkout could not be started."),
+          400,
+        );
+      }
+
+      await adminClient
+        .from("registry_orders")
+        .update({
+          paystack_reference: reference,
+          shipping_address: shippingAddress,
+        })
+        .eq("id", fallbackOrderId);
+
+      return NextResponse.json({
+        amountKobo: Math.round(paymentAmount * 100),
+        checkoutType: selectedItems.length > 0 ? "item" : "cash",
+        currency: "NGN",
+        metadata: {
+          order_id: fallbackOrderId,
+          registry_id: registryId,
+          type: selectedItems.length > 0 ? "item" : "cash",
+        } satisfies PaystackMetadata,
+        reference,
+      });
+    }
+
     return jsonError(
       getErrorMessage(error, "Registry checkout could not be started."),
       400,
@@ -335,6 +415,59 @@ async function handleVerifyCheckout(
   );
 
   if (error) {
+    if (isMissingFunctionError(error, "complete_registry_checkout_payment")) {
+      const { data: fallbackOrder, error: fallbackOrderError } = await adminClient
+        .from("registry_orders")
+        .select("id, registry_id, contribution_type, status, paystack_reference")
+        .eq("paystack_reference", reference)
+        .maybeSingle();
+
+      if (fallbackOrderError || !fallbackOrder) {
+        return jsonError(
+          getErrorMessage(fallbackOrderError, "Registry checkout could not be finalized."),
+          400,
+        );
+      }
+
+      if (fallbackOrder.status !== "paid") {
+        const { error: completeOrderError } = await adminClient.rpc(
+          "complete_registry_order_payment",
+          {
+            p_order_id: fallbackOrder.id,
+            p_paystack_reference: reference,
+          },
+        );
+
+        if (completeOrderError) {
+          return jsonError(
+            getErrorMessage(completeOrderError, "Registry checkout could not be finalized."),
+            400,
+          );
+        }
+      }
+
+      revalidateTag("registries", "max");
+
+      return NextResponse.json({
+        checkout: {
+          checkout_type:
+            fallbackOrder.contribution_type === "cash" ? "cash" : "item",
+          paystack_reference: reference,
+          registry_contribution_id: null,
+          registry_id: fallbackOrder.registry_id,
+          registry_order_id: fallbackOrder.id,
+          status: "paid",
+        },
+        message: "Registry checkout verified successfully.",
+        payment: {
+          amountKobo: verifiedPayment.amount,
+          paidAt: verifiedPayment.paid_at ?? null,
+          reference: verifiedPayment.reference,
+          type: metadataType,
+        },
+      });
+    }
+
     return jsonError(
       getErrorMessage(error, "Registry checkout could not be finalized."),
       400,
@@ -350,6 +483,8 @@ async function handleVerifyCheckout(
     if (checkout.checkout_type !== metadataType) {
       return jsonError("Verified payment metadata does not match this checkout type.", 400);
     }
+
+    revalidateTag("registries", "max");
 
     return NextResponse.json({
       checkout,
@@ -397,11 +532,50 @@ async function handleCancelCheckout(
   });
 
   if (error) {
+    if (isMissingFunctionError(error, "cancel_registry_checkout")) {
+      const { data: fallbackOrder, error: fallbackOrderError } = await adminClient
+        .from("registry_orders")
+        .select("id")
+        .eq("paystack_reference", reference)
+        .maybeSingle();
+
+      if (fallbackOrderError || !fallbackOrder) {
+        return jsonError(
+          getErrorMessage(fallbackOrderError, "Registry checkout could not be cancelled."),
+          400,
+        );
+      }
+
+      const { error: cancelOrderError } = await adminClient.rpc("cancel_registry_order", {
+        p_order_id: fallbackOrder.id,
+      });
+
+      if (cancelOrderError) {
+        return jsonError(
+          getErrorMessage(cancelOrderError, "Registry checkout could not be cancelled."),
+          400,
+        );
+      }
+
+      revalidateTag("registries", "max");
+
+      return NextResponse.json({
+        checkout: {
+          paystack_reference: reference,
+          registry_order_id: fallbackOrder.id,
+          status: "cancelled",
+        },
+        message: "Registry checkout cancelled.",
+      });
+    }
+
     return jsonError(
       getErrorMessage(error, "Registry checkout could not be cancelled."),
       400,
     );
   }
+
+  revalidateTag("registries", "max");
 
   return NextResponse.json({
     checkout: isRecord(data) ? data : null,

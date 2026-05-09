@@ -20,14 +20,16 @@ import {
   formatNairaAmount,
   toNairaAmount,
 } from "../../lib/commerce";
+import { type HomepageDeal } from "../../lib/content";
 
 interface DealOfTheWeekProps {
+  initialDeals?: HomepageDeal[];
   onAddToCart: (product: Product) => void;
   onViewDetails: (product: Product) => void;
 }
 
-function getTimeLeft(targetTime: number) {
-  const difference = Math.max(targetTime - Date.now(), 0);
+function getTimeLeft(targetTime: number, now: number) {
+  const difference = Math.max(targetTime - now, 0);
   const totalSeconds = Math.floor(difference / 1000);
 
   const days = Math.floor(totalSeconds / (60 * 60 * 24));
@@ -39,18 +41,25 @@ function getTimeLeft(targetTime: number) {
 }
 
 export function DealOfTheWeek({
+  initialDeals,
   onAddToCart,
   onViewDetails,
 }: DealOfTheWeekProps) {
-  const deals = useHomepageDeals();
-  const [now, setNow] = useState(() => Date.now());
+  const deals = useHomepageDeals(initialDeals);
+  const [now, setNow] = useState<number | null>(null);
 
   useEffect(() => {
+    const frameId = window.requestAnimationFrame(() => {
+      setNow(Date.now());
+    });
     const timer = window.setInterval(() => {
       setNow(Date.now());
     }, 1000);
 
-    return () => window.clearInterval(timer);
+    return () => {
+      window.cancelAnimationFrame(frameId);
+      window.clearInterval(timer);
+    };
   }, []);
 
   /**
@@ -59,6 +68,10 @@ export function DealOfTheWeek({
   const activeDeals = useMemo(() => {
     return deals.filter((deal) => {
       if (!deal.endsAt) return false; // must be set by admin
+      if (now === null) {
+        return true;
+      }
+
       return new Date(deal.endsAt).getTime() > now;
     });
   }, [deals, now]);
@@ -102,7 +115,7 @@ export function DealOfTheWeek({
                 );
 
                 const endsAt = new Date(deal.endsAt!).getTime();
-                const timeLeft = getTimeLeft(endsAt);
+                const timeLeft = now === null ? null : getTimeLeft(endsAt, now);
 
                 return (
                   <CarouselItem key={deal.id}>
@@ -164,14 +177,16 @@ export function DealOfTheWeek({
 
                             <div className="grid grid-cols-4 gap-1 text-center">
                               {[
-                                { label: "D", value: timeLeft.days },
-                                { label: "H", value: timeLeft.hours },
-                                { label: "M", value: timeLeft.minutes },
-                                { label: "S", value: timeLeft.seconds },
+                                { label: "D", value: timeLeft?.days ?? null },
+                                { label: "H", value: timeLeft?.hours ?? null },
+                                { label: "M", value: timeLeft?.minutes ?? null },
+                                { label: "S", value: timeLeft?.seconds ?? null },
                               ].map((unit) => (
                                 <div key={`${deal.id}-${unit.label}`}>
                                   <div className="text-base sm:text-xl font-bold text-orange-600">
-                                    {String(unit.value).padStart(2, "0")}
+                                    {unit.value === null
+                                      ? "--"
+                                      : String(unit.value).padStart(2, "0")}
                                   </div>
                                   <div className="text-[10px] text-gray-600">
                                     {unit.label}

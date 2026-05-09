@@ -2,15 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import {
-  Baby,
-  LayoutDashboard,
-  LogOut,
-  Menu,
-  Shield,
-  ShoppingCart,
-  User,
-} from "lucide-react";
+import { Baby, LayoutDashboard, LogOut, Menu, Shield, ShoppingCart, User } from "lucide-react";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import {
@@ -21,11 +13,9 @@ import {
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
 
-type StoreView = "store" | "dashboard" | "admin";
 type NavSection = "home" | "products" | "about" | "faq";
 
 interface HeaderProps {
-  activeView: StoreView;
   cartItemCount: number;
   isAuthenticated: boolean;
   isAdmin: boolean;
@@ -46,7 +36,6 @@ const navItems: { id: NavSection; label: string }[] = [
 ];
 
 export function Header({
-  activeView,
   cartItemCount,
   isAuthenticated,
   isAdmin,
@@ -67,7 +56,7 @@ export function Header({
 
   return (
     <header className="sticky top-0 z-50 w-full border-b bg-white/95 shadow-sm backdrop-blur">
-<     div className="relative w-full px-4 lg:px-6">
+      <div className="relative w-full px-4 lg:px-6">
         <div className="flex min-h-16 items-center justify-between">
 
           {/* LEFT: Brand */}
@@ -94,7 +83,7 @@ export function Header({
               <button
                 key={item.id}
                 type="button"
-                className="text-sm font-medium transition-colors hover:text-pink-600"
+                className="cursor-pointer text-sm font-medium transition-colors hover:text-pink-600"
                 onClick={() => handleNavigate(item.id)}
               >
                 {item.label}
@@ -220,7 +209,7 @@ export function Header({
                 <button
                   key={item.id}
                   type="button"
-                  className="text-left text-sm font-medium hover:text-pink-600"
+                  className="cursor-pointer text-left text-sm font-medium hover:text-pink-600"
                   onClick={() => handleNavigate(item.id)}
                 >
                   {item.label}

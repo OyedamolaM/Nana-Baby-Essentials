@@ -11,6 +11,7 @@ export interface RegistryRecord {
   user_id: string;
   share_code: string;
   name: string;
+  status?: string | null;
   whatsapp?: string | null;
   due_month?: string | null;
   baby_gender?: string | null;
@@ -55,6 +56,7 @@ export interface RegistryOrderRecord {
   contribution_type: "items" | "cash" | "mixed";
   status: string;
   paystack_reference?: string | null;
+  shipping_address?: unknown;
   paid_at?: string | null;
   created_at: string;
 }
@@ -213,6 +215,10 @@ export function buildRegistryPaymentActivities({
   orders: RegistryOrderRecord[];
   registryItems: RegistryItem[];
 }) {
+  const completedOrders = orders.filter((order) => order.status === "paid");
+  const completedContributions = contributions.filter(
+    (contribution) => contribution.status === "paid",
+  );
   const registryItemsById = Object.fromEntries(
     registryItems.map((item) => [item.id, item]),
   ) as Record<string, RegistryItem>;
@@ -227,7 +233,7 @@ export function buildRegistryPaymentActivities({
     {},
   );
 
-  const itemActivities = orders.map<RegistryPaymentActivity>((order) => {
+  const itemActivities = completedOrders.map<RegistryPaymentActivity>((order) => {
     const labels = (orderItemsByOrderId[order.id] ?? []).map((orderItem) => {
       const registryItem = orderItem.registry_item_id
         ? registryItemsById[orderItem.registry_item_id]
@@ -255,7 +261,7 @@ export function buildRegistryPaymentActivities({
     };
   });
 
-  const cashActivities = contributions.map<RegistryPaymentActivity>((contribution) => ({
+  const cashActivities = completedContributions.map<RegistryPaymentActivity>((contribution) => ({
     id: contribution.id,
     registryId: contribution.registry_id,
     buyerEmail: contribution.buyer_email,

@@ -4,14 +4,13 @@ import { useEffect, useMemo, useState } from "react";
 import {
   FALLBACK_BLOG_POSTS,
   type BlogPostRecord,
-  type CollectionRecord,
   type HomeDealRecord,
+  type HomepageDeal,
 } from "../../lib/content";
 import {
   SEED_PRODUCTS,
   mapProductRecord,
   type ProductRecord,
-  type StoreProduct,
 } from "../../lib/commerce";
 import { hasSupabaseEnv, supabase } from "../lib/supabase";
 
@@ -20,34 +19,6 @@ type ProductJoinRow = {
 };
 
 type DealRow = HomeDealRecord & ProductJoinRow;
-type CollectionProductRow = {
-  collection_id: string;
-  sort_order: number;
-  products: ProductRecord | ProductRecord[] | null;
-};
-
-export interface HomepageDeal {
-  id: string;
-  title: string;
-  subtitle: string;
-  badgeText: string;
-  salePrice: number;
-  compareAtPrice: number;
-  image: string;
-  startsAt?: string | null;
-  endsAt?: string | null;
-  product: StoreProduct;
-}
-
-export interface CollectionWithProducts {
-  id: string;
-  name: string;
-  slug: string;
-  description: string;
-  heroImage?: string | null;
-  sortOrder: number;
-  products: StoreProduct[];
-}
 
 function isDealActive(deal: HomeDealRecord) {
   const now = Date.now();
@@ -84,10 +55,16 @@ function buildFallbackDeals() {
   }));
 }
 
-export function useHomepageDeals() {
-  const [deals, setDeals] = useState<HomepageDeal[]>(buildFallbackDeals());
+export function useHomepageDeals(initialDeals?: HomepageDeal[]) {
+  const [deals, setDeals] = useState<HomepageDeal[]>(
+    initialDeals && initialDeals.length > 0 ? initialDeals : buildFallbackDeals(),
+  );
 
   useEffect(() => {
+    if (initialDeals && initialDeals.length > 0) {
+      return;
+    }
+
     if (!hasSupabaseEnv) {
       return;
     }
@@ -135,101 +112,24 @@ export function useHomepageDeals() {
     };
 
     void loadDeals();
-  }, []);
+  }, [initialDeals]);
 
   return deals;
 }
 
-export function useActiveCollections(limitProductsPerCollection = 4) {
-  const [collections, setCollections] = useState<CollectionWithProducts[]>([]);
+export function usePublishedBlogPosts(initialPosts?: BlogPostRecord[]) {
+  const [posts, setPosts] = useState<BlogPostRecord[]>(
+    initialPosts && initialPosts.length > 0 ? initialPosts : FALLBACK_BLOG_POSTS,
+  );
+  const [loading, setLoading] = useState(
+    Boolean(hasSupabaseEnv && !(initialPosts && initialPosts.length > 0)),
+  );
 
   useEffect(() => {
-    if (!hasSupabaseEnv) {
+    if (initialPosts && initialPosts.length > 0) {
       return;
     }
 
-    const loadCollections = async () => {
-      const { data: collectionRows, error: collectionError } = await supabase
-        .from("collections")
-        .select("*")
-        .eq("is_active", true)
-        .order("sort_order", { ascending: true });
-
-      if (collectionError || !collectionRows || collectionRows.length === 0) {
-        setCollections([]);
-        return;
-      }
-
-      const typedCollections = collectionRows as CollectionRecord[];
-
-      const { data: collectionProductRows, error: collectionProductsError } =
-        await supabase
-          .from("collection_products")
-          .select("collection_id, sort_order, products(*)")
-          .in(
-            "collection_id",
-            typedCollections.map((collection) => collection.id),
-          )
-          .order("sort_order", { ascending: true });
-
-      if (collectionProductsError || !collectionProductRows) {
-        setCollections(
-          typedCollections.map((collection) => ({
-            id: collection.id,
-            name: collection.name,
-            slug: collection.slug,
-            description: collection.description || "",
-            heroImage: collection.hero_image,
-            sortOrder: collection.sort_order,
-            products: [],
-          })),
-        );
-        return;
-      }
-
-      const groupedProducts = (collectionProductRows as CollectionProductRow[]).reduce<
-        Record<string, StoreProduct[]>
-      >((accumulator, row) => {
-        const productRecord = Array.isArray(row.products)
-          ? row.products[0]
-          : row.products;
-
-        if (!productRecord) {
-          return accumulator;
-        }
-
-        const existing = accumulator[row.collection_id] ?? [];
-        if (existing.length < limitProductsPerCollection) {
-          existing.push(mapProductRecord(productRecord));
-        }
-        accumulator[row.collection_id] = existing;
-        return accumulator;
-      }, {});
-
-      setCollections(
-        typedCollections.map((collection) => ({
-          id: collection.id,
-          name: collection.name,
-          slug: collection.slug,
-          description: collection.description || "",
-          heroImage: collection.hero_image,
-          sortOrder: collection.sort_order,
-          products: groupedProducts[collection.id] ?? [],
-        })),
-      );
-    };
-
-    void loadCollections();
-  }, [limitProductsPerCollection]);
-
-  return collections;
-}
-
-export function usePublishedBlogPosts() {
-  const [posts, setPosts] = useState<BlogPostRecord[]>(FALLBACK_BLOG_POSTS);
-  const [loading, setLoading] = useState(hasSupabaseEnv);
-
-  useEffect(() => {
     if (!hasSupabaseEnv) {
       return;
     }
@@ -252,7 +152,7 @@ export function usePublishedBlogPosts() {
     };
 
     void loadPosts();
-  }, []);
+  }, [initialPosts]);
 
   const postLookup = useMemo(() => {
     return Object.fromEntries(posts.map((post) => [post.slug, post])) as Record<

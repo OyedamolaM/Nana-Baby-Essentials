@@ -1,3 +1,5 @@
+import type { StoreProduct } from "./commerce";
+
 export interface HomeDealRecord {
   id: string;
   product_id: number;
@@ -38,6 +40,19 @@ export interface BlogPostRecord {
   is_published: boolean;
   created_at?: string;
   updated_at?: string;
+}
+
+export interface HomepageDeal {
+  id: string;
+  title: string;
+  subtitle: string;
+  badgeText: string;
+  salePrice: number;
+  compareAtPrice: number;
+  image: string;
+  startsAt?: string | null;
+  endsAt?: string | null;
+  product: StoreProduct;
 }
 
 export function createSlug(value: string) {

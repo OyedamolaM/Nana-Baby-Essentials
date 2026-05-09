@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Heart, Share2, ShoppingCart } from "lucide-react";
 import { toast } from "sonner";
@@ -9,7 +10,7 @@ import { formatNaira } from "../../lib/commerce";
 import { type Product } from "./ProductCard";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
-import { Dialog, DialogContent } from "./ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
 
 interface ProductDetailModalProps {
   product: Product | null;
@@ -118,8 +119,7 @@ export function ProductDetailModal({
   };
 
   const handleShare = async () => {
-    const shareUrl = new URL(window.location.href);
-    shareUrl.hash = "products";
+    const shareUrl = new URL(`/products/${product.slug}`, window.location.origin);
 
     if (navigator.share) {
       try {
@@ -141,6 +141,9 @@ export function ProductDetailModal({
   return (
     <Dialog open={open} onOpenChange={(nextOpen) => !nextOpen && onClose()}>
       <DialogContent className="max-h-[90vh] max-w-4xl overflow-y-auto">
+        <DialogHeader className="sr-only">
+          <DialogTitle>{product.name}</DialogTitle>
+        </DialogHeader>
         <div className="grid gap-8 md:grid-cols-2">
           <div className="space-y-4">
             <img
@@ -221,6 +224,10 @@ export function ProductDetailModal({
                   <Share2 className="h-5 w-5" />
                 </Button>
               </div>
+
+              <Button asChild type="button" variant="ghost" className="w-full">
+                <Link href={`/products/${product.slug}`}>Open Full Product Page</Link>
+              </Button>
             </div>
 
             <div className="space-y-2 border-t pt-4">

@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Providers } from "./providers";
 import { Analytics } from "@vercel/analytics/next";
+import { SITE_NAME, SITE_TAGLINE, buildAbsoluteUrl } from "../lib/site";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -15,8 +16,17 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Nana Baby Essentials| Baby Store, Baby Registry",
-  description: "Get Items for your baby from Nana Essentials or Create your Baby Registry",
+  metadataBase: new URL(buildAbsoluteUrl("/")),
+  title: {
+    default: `${SITE_NAME} | ${SITE_TAGLINE}`,
+    template: `%s | ${SITE_NAME}`,
+  },
+  description:
+    "Shop premium baby essentials, build a shareable registry, and explore parenting guides from Nana's Baby Essentials.",
+  openGraph: {
+    siteName: SITE_NAME,
+    type: "website",
+  },
 };
 
 export default function RootLayout({

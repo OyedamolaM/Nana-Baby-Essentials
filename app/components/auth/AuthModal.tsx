@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Lock, Mail, User as UserIcon } from "lucide-react";
+import { Lock, Mail, Phone, User as UserIcon } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "../../contexts/AuthContext";
 import { Button } from "../ui/button";
@@ -36,6 +36,7 @@ export function AuthModal({
   const [signupEmail, setSignupEmail] = useState("");
   const [signupPassword, setSignupPassword] = useState("");
   const [signupFullName, setSignupFullName] = useState("");
+  const [signupPhone, setSignupPhone] = useState("");
 
   const handleLogin = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -57,7 +58,12 @@ export function AuthModal({
     event.preventDefault();
     setLoading(true);
 
-    const { error } = await signUp(signupEmail, signupPassword, signupFullName);
+    const { error } = await signUp(
+      signupEmail,
+      signupPassword,
+      signupFullName,
+      signupPhone,
+    );
 
     if (error) {
       toast.error(error.message);
@@ -232,6 +238,22 @@ export function AuthModal({
                     placeholder="your@email.com"
                     value={signupEmail}
                     onChange={(event) => setSignupEmail(event.target.value)}
+                    className="pl-10"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="signup-phone">Phone Number</Label>
+                <div className="relative">
+                  <Phone className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                  <Input
+                    id="signup-phone"
+                    type="tel"
+                    placeholder="+234 800 000 0000"
+                    value={signupPhone}
+                    onChange={(event) => setSignupPhone(event.target.value)}
                     className="pl-10"
                     required
                   />

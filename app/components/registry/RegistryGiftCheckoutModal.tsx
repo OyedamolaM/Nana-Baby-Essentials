@@ -23,6 +23,10 @@ import {
   type RegistryItem,
   type RegistryRecord,
 } from "../../../lib/registry";
+import {
+  hasSavedShippingAddress,
+  type ShippingAddress,
+} from "../../../lib/userProfile";
 
 type PaystackHandler = {
   openIframe: () => void;
@@ -45,6 +49,7 @@ interface RegistryGiftCheckoutModalProps {
   open: boolean;
   onClose: () => void;
   registry: RegistryRecord;
+  shippingAddress: ShippingAddress | null;
   selectedItems: RegistryGiftSelection[];
   paymentAmount: number;
   onCheckoutComplete: () => void;
@@ -54,6 +59,7 @@ export function RegistryGiftCheckoutModal({
   open,
   onClose,
   registry,
+  shippingAddress,
   selectedItems,
   paymentAmount,
   onCheckoutComplete,
@@ -168,6 +174,13 @@ export function RegistryGiftCheckoutModal({
       return;
     }
 
+    if (!hasSavedShippingAddress(shippingAddress)) {
+      toast.error(
+        "This registry cannot accept gifts until the owner saves a shipping address.",
+      );
+      return;
+    }
+
     setLoading(true);
     completedRef.current = false;
 
@@ -186,6 +199,7 @@ export function RegistryGiftCheckoutModal({
           buyerPhone,
           paymentAmount,
           registryId: registry.id,
+          shippingAddress,
           selectedItems: checkoutItems.map((item) => ({
             quantity: item.quantity,
             registryItemId: item.registry_item_id,
@@ -401,6 +415,7 @@ export function RegistryGiftCheckoutModal({
                 type="tel"
                 value={buyerPhone}
                 onChange={(event) => setBuyerPhone(event.target.value)}
+                required
               />
             </div>
 

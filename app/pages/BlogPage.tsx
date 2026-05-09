@@ -5,6 +5,7 @@ import { useMemo, useState } from "react";
 import { Baby, Calendar, Menu, Search, User } from "lucide-react";
 import { toast } from "sonner";
 import { usePublishedBlogPosts } from "../hooks/useContentData";
+import { type BlogPostRecord } from "../../lib/content";
 import { ImageWithFallback } from "../components/figma/ImageWithFallback";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
@@ -24,16 +25,21 @@ function formatPublishedDate(value?: string | null) {
   return date.toLocaleDateString("en-NG", {
     day: "numeric",
     month: "long",
+    timeZone: "UTC",
     year: "numeric",
   });
 }
 
-export function BlogPage() {
+interface BlogPageProps {
+  initialPosts?: BlogPostRecord[];
+}
+
+export function BlogPage({ initialPosts }: BlogPageProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [newsletterEmail, setNewsletterEmail] = useState("");
   const [newsletterSubmitting, setNewsletterSubmitting] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const { loading, posts } = usePublishedBlogPosts();
+  const { loading, posts } = usePublishedBlogPosts(initialPosts);
 
   const filteredPosts = useMemo(() => {
     return posts.filter((post) => {
@@ -86,13 +92,13 @@ export function BlogPage() {
   return (
     <div className="min-h-screen bg-white">
       <header className="sticky top-0 z-50 w-full border-b bg-white/95 shadow-sm backdrop-blur">
-        <div className="container mx-auto px-4">
+        <div className="relative container mx-auto px-4">
           <div className="flex h-16 items-center justify-between">
             <Link href="/" className="flex items-center gap-2">
               <Baby className="h-8 w-8 text-pink-500" />
-              <h1 className="text-2xl font-semibold text-gray-900">
+              <p className="text-2xl font-semibold text-gray-900">
                 Nana&apos;s Blog
-              </h1>
+              </p>
             </Link>
 
             <nav className="hidden items-center gap-6 md:flex">
@@ -128,7 +134,7 @@ export function BlogPage() {
           </div>
 
           {mobileMenuOpen && (
-            <div className="border-t py-4 md:hidden">
+            <div className="absolute inset-x-0 top-full z-50 border-t bg-white px-4 py-4 shadow-xl md:hidden">
               <nav className="flex flex-col gap-3">
                 <Link
                   href="/"

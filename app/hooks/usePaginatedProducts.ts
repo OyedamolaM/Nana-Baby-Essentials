@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   CATEGORIES,
   SEED_PRODUCTS,
@@ -11,9 +11,13 @@ import {
 import { hasSupabaseEnv, supabase } from "../lib/supabase";
 
 interface UsePaginatedProductsOptions {
+  initialPage?: number;
+  initialProducts?: StoreProduct[];
+  initialSearchQuery?: string;
+  initialSelectedCategory?: string;
+  initialTotalCount?: number;
   onlyInStock?: boolean;
   pageSize?: number;
-  collectionId?: string | null;
 }
 
 function filterSeedProducts(
@@ -34,20 +38,36 @@ function filterSeedProducts(
 }
 
 export function usePaginatedProducts({
+  initialPage = 1,
+  initialProducts,
+  initialSearchQuery = "",
+  initialSelectedCategory = CATEGORIES[0],
+  initialTotalCount,
   onlyInStock = false,
   pageSize = 16,
-  collectionId = null,
 }: UsePaginatedProductsOptions = {}) {
+  const fallbackProducts = onlyInStock
+    ? SEED_PRODUCTS.filter((product) => product.inStock)
+    : SEED_PRODUCTS;
+  const hasInitialResult =
+    Array.isArray(initialProducts) && typeof initialTotalCount === "number";
   const [products, setProducts] = useState<StoreProduct[]>(
-    onlyInStock ? SEED_PRODUCTS.filter((product) => product.inStock) : SEED_PRODUCTS,
+    Array.isArray(initialProducts) ? initialProducts : fallbackProducts,
   );
-  const [loading, setLoading] = useState(hasSupabaseEnv);
-  const [page, setPage] = useState(1);
-  const [totalCount, setTotalCount] = useState(products.length);
+  const [loading, setLoading] = useState(
+    Boolean(hasSupabaseEnv && !hasInitialResult),
+  );
+  const [page, setPage] = useState(initialPage);
+  const [totalCount, setTotalCount] = useState(
+    typeof initialTotalCount === "number"
+      ? initialTotalCount
+      : (initialProducts?.length ?? fallbackProducts.length),
+  );
   const [selectedCategory, setSelectedCategoryState] = useState<string>(
-    CATEGORIES[0],
+    initialSelectedCategory,
   );
-  const [searchQuery, setSearchQueryState] = useState("");
+  const [searchQuery, setSearchQueryState] = useState(initialSearchQuery);
+  const skipInitialFetchRef = useRef(hasInitialResult);
 
   const totalPages = useMemo(
     () => Math.max(1, Math.ceil(totalCount / pageSize)),
@@ -81,77 +101,6 @@ export function usePaginatedProducts({
 
     const from = (page - 1) * pageSize;
     const to = from + pageSize - 1;
-
-    if (collectionId) {
-      const { data: collectionRows, error: collectionError } = await supabase
-        .from("collection_products")
-        .select("product_id, sort_order")
-        .eq("collection_id", collectionId)
-        .order("sort_order", { ascending: true });
-
-      if (collectionError || !collectionRows) {
-        setProducts([]);
-        setTotalCount(0);
-        setLoading(false);
-        return;
-      }
-
-      const orderedProductIds = collectionRows.map((row) => Number(row.product_id));
-
-      if (orderedProductIds.length === 0) {
-        setProducts([]);
-        setTotalCount(0);
-        setLoading(false);
-        return;
-      }
-
-      let productsQuery = supabase
-        .from("products")
-        .select("*")
-        .in("id", orderedProductIds);
-
-      if (onlyInStock) {
-        productsQuery = productsQuery.eq("in_stock", true);
-      }
-
-      if (selectedCategory !== "All") {
-        productsQuery = productsQuery.eq("category", selectedCategory);
-      }
-
-      const { data, error } = await productsQuery;
-
-      if (error || !data) {
-        setProducts([]);
-        setTotalCount(0);
-        setLoading(false);
-        return;
-      }
-
-      const matchingProducts = (data as ProductRecord[]).filter((product) => {
-        if (!searchQuery.trim()) {
-          return true;
-        }
-
-        const queryText = searchQuery.trim().toLowerCase();
-        return (
-          product.name.toLowerCase().includes(queryText) ||
-          product.description.toLowerCase().includes(queryText)
-        );
-      });
-
-      const orderedProducts = orderedProductIds
-        .map((productId) =>
-          matchingProducts.find((product) => Number(product.id) === productId),
-        )
-        .filter((product): product is ProductRecord => Boolean(product));
-
-      setProducts(
-        orderedProducts.slice(from, to + 1).map(mapProductRecord),
-      );
-      setTotalCount(orderedProducts.length);
-      setLoading(false);
-      return;
-    }
 
     let query = supabase
       .from("products")
@@ -189,9 +138,15 @@ export function usePaginatedProducts({
     setProducts((data as ProductRecord[]).map(mapProductRecord));
     setTotalCount(count ?? data.length);
     setLoading(false);
-  }, [collectionId, onlyInStock, page, pageSize, searchQuery, selectedCategory]);
+  }, [onlyInStock, page, pageSize, searchQuery, selectedCategory]);
 
   useEffect(() => {
+    if (skipInitialFetchRef.current) {
+      skipInitialFetchRef.current = false;
+      setLoading(false);
+      return;
+    }
+
     queueMicrotask(() => {
       void loadProducts();
     });
@@ -221,20 +176,35 @@ export function usePaginatedProducts({
 }
 
 export function useFeaturedProducts({
+  initialProducts,
   onlyInStock = false,
   limit = 4,
 }: {
+  initialProducts?: StoreProduct[];
   onlyInStock?: boolean;
   limit?: number;
 } = {}) {
+  const fallbackFeaturedProducts = useMemo(
+    () =>
+      (onlyInStock
+        ? SEED_PRODUCTS.filter((product) => product.inStock)
+        : SEED_PRODUCTS
+      )
+        .filter((product) => product.isFeatured)
+        .sort((left, right) => left.featuredSortOrder - right.featuredSortOrder)
+        .slice(0, limit),
+    [limit, onlyInStock],
+  );
+
   const [products, setProducts] = useState<StoreProduct[]>(
-    (onlyInStock
-      ? SEED_PRODUCTS.filter((product) => product.inStock)
-      : SEED_PRODUCTS
-    ).slice(0, limit),
+    Array.isArray(initialProducts) ? initialProducts : fallbackFeaturedProducts,
   );
 
   useEffect(() => {
+    if (Array.isArray(initialProducts)) {
+      return;
+    }
+
     if (!hasSupabaseEnv) {
       return;
     }
@@ -243,6 +213,8 @@ export function useFeaturedProducts({
       let query = supabase
         .from("products")
         .select("*")
+        .eq("is_featured", true)
+        .order("featured_sort_order", { ascending: true })
         .order("created_at", { ascending: false })
         .limit(limit);
 
@@ -253,12 +225,7 @@ export function useFeaturedProducts({
       const { data, error } = await query;
 
       if (error || !data) {
-        setProducts(
-          (onlyInStock
-            ? SEED_PRODUCTS.filter((product) => product.inStock)
-            : SEED_PRODUCTS
-          ).slice(0, limit),
-        );
+        setProducts(fallbackFeaturedProducts);
         return;
       }
 
@@ -266,7 +233,7 @@ export function useFeaturedProducts({
     };
 
     void loadFeaturedProducts();
-  }, [limit, onlyInStock]);
+  }, [fallbackFeaturedProducts, initialProducts, limit, onlyInStock]);
 
   return products;
 }

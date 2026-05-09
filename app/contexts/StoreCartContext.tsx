@@ -224,6 +224,12 @@ export function StoreCartProvider({ children }: { children: ReactNode }) {
   const bootstrappedUserIdRef = useRef<string | null>(null);
   const syncInProgressRef = useRef(false);
 
+  const disableRemoteCartSync = useCallback(() => {
+    setRemoteCartSupported(false);
+    setRemoteReady(false);
+    cartIdRef.current = null;
+  }, []);
+
   useEffect(() => {
     queueMicrotask(() => {
       const localItems = readLocalStoreCart();
@@ -262,16 +268,14 @@ export function StoreCartProvider({ children }: { children: ReactNode }) {
           "Store cart sync is disabled until the shopping cart tables are migrated.",
         );
       } else {
-        console.error("Store cart sync is unavailable.", error);
+        console.warn("Store cart sync is unavailable, so this session will use local cart storage only.");
       }
-      setRemoteCartSupported(false);
-      setRemoteReady(false);
-      cartIdRef.current = null;
+      disableRemoteCartSync();
     } finally {
       bootstrappedUserIdRef.current = user.id;
       syncInProgressRef.current = false;
     }
-  }, [remoteCartSupported, user]);
+  }, [disableRemoteCartSync, remoteCartSupported, user]);
 
   useEffect(() => {
     if (!hydrated) {
@@ -317,10 +321,9 @@ export function StoreCartProvider({ children }: { children: ReactNode }) {
               "Store cart sync is disabled until the shopping cart tables are migrated.",
             );
           } else {
-            console.error("Failed to persist store cart remotely.", error);
+            console.warn("Store cart sync could not save remotely, so local cart storage will be used instead.");
           }
-          setRemoteCartSupported(false);
-          setRemoteReady(false);
+          disableRemoteCartSync();
         })
         .finally(() => {
           syncInProgressRef.current = false;
@@ -330,7 +333,7 @@ export function StoreCartProvider({ children }: { children: ReactNode }) {
     return () => {
       window.clearTimeout(timeoutId);
     };
-  }, [hydrated, items, remoteCartSupported, remoteReady, user]);
+  }, [disableRemoteCartSync, hydrated, items, remoteCartSupported, remoteReady, user]);
 
   const addItem = useCallback((product: StoreProduct, quantity = 1) => {
     setItems((currentItems) => {

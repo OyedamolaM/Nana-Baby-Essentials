@@ -1,16 +1,18 @@
-"use client";
-
+import type { Metadata } from "next";
 import Link from "next/link";
-import { useMemo } from "react";
-import { useParams } from "next/navigation";
 import { ArrowLeft, Baby, Calendar, User } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+
 import { Footer } from "../../components/Footer";
 import { ImageWithFallback } from "../../components/figma/ImageWithFallback";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
-import { usePublishedBlogPosts } from "../../hooks/useContentData";
+import { getPublishedBlogPostBySlug } from "../../../lib/publicData";
+
+type BlogArticlePageProps = {
+  params: Promise<{ slug: string }>;
+};
 
 function formatPublishedDate(value?: string | null) {
   if (!value) {
@@ -29,12 +31,40 @@ function formatPublishedDate(value?: string | null) {
   });
 }
 
-export default function BlogArticlePage() {
-  const params = useParams<{ slug: string }>();
-  const slug = params?.slug ?? "";
-  const { loading, postLookup } = usePublishedBlogPosts();
+export async function generateMetadata({
+  params,
+}: BlogArticlePageProps): Promise<Metadata> {
+  const { slug } = await params;
+  const post = await getPublishedBlogPostBySlug(slug);
 
-  const post = useMemo(() => postLookup[slug], [postLookup, slug]);
+  if (!post) {
+    return {
+      title: "Article Not Found | Nana's Blog",
+      description: "This article is no longer available.",
+      robots: {
+        index: false,
+        follow: false,
+      },
+    };
+  }
+
+  return {
+    title: `${post.title} | Nana's Blog`,
+    description: post.excerpt,
+    openGraph: {
+      title: `${post.title} | Nana's Blog`,
+      description: post.excerpt,
+      images: post.cover_image ? [{ url: post.cover_image, alt: post.title }] : undefined,
+      type: "article",
+    },
+  };
+}
+
+export default async function BlogArticlePage({
+  params,
+}: BlogArticlePageProps) {
+  const { slug } = await params;
+  const post = await getPublishedBlogPostBySlug(slug);
 
   return (
     <div className="min-h-screen bg-white">
@@ -54,11 +84,7 @@ export default function BlogArticlePage() {
 
       <main className="bg-gradient-to-br from-pink-50 via-white to-blue-50 py-16">
         <div className="container mx-auto px-4">
-          {loading ? (
-            <div className="mx-auto max-w-3xl rounded-3xl border bg-white p-10 text-center text-gray-500 shadow-sm">
-              Loading article...
-            </div>
-          ) : !post ? (
+          {!post ? (
             <div className="mx-auto max-w-3xl rounded-3xl border bg-white p-10 text-center shadow-sm">
               <h1 className="text-3xl font-bold text-gray-900">
                 Article not found
