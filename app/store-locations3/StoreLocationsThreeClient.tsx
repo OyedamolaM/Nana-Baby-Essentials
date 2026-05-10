@@ -19,11 +19,11 @@ type PreviewStore = {
 const stores: PreviewStore[] = [
   {
     id: 1,
-    name: "Lekki Flagship",
+    name: "Surulere Store",
     city: "Lagos",
     image:
       "https://images.unsplash.com/photo-1555529771-7888783a18d3?auto=format&fit=crop&w=1200&q=80",
-    address: "12 Admiralty Way, Lekki Phase 1, Lagos",
+    address: "71, Ogunlana drive, Surulere, Lagos",
     phone: "+234 801 234 5678",
     email: "lagos@nanababyessentials.com",
     hours: [
@@ -31,7 +31,7 @@ const stores: PreviewStore[] = [
       ["Saturday", "10:00 AM - 8:00 PM"],
       ["Sunday", "12:00 PM - 5:00 PM"],
     ],
-    mapQuery: "Lekki Phase 1 Lagos",
+    mapQuery: "Surulere Lagos",
   },
   {
     id: 2,
@@ -73,7 +73,7 @@ export function StoreLocationsThreeClient() {
     <main className="min-h-screen bg-rose-50/40">
       <section className="px-6 pb-10 pt-20 text-center">
         <h1 className="font-serif text-5xl text-neutral-900 md:text-6xl">
-          Our Boutiques
+          Our Stores
         </h1>
         <p className="mx-auto mt-4 max-w-lg text-neutral-600">
           Select a location to view details, hours, and directions.

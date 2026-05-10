@@ -13,16 +13,16 @@ import { buildPageMetadata } from "../../lib/site";
 
 const stores = [
   {
-    name: "Lekki Flagship",
+    name: "Surulere Store",
     city: "Lagos",
     image:
       "https://images.unsplash.com/photo-1555529771-7888783a18d3?auto=format&fit=crop&w=900&q=80",
-    address: "12 Admiralty Way, Lekki Phase 1",
+    address: "71, Ogunlana drive, Surulere, Lagos",
     phone: "+234 801 234 5678",
     hours: "Mon-Sat 9AM-8PM · Sun 12-5PM",
   },
   {
-    name: "Wuse 2 Boutique",
+    name: "Wuse 2 Store",
     city: "Abuja",
     image:
       "https://images.unsplash.com/photo-1519689680058-324335c77eba?auto=format&fit=crop&w=900&q=80",
