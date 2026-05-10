@@ -3,6 +3,7 @@ import {
   getHomepageDeals,
   getPublicProductCatalogPage,
   getPublicProductCategories,
+  getRegistryReviews,
   getSpecialPackages,
   getStoreLocations,
 } from "../../lib/publicData";
@@ -20,6 +21,7 @@ export default async function RegistryPage() {
     initialProductPage,
     initialCategories,
     initialDeals,
+    initialRegistryReviews,
     initialSpecialPackages,
     initialStoreLocations,
   ] = await Promise.all([
@@ -32,6 +34,7 @@ export default async function RegistryPage() {
     }),
     getPublicProductCategories(),
     getHomepageDeals(),
+    getRegistryReviews(),
     getSpecialPackages(),
     getStoreLocations(),
   ]);
@@ -41,6 +44,7 @@ export default async function RegistryPage() {
       initialCategories={initialCategories}
       initialDeals={initialDeals}
       initialProducts={initialProductPage.products}
+      initialRegistryReviews={initialRegistryReviews}
       initialSpecialPackages={initialSpecialPackages}
       initialStoreLocations={initialStoreLocations}
       initialTotalCount={initialProductPage.totalCount}

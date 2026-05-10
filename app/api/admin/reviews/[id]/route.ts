@@ -15,6 +15,11 @@ type UpdateReviewPayload = {
   sortOrder?: number;
 };
 
+function getReviewTable(request: Request) {
+  const surface = new URL(request.url).searchParams.get("surface");
+  return surface === "registry" ? "registry_reviews" : "homepage_reviews";
+}
+
 export async function PATCH(
   request: Request,
   context: RouteContext<"/api/admin/reviews/[id]">,
@@ -32,6 +37,7 @@ export async function PATCH(
   }
 
   const { id } = await context.params;
+  const reviewTable = getReviewTable(request);
   const payload = (await request.json().catch(() => null)) as UpdateReviewPayload | null;
   const updatePayload: Record<string, unknown> = {
     updated_at: new Date().toISOString(),
@@ -86,14 +92,14 @@ export async function PATCH(
   }
 
   const { data, error } = await serviceRoleClient
-    .from("homepage_reviews")
+    .from(reviewTable)
     .update(updatePayload)
     .eq("id", id)
     .select("*")
     .single();
 
   if (error || !data) {
-    console.error("Failed to update homepage review.", error);
+    console.error("Failed to update review.", error);
     return NextResponse.json(
       { message: "Could not update the review right now." },
       { status: 500 },
@@ -123,6 +129,7 @@ export async function DELETE(
   }
 
   const { id } = await context.params;
+  const reviewTable = getReviewTable(request);
   const serviceRoleClient = createSupabaseServiceRoleClient();
   if (!serviceRoleClient) {
     return NextResponse.json(
@@ -132,12 +139,12 @@ export async function DELETE(
   }
 
   const { error } = await serviceRoleClient
-    .from("homepage_reviews")
+    .from(reviewTable)
     .delete()
     .eq("id", id);
 
   if (error) {
-    console.error("Failed to delete homepage review.", error);
+    console.error("Failed to delete review.", error);
     return NextResponse.json(
       { message: "Could not delete the review right now." },
       { status: 500 },

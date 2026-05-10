@@ -15,6 +15,11 @@ type CreateReviewPayload = {
   sortOrder?: number;
 };
 
+function getReviewTable(request: Request) {
+  const surface = new URL(request.url).searchParams.get("surface");
+  return surface === "registry" ? "registry_reviews" : "homepage_reviews";
+}
+
 export async function POST(request: Request) {
   const admin = await requireAdminRoute(request);
   if (admin.response) {
@@ -40,6 +45,7 @@ export async function POST(request: Request) {
   }
 
   const rating = Math.min(5, Math.max(1, Math.round(Number(payload?.rating ?? 5))));
+  const reviewTable = getReviewTable(request);
 
   const serviceRoleClient = createSupabaseServiceRoleClient();
   if (!serviceRoleClient) {
@@ -50,7 +56,7 @@ export async function POST(request: Request) {
   }
 
   const { data, error } = await serviceRoleClient
-    .from("homepage_reviews")
+    .from(reviewTable)
     .insert({
       reviewer_name: reviewerName,
       reviewer_role: payload?.reviewerRole?.trim() || null,
@@ -64,7 +70,7 @@ export async function POST(request: Request) {
     .single();
 
   if (error || !data) {
-    console.error("Failed to create homepage review.", error);
+    console.error("Failed to create review.", error);
     return NextResponse.json(
       { message: "Could not create the review right now." },
       { status: 500 },

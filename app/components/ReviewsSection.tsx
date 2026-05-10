@@ -5,7 +5,10 @@ import { Quote, Star } from "lucide-react";
 import { type HomepageReview } from "../../lib/siteContent";
 
 interface ReviewsSectionProps {
+  description?: string;
+  eyebrow?: string;
   reviews?: HomepageReview[];
+  title?: string;
 }
 
 function getReviewerInitials(name: string) {
@@ -17,7 +20,12 @@ function getReviewerInitials(name: string) {
     .join("");
 }
 
-export function ReviewsSection({ reviews = [] }: ReviewsSectionProps) {
+export function ReviewsSection({
+  description = "Real feedback from customers who have shopped, gifted, and built registries with us.",
+  eyebrow = "Parent Reviews",
+  reviews = [],
+  title = "What Families Say About Nana's Baby Essentials",
+}: ReviewsSectionProps) {
   if (reviews.length === 0) {
     return null;
   }
@@ -27,13 +35,13 @@ export function ReviewsSection({ reviews = [] }: ReviewsSectionProps) {
       <div className="container mx-auto px-4">
         <div className="mx-auto max-w-2xl text-center">
           <p className="mb-3 text-sm font-semibold uppercase tracking-[0.24em] text-pink-600">
-            Parent Reviews
+            {eyebrow}
           </p>
           <h2 className="text-4xl font-bold text-gray-900">
-            What Families Say About Nana&apos;s Baby Essentials
+            {title}
           </h2>
           <p className="mt-4 text-lg leading-relaxed text-gray-600">
-            Real feedback from customers who have shopped, gifted, and built registries with us.
+            {description}
           </p>
         </div>
 

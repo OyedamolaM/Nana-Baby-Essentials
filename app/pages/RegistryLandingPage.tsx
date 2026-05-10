@@ -8,6 +8,9 @@ import { toast } from "sonner";
 
 import { CATEGORIES, type StoreProduct } from "../../lib/commerce";
 import { type HomepageDeal } from "../../lib/content";
+import { REGISTRY_FAQS } from "../../lib/faqContent";
+import { REGISTRY_CHECKLIST_DOWNLOAD_PATH } from "../../lib/registryLandingContent";
+import { type HomepageReview } from "../../lib/siteContent";
 import {
   addRegistryCartItem,
   clearRegistryCart,
@@ -24,10 +27,12 @@ import {
 } from "../../lib/registry";
 import { CategoryFilter } from "../components/CategoryFilter";
 import { DealOfTheWeek } from "../components/DealOfTheWeek";
+import { FAQ } from "../components/FAQ";
 import { Footer } from "../components/Footer";
 import { type Product } from "../components/ProductCard";
 import { ProductCard } from "../components/ProductCard";
 import { ProductDetailModal } from "../components/ProductDetailModal";
+import { ReviewsSection } from "../components/ReviewsSection";
 import { SpecialPackagesSection } from "../components/SpecialPackagesSection";
 import { AuthModal } from "../components/auth/AuthModal";
 import { RegistryCartModal } from "../components/registry/RegistryCartModal";
@@ -128,6 +133,7 @@ interface RegistryLandingPageProps {
   initialCategories?: string[];
   initialDeals?: HomepageDeal[];
   initialProducts?: StoreProduct[];
+  initialRegistryReviews?: HomepageReview[];
   initialSpecialPackages?: SpecialPackage[];
   initialStoreLocations?: StoreLocationRecord[];
   initialTotalCount?: number;
@@ -138,6 +144,7 @@ export function RegistryLandingPage({
   initialCategories,
   initialDeals,
   initialProducts,
+  initialRegistryReviews = [],
   initialSpecialPackages = [],
   initialStoreLocations = [],
   initialTotalCount,
@@ -520,13 +527,13 @@ export function RegistryLandingPage({
                 </div>
                 <div className="flex flex-wrap gap-2">
                   {latestRegistry ? (
-                    <Button asChild variant="outline" className="w-full sm:w-auto">
+                    <Button asChild variant="outline" className="w-full px-3 text-xs sm:w-auto sm:px-4 sm:text-sm">
                       <Link href="/dashboard/registries">
                         Open Existing Registry
                       </Link>
                     </Button>
                   ) : null}
-                  <Button onClick={handleCreateNewRegistry} className="w-full sm:w-auto">
+                  <Button onClick={handleCreateNewRegistry} className="w-full px-3 text-xs sm:w-auto sm:px-4 sm:text-sm">
                     Create New Registry
                   </Button>
                 </div>
@@ -557,14 +564,14 @@ export function RegistryLandingPage({
                         </div>
 
                         <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
-                          <Button className="w-full sm:w-auto" asChild>
+                          <Button className="w-full px-3 text-xs sm:w-auto sm:px-4 sm:text-sm" asChild>
                             <Link href={buildRegistryDashboardPath(registry)}>
                               Open Existing Registry
                             </Link>
                           </Button>
                           <Button
                             variant="outline"
-                            className="w-full sm:w-auto"
+                            className="w-full px-3 text-xs sm:w-auto sm:px-4 sm:text-sm"
                             onClick={() => handleShareRegistry(registry)}
                           >
                             <Share2 className="mr-2 h-4 w-4" />
@@ -584,12 +591,14 @@ export function RegistryLandingPage({
                     </p>
                     <div className="flex flex-wrap gap-2">
                       <Button onClick={handleCreateNewRegistry}>Create New Registry</Button>
-                      <Button
-                        variant="outline"
-                        onClick={() => toast.info("Your checklist will be available after you create a registry.")}
-                      >
-                        <Download className="mr-2 h-4 w-4" />
-                        Download Checklist
+                      <Button asChild variant="outline">
+                        <a
+                          href={REGISTRY_CHECKLIST_DOWNLOAD_PATH}
+                          download="nbe-registry-checklist.txt"
+                        >
+                          <Download className="mr-2 h-4 w-4" />
+                          Download Checklist
+                        </a>
                       </Button>
                     </div>
                   </CardContent>
@@ -730,6 +739,28 @@ export function RegistryLandingPage({
             )}
           </div>
         </section>
+
+        {!catalogOnly ? (
+          <section id="reviews">
+            <ReviewsSection
+              reviews={initialRegistryReviews}
+              eyebrow="Registry Reviews"
+              title="Why Parents Love Building Their Registry Here"
+              description="Feedback from parents and gift contributors who have used the Nana's Baby Essentials registry experience."
+            />
+          </section>
+        ) : null}
+
+        {!catalogOnly ? (
+          <section id="faq">
+            <FAQ
+              faqs={REGISTRY_FAQS}
+              eyebrow="Registry FAQ"
+              title="Registry Questions, Answered"
+              description="Everything you need to know about creating, sharing, and managing your registry."
+            />
+          </section>
+        ) : null}
       </main>
 
       <ProductDetailModal

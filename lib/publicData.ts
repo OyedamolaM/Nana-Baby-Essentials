@@ -38,8 +38,10 @@ import {
 } from "./userProfile";
 import {
   buildHomepageReviews,
+  buildRegistryReviews,
   buildHomepageSiteContent,
   DEFAULT_HOMEPAGE_REVIEWS,
+  DEFAULT_REGISTRY_REVIEWS,
   type HomepageReview,
   type HomepageReviewRecord,
   type HomepageSiteContent,
@@ -578,6 +580,33 @@ const getHomepageReviewsCached = unstable_cache(
   { revalidate: 300, tags: ["content"] },
 );
 
+const getRegistryReviewsCached = unstable_cache(
+  async () => {
+    if (!hasSupabaseServerEnv) {
+      return DEFAULT_REGISTRY_REVIEWS;
+    }
+
+    const client = createSupabaseServerClient();
+    if (!client) {
+      return DEFAULT_REGISTRY_REVIEWS;
+    }
+
+    const { data, error } = await client
+      .from("registry_reviews")
+      .select("*")
+      .eq("is_active", true)
+      .order("sort_order", { ascending: true });
+
+    if (error?.code === "42P01" || error || !data) {
+      return DEFAULT_REGISTRY_REVIEWS;
+    }
+
+    return buildRegistryReviews(data as HomepageReviewRecord[]);
+  },
+  ["registry-reviews"],
+  { revalidate: 300, tags: ["content"] },
+);
+
 const getPublishedBlogPostsCached = unstable_cache(
   async () => {
     if (!hasSupabaseServerEnv) {
@@ -863,6 +892,10 @@ export async function getHomepageSiteContent(): Promise<HomepageSiteContent> {
 
 export async function getHomepageReviews(): Promise<HomepageReview[]> {
   return getHomepageReviewsCached();
+}
+
+export async function getRegistryReviews(): Promise<HomepageReview[]> {
+  return getRegistryReviewsCached();
 }
 
 export async function getPublicProductCategories() {

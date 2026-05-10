@@ -25,9 +25,15 @@ type BrevoRecipient = {
   name?: string;
 };
 
+type BrevoAttachment = {
+  content: string;
+  name: string;
+};
+
 type BrevoParams = Record<string, unknown>;
 
 type BrevoBasePayload = {
+  attachments?: BrevoAttachment[];
   params?: BrevoParams;
   replyTo?: BrevoRecipient;
   senderProfile?: BrevoSenderProfile;
@@ -127,6 +133,10 @@ function createBody(
     body.htmlContent = payload.htmlContent;
     body.params = payload.params;
     body.textContent = payload.textContent;
+  }
+
+  if (payload.attachments?.length) {
+    body.attachment = payload.attachments;
   }
 
   if ("messageVersions" in payload) {

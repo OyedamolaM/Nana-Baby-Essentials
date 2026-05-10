@@ -6,6 +6,7 @@ import {
   sendBrevoEmail,
 } from "@/lib/brevo";
 import { renderOrderConfirmationEmail } from "@/lib/emailTemplates";
+import { createOrderReceiptAttachment } from "@/lib/orderReceipt";
 import {
   createSupabaseServerClient,
   createSupabaseServiceRoleClient,
@@ -18,10 +19,16 @@ type OrderConfirmationPayload = {
 };
 
 type OrderRecord = {
+  customer_email?: string | null;
+  customer_name?: string | null;
+  customer_phone?: string | null;
+  customer_pickup_code?: string | null;
   created_at?: string | null;
   id: string;
   items?: unknown;
+  payment_method?: string | null;
   payment_reference?: string | null;
+  rider_pickup_code?: string | null;
   shipping_address?: unknown;
   shipping_tier?: string | null;
   status: string;
@@ -151,7 +158,7 @@ export async function POST(request: Request) {
       adminClient
         .from("orders")
         .select(
-          "id, user_id, total, status, shipping_address, items, payment_reference, shipping_tier, created_at",
+          "id, user_id, total, status, shipping_address, items, payment_method, payment_reference, shipping_tier, created_at, customer_name, customer_email, customer_phone, customer_pickup_code, rider_pickup_code",
         )
         .eq("id", orderId)
         .maybeSingle<OrderRecord>(),
@@ -187,9 +194,14 @@ export async function POST(request: Request) {
   const email = renderOrderConfirmationEmail({
     createdAt: order.created_at ?? null,
     customerEmail: recipientEmail,
-    customerName: profile?.full_name ?? user.user_metadata?.full_name ?? null,
+    customerName:
+      order.customer_name ??
+      profile?.full_name ??
+      user.user_metadata?.full_name ??
+      null,
     items: normalizeItems(order.items),
     orderId: order.id,
+    paymentMethod: order.payment_method ?? null,
     paymentReference: order.payment_reference ?? null,
     shippingAddress: normalizeAddress(order.shipping_address),
     shippingTier: order.shipping_tier ?? null,
@@ -202,6 +214,28 @@ export async function POST(request: Request) {
       idempotencyKey: createBrevoIdempotencyKey(
         `order-confirmation:${order.id}:${order.payment_reference ?? "paid"}`,
       ),
+      attachments: [
+        createOrderReceiptAttachment({
+          createdAt: order.created_at ?? null,
+          customerEmail: order.customer_email ?? recipientEmail,
+          customerName:
+            order.customer_name ??
+            profile?.full_name ??
+            user.user_metadata?.full_name ??
+            null,
+          customerPhone: order.customer_phone ?? null,
+          customerPickupCode: order.customer_pickup_code ?? null,
+          id: order.id,
+          items: normalizeItems(order.items),
+          paymentMethod: order.payment_method ?? null,
+          paymentReference: order.payment_reference ?? null,
+          riderPickupCode: order.rider_pickup_code ?? null,
+          shippingAddress: normalizeAddress(order.shipping_address),
+          shippingTier: order.shipping_tier ?? null,
+          status: order.status,
+          total: Number(order.total ?? 0),
+        }),
+      ],
       senderProfile: "order",
       subject: email.subject,
       tags: ["order-confirmation"],

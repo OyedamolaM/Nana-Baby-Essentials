@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Edit, Package, Plus, Trash2 } from "lucide-react";
+import { Download, Edit, Package, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -10,6 +10,14 @@ import {
   toNairaAmount,
   type ProductRecord,
 } from "../../../lib/commerce";
+import {
+  formatPaymentMethodLabel,
+  formatPaymentReferenceDisplay,
+  getOrderPaymentMethodValue,
+  PAYMENT_METHOD_OPTIONS,
+  type PaymentMethod,
+} from "../../../lib/orderPayments";
+import { downloadOrderReceipt } from "../../../lib/orderReceipt";
 import {
   normalizeShippingAddress,
   type ShippingAddress,
@@ -56,6 +64,7 @@ export type AdminOrderRecord = {
   customer_pickup_code?: string | null;
   id: string;
   items?: AdminOrderItem[] | null;
+  payment_method?: string | null;
   payment_reference?: string | null;
   rider_pickup_code?: string | null;
   shipping_address?: Partial<ShippingAddress> | null;
@@ -129,6 +138,44 @@ function formatDateTime(value?: string | null) {
   });
 }
 
+function getLocalDateKey(value?: string | null) {
+  if (!value) {
+    return "";
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function getLocalMonthKey(value?: string | null) {
+  return getLocalDateKey(value).slice(0, 7);
+}
+
+function filterOrdersByDate<T extends { created_at?: string | null }>(
+  items: T[],
+  selectedDay: string,
+  selectedMonth: string,
+) {
+  return items.filter((item) => {
+    if (selectedDay) {
+      return getLocalDateKey(item.created_at) === selectedDay;
+    }
+
+    if (selectedMonth) {
+      return getLocalMonthKey(item.created_at) === selectedMonth;
+    }
+
+    return true;
+  });
+}
+
 export function AdminOrdersManager({
   customers,
   getAdminAccessToken,
@@ -153,12 +200,15 @@ export function AdminOrdersManager({
   const [customerPhone, setCustomerPhone] = useState("");
   const [shippingTier, setShippingTier] = useState("");
   const [orderStatus, setOrderStatus] = useState("paid");
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("manual");
   const [paymentReference, setPaymentReference] = useState("");
   const [shippingName, setShippingName] = useState("");
   const [shippingPhone, setShippingPhone] = useState("");
   const [shippingAddress, setShippingAddress] = useState("");
   const [shippingCity, setShippingCity] = useState("");
   const [shippingState, setShippingState] = useState("");
+  const [orderFilterDay, setOrderFilterDay] = useState("");
+  const [orderFilterMonth, setOrderFilterMonth] = useState("");
   const [draftItems, setDraftItems] = useState<DraftOrderItem[]>([createEmptyDraftItem()]);
 
   const activeShippingTiers = useMemo(() => {
@@ -203,6 +253,12 @@ export function AdminOrdersManager({
   const unpaidOrders = useMemo(() => {
     return orders.filter((order) => order.status !== "paid");
   }, [orders]);
+  const filteredPaidOrders = useMemo(() => {
+    return filterOrdersByDate(paidOrders, orderFilterDay, orderFilterMonth);
+  }, [orderFilterDay, orderFilterMonth, paidOrders]);
+  const filteredUnpaidOrders = useMemo(() => {
+    return filterOrdersByDate(unpaidOrders, orderFilterDay, orderFilterMonth);
+  }, [orderFilterDay, orderFilterMonth, unpaidOrders]);
 
   const applyCustomerSnapshot = (customerId: string) => {
     setSelectedCustomerId(customerId);
@@ -235,6 +291,7 @@ export function AdminOrdersManager({
     setCustomerPhone("");
     setShippingTier(activeShippingTiers[0]?.code ?? shippingTiers[0]?.code ?? "");
     setOrderStatus("paid");
+    setPaymentMethod("manual");
     setPaymentReference("");
     setShippingName("");
     setShippingPhone("");
@@ -255,6 +312,9 @@ export function AdminOrdersManager({
     setCustomerPhone(order.customer_phone ?? savedAddress.phone);
     setShippingTier(order.shipping_tier ?? activeShippingTiers[0]?.code ?? "");
     setOrderStatus(order.status);
+    setPaymentMethod(
+      getOrderPaymentMethodValue(order.payment_method, order.payment_reference),
+    );
     setPaymentReference(order.payment_reference ?? "");
     setShippingName(savedAddress.name || order.customer_name || "");
     setShippingPhone(savedAddress.phone || order.customer_phone || "");
@@ -347,6 +407,7 @@ export function AdminOrdersManager({
             customerName,
             customerPhone,
             items: normalizedItems,
+            paymentMethod,
             paymentReference,
             shippingAddress: {
               name: shippingName,
@@ -446,22 +507,66 @@ export function AdminOrdersManager({
           {orders.length === 0 ? (
             <p className="text-sm text-gray-500">No store orders yet.</p>
           ) : (
-            <Tabs defaultValue={paidOrders.length > 0 ? "paid" : "unpaid"} className="space-y-4">
+            <Tabs
+              defaultValue={filteredPaidOrders.length > 0 ? "paid" : "unpaid"}
+              className="space-y-4"
+            >
+              <div className="flex flex-col gap-3 rounded-2xl border border-gray-100 bg-gray-50 p-4 sm:flex-row sm:items-end">
+                <div className="grid flex-1 gap-3 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="admin-order-filter-day">Filter By Day</Label>
+                    <Input
+                      id="admin-order-filter-day"
+                      type="date"
+                      value={orderFilterDay}
+                      onChange={(event) => {
+                        setOrderFilterDay(event.target.value);
+                        if (event.target.value) {
+                          setOrderFilterMonth("");
+                        }
+                      }}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="admin-order-filter-month">Filter By Month</Label>
+                    <Input
+                      id="admin-order-filter-month"
+                      type="month"
+                      value={orderFilterMonth}
+                      onChange={(event) => {
+                        setOrderFilterMonth(event.target.value);
+                        if (event.target.value) {
+                          setOrderFilterDay("");
+                        }
+                      }}
+                    />
+                  </div>
+                </div>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setOrderFilterDay("");
+                    setOrderFilterMonth("");
+                  }}
+                >
+                  Clear Filter
+                </Button>
+              </div>
               <TabsList className="grid w-full grid-cols-2">
                 <TabsTrigger value="paid" className="min-w-0 cursor-pointer whitespace-normal px-3 py-2 text-center text-xs leading-tight sm:text-sm">
-                  Paid Orders ({paidOrders.length})
+                  Paid Orders ({filteredPaidOrders.length})
                 </TabsTrigger>
                 <TabsTrigger value="unpaid" className="min-w-0 cursor-pointer whitespace-normal px-3 py-2 text-center text-xs leading-tight sm:text-sm">
-                  Unpaid Orders ({unpaidOrders.length})
+                  Unpaid Orders ({filteredUnpaidOrders.length})
                 </TabsTrigger>
               </TabsList>
 
               {[
-                { emptyMessage: "No paid store orders yet.", value: "paid", rows: paidOrders },
+                { emptyMessage: "No paid store orders yet.", value: "paid", rows: filteredPaidOrders },
                 {
                   emptyMessage: "No unpaid store orders right now.",
                   value: "unpaid",
-                  rows: unpaidOrders,
+                  rows: filteredUnpaidOrders,
                 },
               ].map((group) => (
                 <TabsContent key={group.value} value={group.value}>
@@ -475,6 +580,7 @@ export function AdminOrdersManager({
                           <TableHead>Customer</TableHead>
                           <TableHead>Shipping</TableHead>
                           <TableHead>Total</TableHead>
+                          <TableHead>Payment</TableHead>
                           <TableHead>Status</TableHead>
                           <TableHead>Created</TableHead>
                           <TableHead>Actions</TableHead>
@@ -525,10 +631,48 @@ export function AdminOrdersManager({
                                     : "N/A"}
                               </TableCell>
                               <TableCell>{formatNairaAmount(Number(order.total ?? 0))}</TableCell>
+                              <TableCell>
+                                <div className="font-medium">
+                                  {formatPaymentMethodLabel(
+                                    order.payment_method,
+                                    order.payment_reference,
+                                  )}
+                                </div>
+                                <div className="text-xs text-gray-500">
+                                  {order.payment_reference
+                                    ? `Ref: ${formatPaymentReferenceDisplay(order.payment_reference)}`
+                                    : "No reference"}
+                                </div>
+                              </TableCell>
                               <TableCell>{order.status}</TableCell>
                               <TableCell>{formatDateTime(order.created_at)}</TableCell>
                               <TableCell>
-                                <div className="flex gap-2">
+                                <div className="flex flex-wrap gap-2">
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() =>
+                                      downloadOrderReceipt({
+                                        createdAt: order.created_at,
+                                        customerEmail: order.customer_email,
+                                        customerName: order.customer_name,
+                                        customerPhone: order.customer_phone,
+                                        customerPickupCode: order.customer_pickup_code,
+                                        id: order.id,
+                                        items: order.items,
+                                        paymentMethod: order.payment_method,
+                                        paymentReference: order.payment_reference,
+                                        riderPickupCode: order.rider_pickup_code,
+                                        shippingAddress: normalizeShippingAddress(order.shipping_address),
+                                        shippingTier: order.shipping_tier,
+                                        status: order.status,
+                                        total: Number(order.total ?? 0),
+                                      })
+                                    }
+                                  >
+                                    <Download className="h-4 w-4" />
+                                    Receipt
+                                  </Button>
                                   <Button
                                     variant="outline"
                                     size="sm"
@@ -647,6 +791,27 @@ export function AdminOrdersManager({
                   </SelectContent>
                 </Select>
               </div>
+              <div className="space-y-2">
+                <Label htmlFor="order-payment-method">Payment Method</Label>
+                <Select
+                  value={paymentMethod}
+                  onValueChange={(value) => setPaymentMethod(value as PaymentMethod)}
+                >
+                  <SelectTrigger id="order-payment-method">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {PAYMENT_METHOD_OPTIONS.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="order-reference">Payment Reference</Label>
                 <Input

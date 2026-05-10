@@ -3,9 +3,14 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Gift, Lock, MapPin, Package, Pencil, Share2, Trash2, User } from "lucide-react";
+import { Download, Gift, Lock, MapPin, Package, Pencil, Share2, Trash2, User } from "lucide-react";
 import { toast } from "sonner";
 import { formatNairaAmount } from "../../lib/commerce";
+import {
+  formatPaymentMethodLabel,
+  formatPaymentReferenceDisplay,
+} from "../../lib/orderPayments";
+import { downloadOrderReceipt } from "../../lib/orderReceipt";
 import {
   buildRegistryDashboardPath,
   buildRegistryPaymentActivities,
@@ -22,6 +27,7 @@ import {
   type RegistryPaymentActivity,
   type RegistrySummary,
 } from "../../lib/registry";
+import { normalizeShippingAddress, type ShippingAddress } from "../../lib/userProfile";
 import { useAuth } from "../contexts/AuthContext";
 import { hasSupabaseEnv, supabase } from "../lib/supabase";
 import { Button } from "../components/ui/button";
@@ -51,9 +57,15 @@ type OrderItem = {
 };
 
 type UserOrder = {
+  customer_email?: string | null;
+  customer_name?: string | null;
+  customer_phone?: string | null;
   customer_pickup_code?: string | null;
   id: string;
   created_at: string;
+  payment_method?: string | null;
+  payment_reference?: string | null;
+  shipping_address?: Partial<ShippingAddress> | null;
   status: string;
   rider_pickup_code?: string | null;
   shipping_tier?: string | null;
@@ -194,6 +206,44 @@ function formatDateTime(value?: string | null) {
   });
 }
 
+function getLocalDateKey(value?: string | null) {
+  if (!value) {
+    return "";
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function getLocalMonthKey(value?: string | null) {
+  return getLocalDateKey(value).slice(0, 7);
+}
+
+function filterOrdersByDate<T extends { created_at?: string | null }>(
+  items: T[],
+  selectedDay: string,
+  selectedMonth: string,
+) {
+  return items.filter((item) => {
+    if (selectedDay) {
+      return getLocalDateKey(item.created_at) === selectedDay;
+    }
+
+    if (selectedMonth) {
+      return getLocalMonthKey(item.created_at) === selectedMonth;
+    }
+
+    return true;
+  });
+}
+
 type DashboardTab = "orders" | "registries" | "profile" | "address" | "security";
 
 function getDashboardTabRoute(tab: DashboardTab) {
@@ -257,6 +307,8 @@ export function UserDashboard({
   const [savingRegistryStatus, setSavingRegistryStatus] = useState(false);
   const [savingCampaignPreference, setSavingCampaignPreference] = useState(false);
   const [activeTab, setActiveTab] = useState<DashboardTab>(initialTab);
+  const [orderFilterDay, setOrderFilterDay] = useState("");
+  const [orderFilterMonth, setOrderFilterMonth] = useState("");
   const loadRequestIdRef = useRef(0);
   const initialLoadKeyRef = useRef<string | null>(null);
   const registryItemsByRegistryRef = useRef(cachedEntry?.registryItemsByRegistry ?? {});
@@ -309,6 +361,14 @@ export function UserDashboard({
   const paidOrders = useMemo(
     () => orders.filter((order) => order.status === "paid"),
     [orders],
+  );
+  const filteredUnfinishedOrders = useMemo(
+    () => filterOrdersByDate(unfinishedOrders, orderFilterDay, orderFilterMonth),
+    [orderFilterDay, orderFilterMonth, unfinishedOrders],
+  );
+  const filteredPaidOrders = useMemo(
+    () => filterOrdersByDate(paidOrders, orderFilterDay, orderFilterMonth),
+    [orderFilterDay, orderFilterMonth, paidOrders],
   );
   const shouldLoadRegistryData = activeTab === "registries" || activeTab === "profile";
   const hasCurrentTabCache = Boolean(
@@ -494,6 +554,7 @@ export function UserDashboard({
     if (hasCurrentTabCache) {
       const frameId = window.requestAnimationFrame(() => {
         setLoading(false);
+        void loadUserData(false);
       });
 
       return () => {
@@ -505,6 +566,30 @@ export function UserDashboard({
       void loadUserData(isInitialDashboardLoad && !cachedEntry);
     });
   }, [activeTab, cachedEntry, hasCurrentTabCache, loadUserData, userId]);
+
+  useEffect(() => {
+    if (!userId || !hasSupabaseEnv) {
+      return;
+    }
+
+    const refreshDashboardData = () => {
+      void loadUserData(false);
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        refreshDashboardData();
+      }
+    };
+
+    window.addEventListener("focus", refreshDashboardData);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      window.removeEventListener("focus", refreshDashboardData);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [loadUserData, userId]);
 
   const handleShareRegistry = async (registry: RegistryRecord) => {
     const shareUrl = `${window.location.origin}/registry/${registry.share_code}`;
@@ -747,11 +832,23 @@ export function UserDashboard({
               <div>
                 <p className="font-semibold">Order #{order.id.substring(0, 8)}</p>
                 <p className="text-sm text-gray-500">
-                  {new Date(order.created_at).toLocaleDateString()}
+                  {formatDateTime(order.created_at)}
                 </p>
-                {order.shipping_tier ? (
-                  <p className="text-xs text-gray-500">{order.shipping_tier}</p>
-                ) : null}
+                <div className="space-y-1 text-xs text-gray-500">
+                  {order.shipping_tier ? <p>{order.shipping_tier}</p> : null}
+                  <p>
+                    Payment: {" "}
+                    {formatPaymentMethodLabel(
+                      order.payment_method,
+                      order.payment_reference,
+                    )}
+                  </p>
+                  {order.payment_reference ? (
+                    <p title={order.payment_reference}>
+                      Reference: {formatPaymentReferenceDisplay(order.payment_reference)}
+                    </p>
+                  ) : null}
+                </div>
               </div>
               <span
                 className={`rounded-full px-3 py-1 text-sm ${
@@ -796,6 +893,33 @@ export function UserDashboard({
             <div className="flex justify-between font-semibold">
               <span>Total</span>
               <span>{formatNairaAmount(order.total)}</span>
+            </div>
+            <div className="mt-3 flex justify-center">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() =>
+                  downloadOrderReceipt({
+                    createdAt: order.created_at,
+                    customerEmail: order.customer_email,
+                    customerName: order.customer_name,
+                    customerPhone: order.customer_phone,
+                    customerPickupCode: order.customer_pickup_code,
+                    id: order.id,
+                    items: order.items,
+                    paymentMethod: order.payment_method,
+                    paymentReference: order.payment_reference,
+                    riderPickupCode: order.rider_pickup_code,
+                    shippingAddress: normalizeShippingAddress(order.shipping_address),
+                    shippingTier: order.shipping_tier,
+                    status: order.status,
+                    total: Number(order.total ?? 0),
+                  })
+                }
+              >
+                <Download className="h-4 w-4" />
+                Download Receipt
+              </Button>
             </div>
           </div>
         ))}
@@ -900,28 +1024,69 @@ export function UserDashboard({
                 <CardTitle>Order History</CardTitle>
               </CardHeader>
               <CardContent>
+                <div className="mb-4 flex flex-col gap-3 rounded-2xl border border-gray-100 bg-gray-50 p-4 sm:flex-row sm:items-end">
+                  <div className="grid flex-1 gap-3 sm:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label htmlFor="dashboard-order-filter-day">Filter By Day</Label>
+                      <Input
+                        id="dashboard-order-filter-day"
+                        type="date"
+                        value={orderFilterDay}
+                        onChange={(event) => {
+                          setOrderFilterDay(event.target.value);
+                          if (event.target.value) {
+                            setOrderFilterMonth("");
+                          }
+                        }}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="dashboard-order-filter-month">Filter By Month</Label>
+                      <Input
+                        id="dashboard-order-filter-month"
+                        type="month"
+                        value={orderFilterMonth}
+                        onChange={(event) => {
+                          setOrderFilterMonth(event.target.value);
+                          if (event.target.value) {
+                            setOrderFilterDay("");
+                          }
+                        }}
+                      />
+                    </div>
+                  </div>
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setOrderFilterDay("");
+                      setOrderFilterMonth("");
+                    }}
+                  >
+                    Clear Filter
+                  </Button>
+                </div>
                 <Tabs
-                  defaultValue={paidOrders.length > 0 ? "paid" : "unfinished"}
+                  defaultValue={filteredPaidOrders.length > 0 ? "paid" : "unfinished"}
                   className="space-y-4"
                 >
                   <TabsList className="grid w-full grid-cols-2">
                     <TabsTrigger value="paid" className="min-w-0 whitespace-normal px-3 py-2 text-center leading-tight">
-                      Paid Orders ({paidOrders.length})
+                      Paid Orders ({filteredPaidOrders.length})
                     </TabsTrigger>
                     <TabsTrigger value="unfinished" className="min-w-0 whitespace-normal px-3 py-2 text-center leading-tight">
-                      Unfinished ({unfinishedOrders.length})
+                      Unfinished ({filteredUnfinishedOrders.length})
                     </TabsTrigger>
                   </TabsList>
 
                   <TabsContent value="unfinished">
                     {renderOrders(
-                      unfinishedOrders,
+                      filteredUnfinishedOrders,
                       "No unfinished orders right now.",
                     )}
                   </TabsContent>
 
                   <TabsContent value="paid">
-                    {renderOrders(paidOrders, "No paid orders yet.")}
+                    {renderOrders(filteredPaidOrders, "No paid orders yet.")}
                   </TabsContent>
                 </Tabs>
               </CardContent>

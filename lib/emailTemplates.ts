@@ -1,4 +1,5 @@
 import { formatNairaAmount } from "./commerce";
+import { formatPaymentMethodLabel } from "./orderPayments";
 
 type BroadcastTemplateOptions = {
   body: string;
@@ -38,6 +39,7 @@ type OrderConfirmationEmailOptions = {
   customerName?: string | null;
   items: StoreOrderItem[];
   orderId: string;
+  paymentMethod?: string | null;
   paymentReference?: string | null;
   shippingAddress?: StoreOrderAddress | null;
   shippingTier?: string | null;
@@ -374,6 +376,7 @@ export function renderOrderConfirmationEmail({
   customerName,
   items,
   orderId,
+  paymentMethod,
   paymentReference,
   shippingAddress,
   shippingTier,
@@ -382,10 +385,15 @@ export function renderOrderConfirmationEmail({
   const firstName =
     customerName?.trim().split(/\s+/).filter(Boolean)[0] || "there";
   const subject = "Your Nana's Baby Essentials order is confirmed";
+  const paymentMethodLabel = formatPaymentMethodLabel(
+    paymentMethod,
+    paymentReference,
+  );
   const facts = [
     { label: "Order ID", value: orderId },
     { label: "Placed", value: formatOrderDate(createdAt) },
     { label: "Delivery Zone", value: formatShippingTier(shippingTier) },
+    { label: "Payment Method", value: paymentMethodLabel },
     { label: "Total", value: formatNairaAmount(totalAmount) },
   ];
 
@@ -399,6 +407,11 @@ export function renderOrderConfirmationEmail({
         ? [...facts, { label: "Payment Reference", value: paymentReference.trim() }]
         : facts,
     )}
+    <div style="margin:0 0 22px;border-radius:22px;background:#fff7ed;padding:18px 20px;">
+      <p style="margin:0;font-size:15px;line-height:1.8;color:#9a3412;">
+        A PDF receipt is attached to this email for your records, with your order summary and store support details.
+      </p>
+    </div>
     <h2 style="margin:0 0 14px;font-size:18px;line-height:1.4;color:#0f172a;">Order summary</h2>
     ${renderOrderItems(items)}
     ${renderAddressCard("Delivery address", formatAddress(shippingAddress))}
@@ -414,10 +427,12 @@ export function renderOrderConfirmationEmail({
     `Order ID: ${orderId}`,
     `Placed: ${formatOrderDate(createdAt)}`,
     `Delivery zone: ${formatShippingTier(shippingTier)}`,
+    `Payment method: ${paymentMethodLabel}`,
     paymentReference?.trim()
       ? `Payment reference: ${paymentReference.trim()}`
       : null,
     `Total: ${formatNairaAmount(totalAmount)}`,
+    "A PDF receipt is attached to this email for your records.",
     "",
     "Items:",
     ...items.map((item) => {

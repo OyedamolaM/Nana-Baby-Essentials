@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { revalidateTag } from "next/cache";
 
 import { requireAdminRoute } from "@/lib/authServer";
+import { getOrderPaymentMethodValue } from "@/lib/orderPayments";
 import { createSupabaseServiceRoleClient, hasSupabaseServiceRoleEnv } from "@/lib/supabaseServer";
 import { normalizeShippingAddress, type ShippingAddress } from "@/lib/userProfile";
 
@@ -17,6 +18,7 @@ type CreateAdminOrderPayload = {
   customerName?: string;
   customerPhone?: string;
   items?: unknown;
+  paymentMethod?: string;
   paymentReference?: string;
   shippingAddress?: unknown;
   shippingTier?: string;
@@ -85,6 +87,10 @@ export async function POST(request: Request) {
     total > 0
       ? total
       : items.reduce((sum, item) => sum + item.price * item.quantity, 0);
+  const paymentMethod = getOrderPaymentMethodValue(
+    payload?.paymentMethod,
+    payload?.paymentReference,
+  );
 
   const orderPayload = {
     user_id: payload?.userId?.trim() || null,
@@ -93,6 +99,7 @@ export async function POST(request: Request) {
     shipping_address: shippingAddress,
     billing_address: shippingAddress,
     items,
+    payment_method: paymentMethod,
     payment_reference: payload?.paymentReference?.trim() || null,
     shipping_tier: shippingTier,
     customer_name: customerName,

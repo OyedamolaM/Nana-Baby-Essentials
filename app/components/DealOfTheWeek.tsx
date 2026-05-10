@@ -95,11 +95,11 @@ export function DealOfTheWeek({
     <section className="bg-gradient-to-r from-orange-50 to-red-50 py-16">
       <div className="w-full px-3 sm:px-4">
         <div className="mb-8 flex items-center justify-center gap-2 text-center">
-          <Zap className="h-7 w-7 sm:h-8 sm:w-8 fill-orange-600 text-orange-600" />
-          <h2 className="text-3xl sm:text-4xl font-bold text-gray-900">
+          <Zap className="h-6 w-6 sm:h-7 sm:w-7 fill-orange-600 text-orange-600" />
+          <h2 className="text-2xl font-bold text-gray-900 sm:text-3xl">
             Deals of the Week
           </h2>
-          <Zap className="h-7 w-7 sm:h-8 sm:w-8 fill-orange-600 text-orange-600" />
+          <Zap className="h-6 w-6 sm:h-7 sm:w-7 fill-orange-600 text-orange-600" />
         </div>
 
         <div className="w-full lg:max-w-6xl lg:mx-auto sm:px-6 md:px-10">

@@ -49,6 +49,19 @@ export function buildSpecialPackageTypeLabel(type: SpecialPackageType) {
   return type === "swoop_package" ? "Swoop Package" : "Gift Bundle";
 }
 
+export function normalizeExternalVideoUrl(value?: string | null) {
+  const normalizedValue = value?.trim() ?? "";
+  if (!normalizedValue) {
+    return null;
+  }
+
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(normalizedValue)) {
+    return normalizedValue;
+  }
+
+  return `https://${normalizedValue.replace(/^\/+/, "")}`;
+}
+
 export function splitPackageDetails(value?: string | null) {
   return (value ?? "")
     .split(/\r?\n/)
@@ -72,7 +85,7 @@ export function mapSpecialPackageRecord(
       record.badge_text?.trim() ||
       (record.package_type === "swoop_package" ? "Swoop Package" : "Gift Bundle"),
     details: record.details?.trim() || product.description,
-    externalVideoUrl: record.external_video_url?.trim() || null,
+    externalVideoUrl: normalizeExternalVideoUrl(record.external_video_url),
     id: record.id,
     image: record.override_image?.trim() || product.image,
     isActive: Boolean(record.is_active),

@@ -94,6 +94,7 @@ export async function POST(request: Request) {
   const { error: updateError } = await serviceRoleClient
     .from("orders")
     .update({
+      payment_method: "paystack",
       payment_reference: paystackReference,
       status: "paid",
     })

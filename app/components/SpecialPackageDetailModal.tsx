@@ -38,21 +38,21 @@ export function SpecialPackageDetailModal({
 
   return (
     <Dialog open={open} onOpenChange={(nextOpen) => !nextOpen && onClose()}>
-      <DialogContent className="max-h-[90vh] max-w-4xl overflow-y-auto">
+      <DialogContent className="max-h-[90vh] w-[min(96vw,72rem)] max-w-6xl overflow-y-auto">
         <DialogHeader className="sr-only">
           <DialogTitle>{pkg.title}</DialogTitle>
         </DialogHeader>
 
-        <div className="grid gap-8 md:grid-cols-2">
-          <div className="space-y-4">
+        <div className="grid gap-8 lg:grid-cols-[minmax(0,1.08fr)_minmax(0,0.92fr)]">
+          <div className="min-w-0 space-y-4">
             <img
               src={pkg.image}
               alt={pkg.title}
-              className="aspect-square w-full rounded-3xl object-cover"
+              className="aspect-[4/4.2] w-full rounded-3xl object-cover"
             />
           </div>
 
-          <div className="space-y-6">
+          <div className="min-w-0 space-y-6">
             <div>
               <div className="mb-3 flex flex-wrap items-center gap-2">
                 <Badge variant="secondary">{buildSpecialPackageTypeLabel(pkg.packageType)}</Badge>
@@ -70,7 +70,7 @@ export function SpecialPackageDetailModal({
                 Package Details
               </h3>
               {detailItems.length > 0 ? (
-                <ul className="mt-3 space-y-2 text-sm leading-relaxed text-gray-700">
+                <ul className="mt-3 space-y-2 break-words text-sm leading-relaxed text-gray-700">
                   {detailItems.map((item) => (
                     <li key={`${pkg.id}-${item}`} className="flex gap-2">
                       <span className="mt-1 h-2 w-2 rounded-full bg-pink-500" />

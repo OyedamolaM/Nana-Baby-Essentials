@@ -196,6 +196,7 @@ type AdminDashboardCacheEntry = {
   orders: AdminOrderRecord[];
   productCategories: ProductCategoryRecord[];
   products: ProductRecord[];
+  registryReviews: HomepageReviewRecord[];
   specialPackages: SpecialPackageRecord[];
   registries: RegistryRecord[];
   registryItemsByRegistry: Record<string, RegistryItem[]>;
@@ -410,6 +411,9 @@ export function AdminDashboard() {
   const [homepageReviews, setHomepageReviews] = useState<HomepageReviewRecord[]>(
     cachedAdminEntry?.homepageReviews ?? [],
   );
+  const [registryReviews, setRegistryReviews] = useState<HomepageReviewRecord[]>(
+    cachedAdminEntry?.registryReviews ?? [],
+  );
   const homepageSiteContent = useMemo<HomepageSiteContent>(() => {
     return buildHomepageSiteContent(siteContentSettings);
   }, [siteContentSettings]);
@@ -431,6 +435,15 @@ export function AdminDashboard() {
   const [homepageReviewSortOrder, setHomepageReviewSortOrder] = useState("0");
   const [homepageReviewIsActive, setHomepageReviewIsActive] = useState(true);
   const [savingHomepageReview, setSavingHomepageReview] = useState(false);
+  const [showRegistryReviewModal, setShowRegistryReviewModal] = useState(false);
+  const [editingRegistryReview, setEditingRegistryReview] = useState<HomepageReviewRecord | null>(null);
+  const [registryReviewName, setRegistryReviewName] = useState("");
+  const [registryReviewRole, setRegistryReviewRole] = useState("");
+  const [registryReviewText, setRegistryReviewText] = useState("");
+  const [registryReviewRating, setRegistryReviewRating] = useState("5");
+  const [registryReviewSortOrder, setRegistryReviewSortOrder] = useState("0");
+  const [registryReviewIsActive, setRegistryReviewIsActive] = useState(true);
+  const [savingRegistryReview, setSavingRegistryReview] = useState(false);
 
   useEffect(() => {
     if (!cachedAdminEntry) {
@@ -450,6 +463,9 @@ export function AdminDashboard() {
       : [];
     const cachedHomepageReviews = Array.isArray(cachedAdminEntry.homepageReviews)
       ? cachedAdminEntry.homepageReviews
+      : [];
+    const cachedRegistryReviews = Array.isArray(cachedAdminEntry.registryReviews)
+      ? cachedAdminEntry.registryReviews
       : [];
     const cachedHomepageSiteContent = buildHomepageSiteContent(
       cachedSiteContentSettings,
@@ -474,6 +490,7 @@ export function AdminDashboard() {
       setSiteContentSettings(cachedSiteContentSettings);
       setStoreLocations(cachedStoreLocations);
       setHomepageReviews(cachedHomepageReviews);
+      setRegistryReviews(cachedRegistryReviews);
       setHeroImageDraft(cachedHomepageSiteContent.heroImage);
       setHeroImageFile(null);
       setAboutImageDrafts(
@@ -613,6 +630,7 @@ export function AdminDashboard() {
       siteContentSettingsResult,
       storeLocationsResult,
       homepageReviewsResult,
+      registryReviewsResult,
     ] = await Promise.all([
       supabase.from("orders").select("*").order("created_at", { ascending: false }),
       supabase
@@ -687,6 +705,10 @@ export function AdminDashboard() {
         .from("homepage_reviews")
         .select("*")
         .order("sort_order", { ascending: true }),
+      supabase
+        .from("registry_reviews")
+        .select("*")
+        .order("sort_order", { ascending: true }),
     ]);
 
     setOrders(((ordersResult.error ? [] : ordersResult.data) ?? []) as AdminOrderRecord[]);
@@ -757,6 +779,11 @@ export function AdminDashboard() {
       homepageReviewsResult.error?.code === "42P01"
         ? []
         : ((homepageReviewsResult.error ? [] : homepageReviewsResult.data) ?? []) as HomepageReviewRecord[],
+    );
+    setRegistryReviews(
+      registryReviewsResult.error?.code === "42P01"
+        ? []
+        : ((registryReviewsResult.error ? [] : registryReviewsResult.data) ?? []) as HomepageReviewRecord[],
     );
     setHeroImageDraft(nextHomepageSiteContent.heroImage);
     setHeroImageFile(null);
@@ -877,6 +904,10 @@ export function AdminDashboard() {
         homepageReviewsResult.error?.code === "42P01"
           ? []
           : (((homepageReviewsResult.error ? [] : homepageReviewsResult.data) ?? []) as HomepageReviewRecord[]),
+      registryReviews:
+        registryReviewsResult.error?.code === "42P01"
+          ? []
+          : (((registryReviewsResult.error ? [] : registryReviewsResult.data) ?? []) as HomepageReviewRecord[]),
     });
 
     if (showSpinner) {
@@ -1036,6 +1067,7 @@ export function AdminDashboard() {
         if (cachedAdminEntry) {
           setAdminAccessStatus("allowed");
           setLoading(false);
+          await loadAdminData(false);
           return;
         }
 
@@ -1043,6 +1075,37 @@ export function AdminDashboard() {
       })();
     });
   }, [authLoading, cachedAdminEntry, loadAdminData, userId, verifyAdminAccess]);
+
+  useEffect(() => {
+    if (authLoading || !userId || !hasSupabaseEnv) {
+      return;
+    }
+
+    const refreshAdminData = () => {
+      void (async () => {
+        const hasAccess = await verifyAdminAccess();
+        if (!hasAccess) {
+          return;
+        }
+
+        await loadAdminData(false);
+      })();
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        refreshAdminData();
+      }
+    };
+
+    window.addEventListener("focus", refreshAdminData);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      window.removeEventListener("focus", refreshAdminData);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [authLoading, loadAdminData, userId, verifyAdminAccess]);
 
   const revalidatePublicTags = async (tags: string[]) => {
     const accessToken = await getAdminAccessToken();
@@ -1266,6 +1329,122 @@ export function AdminDashboard() {
       await loadAdminData();
     } catch (error) {
       console.error("Failed to delete homepage review.", error);
+      toast.error("Could not delete the review.");
+    }
+  };
+
+  const resetRegistryReviewForm = () => {
+    setEditingRegistryReview(null);
+    setRegistryReviewName("");
+    setRegistryReviewRole("");
+    setRegistryReviewText("");
+    setRegistryReviewRating("5");
+    setRegistryReviewSortOrder("0");
+    setRegistryReviewIsActive(true);
+  };
+
+  const handleEditRegistryReview = (review: HomepageReviewRecord) => {
+    setEditingRegistryReview(review);
+    setRegistryReviewName(review.reviewer_name);
+    setRegistryReviewRole(review.reviewer_role ?? "");
+    setRegistryReviewText(review.review_text);
+    setRegistryReviewRating(String(Number(review.rating ?? 5)));
+    setRegistryReviewSortOrder(String(Number(review.sort_order ?? 0)));
+    setRegistryReviewIsActive(Boolean(review.is_active));
+    setShowRegistryReviewModal(true);
+  };
+
+  const handleSaveRegistryReview = async (event: React.FormEvent) => {
+    event.preventDefault();
+
+    const accessToken = await getAdminAccessToken();
+    if (!accessToken) {
+      toast.error("Sign in again to manage registry reviews.");
+      return;
+    }
+
+    setSavingRegistryReview(true);
+
+    try {
+      const response = await fetch(
+        editingRegistryReview
+          ? `/api/admin/reviews/${editingRegistryReview.id}?surface=registry`
+          : "/api/admin/reviews?surface=registry",
+        {
+          method: editingRegistryReview ? "PATCH" : "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${accessToken}`,
+          },
+          body: JSON.stringify({
+            reviewerName: registryReviewName,
+            reviewerRole: registryReviewRole,
+            reviewText: registryReviewText,
+            rating: Number(registryReviewRating || 5),
+            sortOrder: Number(registryReviewSortOrder || 0),
+            isActive: registryReviewIsActive,
+          }),
+        },
+      );
+
+      const result = (await response.json().catch(() => null)) as
+        | { message?: string }
+        | null;
+
+      if (!response.ok) {
+        toast.error(result?.message ?? "Could not save the review.");
+        return;
+      }
+
+      toast.success(
+        result?.message ??
+          (editingRegistryReview ? "Registry review updated." : "Registry review created."),
+      );
+      setShowRegistryReviewModal(false);
+      resetRegistryReviewForm();
+      await revalidatePublicTags(["content"]);
+      await loadAdminData();
+    } catch (error) {
+      console.error("Failed to save registry review.", error);
+      toast.error("Could not save the review.");
+    } finally {
+      setSavingRegistryReview(false);
+    }
+  };
+
+  const handleDeleteRegistryReview = async (reviewId: string) => {
+    if (!window.confirm("Delete this registry review?")) {
+      return;
+    }
+
+    const accessToken = await getAdminAccessToken();
+    if (!accessToken) {
+      toast.error("Sign in again to manage registry reviews.");
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/admin/reviews/${reviewId}?surface=registry`, {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      });
+
+      const result = (await response.json().catch(() => null)) as
+        | { message?: string }
+        | null;
+
+      if (!response.ok) {
+        toast.error(result?.message ?? "Could not delete the review.");
+        return;
+      }
+
+      toast.success(result?.message ?? "Registry review deleted.");
+      await revalidatePublicTags(["content"]);
+      await loadAdminData();
+    } catch (error) {
+      console.error("Failed to delete registry review.", error);
       toast.error("Could not delete the review.");
     }
   };
@@ -3110,89 +3289,175 @@ export function AdminDashboard() {
         </TabsContent>
 
         <TabsContent value="reviews">
-          <Card>
-            <CardHeader className="space-y-4">
-              <div className="space-y-1">
-                <CardTitle>Homepage Reviews</CardTitle>
-                <p className="text-sm text-gray-500">
-                  Add and manage parent testimonials shown on the homepage review section.
-                </p>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  onClick={() => {
-                    resetHomepageReviewForm();
-                    setShowHomepageReviewModal(true);
-                  }}
-                >
-                  <MessageSquareQuote className="mr-2 h-4 w-4" />
-                  Add Review
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Reviewer</TableHead>
-                    <TableHead>Rating</TableHead>
-                    <TableHead>Review</TableHead>
-                    <TableHead>Order</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {(homepageReviews ?? []).map((review) => (
-                    <TableRow key={review.id}>
-                      <TableCell>
-                        <div className="font-medium">{review.reviewer_name}</div>
-                        <div className="text-xs text-gray-500">
-                          {review.reviewer_role || "No reviewer role"}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-1 text-amber-500">
-                          {Array.from({ length: 5 }).map((_, index) => (
-                            <Star
-                              key={`${review.id}-admin-star-${index}`}
-                              className="h-4 w-4"
-                              fill={index < Number(review.rating ?? 5) ? "currentColor" : "none"}
-                            />
-                          ))}
-                        </div>
-                      </TableCell>
-                      <TableCell className="max-w-md">
-                        <p className="line-clamp-3 text-sm text-gray-600">
-                          {review.review_text}
-                        </p>
-                      </TableCell>
-                      <TableCell>{Number(review.sort_order ?? 0)}</TableCell>
-                      <TableCell>{review.is_active ? "Active" : "Inactive"}</TableCell>
-                      <TableCell>
-                        <div className="flex gap-2">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handleEditHomepageReview(review)}
-                          >
-                            <Edit className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="destructive"
-                            size="sm"
-                            onClick={() => handleDeleteHomepageReview(review.id)}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </TableCell>
+          <div className="space-y-6">
+            <Card>
+              <CardHeader className="space-y-4">
+                <div className="space-y-1">
+                  <CardTitle>Homepage Reviews</CardTitle>
+                  <p className="text-sm text-gray-500">
+                    Add and manage parent testimonials shown on the homepage review section.
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    onClick={() => {
+                      resetHomepageReviewForm();
+                      setShowHomepageReviewModal(true);
+                    }}
+                  >
+                    <MessageSquareQuote className="mr-2 h-4 w-4" />
+                    Add Review
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Reviewer</TableHead>
+                      <TableHead>Rating</TableHead>
+                      <TableHead>Review</TableHead>
+                      <TableHead>Order</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Actions</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
+                  </TableHeader>
+                  <TableBody>
+                    {(homepageReviews ?? []).map((review) => (
+                      <TableRow key={review.id}>
+                        <TableCell>
+                          <div className="font-medium">{review.reviewer_name}</div>
+                          <div className="text-xs text-gray-500">
+                            {review.reviewer_role || "No reviewer role"}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-1 text-amber-500">
+                            {Array.from({ length: 5 }).map((_, index) => (
+                              <Star
+                                key={`${review.id}-admin-star-${index}`}
+                                className="h-4 w-4"
+                                fill={index < Number(review.rating ?? 5) ? "currentColor" : "none"}
+                              />
+                            ))}
+                          </div>
+                        </TableCell>
+                        <TableCell className="max-w-md">
+                          <p className="line-clamp-3 text-sm text-gray-600">
+                            {review.review_text}
+                          </p>
+                        </TableCell>
+                        <TableCell>{Number(review.sort_order ?? 0)}</TableCell>
+                        <TableCell>{review.is_active ? "Active" : "Inactive"}</TableCell>
+                        <TableCell>
+                          <div className="flex gap-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleEditHomepageReview(review)}
+                            >
+                              <Edit className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="destructive"
+                              size="sm"
+                              onClick={() => handleDeleteHomepageReview(review.id)}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="space-y-4">
+                <div className="space-y-1">
+                  <CardTitle>Registry Reviews</CardTitle>
+                  <p className="text-sm text-gray-500">
+                    Manage the testimonials shown on the registry landing page.
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    onClick={() => {
+                      resetRegistryReviewForm();
+                      setShowRegistryReviewModal(true);
+                    }}
+                  >
+                    <MessageSquareQuote className="mr-2 h-4 w-4" />
+                    Add Registry Review
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Reviewer</TableHead>
+                      <TableHead>Rating</TableHead>
+                      <TableHead>Review</TableHead>
+                      <TableHead>Order</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {(registryReviews ?? []).map((review) => (
+                      <TableRow key={review.id}>
+                        <TableCell>
+                          <div className="font-medium">{review.reviewer_name}</div>
+                          <div className="text-xs text-gray-500">
+                            {review.reviewer_role || "No reviewer role"}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-1 text-amber-500">
+                            {Array.from({ length: 5 }).map((_, index) => (
+                              <Star
+                                key={`${review.id}-registry-star-${index}`}
+                                className="h-4 w-4"
+                                fill={index < Number(review.rating ?? 5) ? "currentColor" : "none"}
+                              />
+                            ))}
+                          </div>
+                        </TableCell>
+                        <TableCell className="max-w-md">
+                          <p className="line-clamp-3 text-sm text-gray-600">
+                            {review.review_text}
+                          </p>
+                        </TableCell>
+                        <TableCell>{Number(review.sort_order ?? 0)}</TableCell>
+                        <TableCell>{review.is_active ? "Active" : "Inactive"}</TableCell>
+                        <TableCell>
+                          <div className="flex gap-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleEditRegistryReview(review)}
+                            >
+                              <Edit className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="destructive"
+                              size="sm"
+                              onClick={() => handleDeleteRegistryReview(review.id)}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          </div>
         </TabsContent>
 
         <TabsContent value="shipping">
@@ -3891,6 +4156,95 @@ export function AdminDashboard() {
               {savingHomepageReview
                 ? "Saving..."
                 : editingHomepageReview
+                  ? "Update Review"
+                  : "Create Review"}
+            </Button>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showRegistryReviewModal} onOpenChange={setShowRegistryReviewModal}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>
+              {editingRegistryReview ? "Edit Registry Review" : "Add Registry Review"}
+            </DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleSaveRegistryReview} className="space-y-4">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="registry-review-name">Reviewer Name</Label>
+                <Input
+                  id="registry-review-name"
+                  value={registryReviewName}
+                  onChange={(event) => setRegistryReviewName(event.target.value)}
+                  placeholder="Ada N."
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="registry-review-role">Reviewer Role / Context</Label>
+                <Input
+                  id="registry-review-role"
+                  value={registryReviewRole}
+                  onChange={(event) => setRegistryReviewRole(event.target.value)}
+                  placeholder="Mum-to-be building her first registry"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="registry-review-text">Review Text</Label>
+              <Textarea
+                id="registry-review-text"
+                value={registryReviewText}
+                onChange={(event) => setRegistryReviewText(event.target.value)}
+                rows={5}
+                required
+              />
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="registry-review-rating">Rating</Label>
+                <Select value={registryReviewRating} onValueChange={setRegistryReviewRating}>
+                  <SelectTrigger id="registry-review-rating">
+                    <SelectValue placeholder="Select a rating" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="5">5 Stars</SelectItem>
+                    <SelectItem value="4">4 Stars</SelectItem>
+                    <SelectItem value="3">3 Stars</SelectItem>
+                    <SelectItem value="2">2 Stars</SelectItem>
+                    <SelectItem value="1">1 Star</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="registry-review-sort-order">Display Order</Label>
+                <Input
+                  id="registry-review-sort-order"
+                  type="number"
+                  min="0"
+                  value={registryReviewSortOrder}
+                  onChange={(event) => setRegistryReviewSortOrder(event.target.value)}
+                />
+              </div>
+            </div>
+
+            <label className="flex items-center gap-2 text-sm text-gray-700">
+              <input
+                type="checkbox"
+                checked={registryReviewIsActive}
+                onChange={(event) => setRegistryReviewIsActive(event.target.checked)}
+              />
+              Show this review on the registry page
+            </label>
+
+            <Button type="submit" className="w-full" disabled={savingRegistryReview}>
+              {savingRegistryReview
+                ? "Saving..."
+                : editingRegistryReview
                   ? "Update Review"
                   : "Create Review"}
             </Button>

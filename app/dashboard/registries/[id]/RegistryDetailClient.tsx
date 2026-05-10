@@ -7,6 +7,7 @@ import { Download, Gift, Pencil, Share2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { formatNairaAmount, toNairaAmount } from "../../../../lib/commerce";
+import { REGISTRY_CHECKLIST_DOWNLOAD_PATH } from "../../../../lib/registryLandingContent";
 import {
   clearRegistryCart,
   readRegistryCart,
@@ -397,35 +398,14 @@ export function RegistryDetailClient({ registryId }: { registryId: string }) {
   };
 
   const handleDownloadChecklist = () => {
-    if (!registry) {
+    if (typeof window === "undefined" || !registry) {
       return;
     }
 
-    const lines = [
-      `${registry.name} Checklist`,
-      `Share Code: ${registry.share_code}`,
-      `Status: ${registryIsClosed ? "Closed" : "Active"}`,
-      "",
-      ...registryItems.map((item) => {
-        return [
-          item.product?.name ?? "Registry item",
-          `Requested: ${item.requestedQuantity}`,
-          `Covered: ${item.purchasedQuantity}`,
-          `Remaining: ${getRemainingRegistryQuantity(item)}`,
-          item.note ? `Note: ${item.note}` : null,
-        ]
-          .filter(Boolean)
-          .join(" | ");
-      }),
-    ];
-
-    const blob = new Blob([lines.join("\n")], { type: "text/plain;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
-    link.href = url;
+    link.href = REGISTRY_CHECKLIST_DOWNLOAD_PATH;
     link.download = `${registry.share_code.toLowerCase()}-checklist.txt`;
     link.click();
-    URL.revokeObjectURL(url);
   };
 
   const handleOpenEditItem = (item: RegistryItem) => {
@@ -693,7 +673,7 @@ export function RegistryDetailClient({ registryId }: { registryId: string }) {
               <div className="grid grid-cols-2 gap-2 md:flex md:flex-nowrap md:justify-end">
                 <Button
                   variant="outline"
-                  className="w-full md:w-auto"
+                  className="w-full px-3 text-xs md:w-auto md:px-4 md:text-sm"
                   onClick={handleShareRegistry}
                 >
                   <Share2 className="mr-2 h-4 w-4" />
@@ -701,7 +681,7 @@ export function RegistryDetailClient({ registryId }: { registryId: string }) {
                 </Button>
                 <Button
                   variant="outline"
-                  className="w-full md:w-auto"
+                  className="w-full px-3 text-xs md:w-auto md:px-4 md:text-sm"
                   onClick={() => router.push("/registry/products")}
                 >
                   <Gift className="mr-2 h-4 w-4" />
@@ -709,7 +689,7 @@ export function RegistryDetailClient({ registryId }: { registryId: string }) {
                 </Button>
                 <Button
                   variant="outline"
-                  className="col-span-2 w-full md:col-span-1 md:w-auto"
+                  className="col-span-2 w-full px-3 text-xs md:col-span-1 md:w-auto md:px-4 md:text-sm"
                   onClick={handleDownloadChecklist}
                 >
                   <Download className="mr-2 h-4 w-4" />

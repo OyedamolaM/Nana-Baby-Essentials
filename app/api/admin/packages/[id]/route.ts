@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 
 import { requireAdminRoute } from "@/lib/authServer";
 import { createSlug } from "@/lib/content";
+import { normalizeExternalVideoUrl } from "@/lib/specialPackages";
 import {
   createSupabaseServiceRoleClient,
   hasSupabaseServiceRoleEnv,
@@ -205,7 +206,7 @@ export async function PATCH(
     .update({
       badge_text: payload?.badgeText?.trim() || null,
       details,
-      external_video_url: payload?.externalVideoUrl?.trim() || null,
+      external_video_url: normalizeExternalVideoUrl(payload?.externalVideoUrl),
       is_active: payload?.isActive ?? true,
       override_image: image,
       package_type: packageType,

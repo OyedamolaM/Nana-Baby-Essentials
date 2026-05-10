@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { ExternalLink, Gift, ShoppingCart, Sparkles } from "lucide-react";
 
+import { formatNaira } from "../../lib/commerce";
 import {
   buildSpecialPackageTypeLabel,
   type SpecialPackage,
@@ -42,9 +43,9 @@ function PackageCarousel({
 }) {
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-2">
+      <div className="flex items-center justify-center gap-2 text-center">
         <Sparkles className="h-5 w-5 text-pink-600" />
-        <h3 className="text-2xl font-bold text-gray-900">{title}</h3>
+        <h3 className="text-2xl font-bold text-gray-900 sm:text-3xl">{title}</h3>
       </div>
 
       <Carousel className="px-1 sm:px-0" opts={{ loop: items.length > 1 }}>
@@ -76,6 +77,9 @@ function PackageCarousel({
                       </h4>
                       <p className="mt-2 text-sm leading-relaxed text-gray-600 sm:text-base">
                         {pkg.subtitle}
+                      </p>
+                      <p className="mt-4 text-3xl font-bold text-pink-600">
+                        {formatNaira(pkg.product.price)}
                       </p>
                     </div>
 

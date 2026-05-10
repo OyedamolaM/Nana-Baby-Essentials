@@ -39,7 +39,7 @@ interface RegistryHeaderProps {
 const navLinks = [
   { href: "/", label: "Home" },
   { href: "/products", label: "Products" },
-  { href: "/#faq", label: "FAQ" },
+  { href: "/registry#faq", label: "FAQ" },
   { href: "/blog", label: "Blog" },
 ] as const;
 

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { revalidateTag } from "next/cache";
 
 import { requireAdminRoute } from "@/lib/authServer";
+import { getOrderPaymentMethodValue } from "@/lib/orderPayments";
 import { createSupabaseServiceRoleClient, hasSupabaseServiceRoleEnv } from "@/lib/supabaseServer";
 import { normalizeShippingAddress, type ShippingAddress } from "@/lib/userProfile";
 
@@ -17,6 +18,7 @@ type UpdateAdminOrderPayload = {
   customerName?: string;
   customerPhone?: string;
   items?: unknown;
+  paymentMethod?: string | null;
   paymentReference?: string | null;
   shippingAddress?: unknown;
   shippingTier?: string;
@@ -82,6 +84,12 @@ export async function PATCH(request: Request, context: RouteContext<"/api/admin/
   }
   if (payload?.paymentReference !== undefined) {
     updatePayload.payment_reference = payload.paymentReference?.trim() || null;
+  }
+  if (payload?.paymentMethod !== undefined || payload?.paymentReference !== undefined) {
+    updatePayload.payment_method = getOrderPaymentMethodValue(
+      payload?.paymentMethod,
+      payload?.paymentReference,
+    );
   }
   if (payload?.shippingAddress !== undefined) {
     updatePayload.shipping_address = normalizeShippingAddress(
