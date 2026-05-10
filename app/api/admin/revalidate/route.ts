@@ -7,7 +7,7 @@ type RevalidatePayload = {
   tags?: string[];
 };
 
-const ALLOWED_TAGS = new Set(["blog", "orders", "products", "registries"]);
+const ALLOWED_TAGS = new Set(["blog", "content", "orders", "products", "registries"]);
 
 export async function POST(request: Request) {
   const admin = await requireAdminRoute(request);

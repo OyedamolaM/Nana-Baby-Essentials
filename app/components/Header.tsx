@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { Baby, LayoutDashboard, LogOut, Menu, Shield, ShoppingCart, User } from "lucide-react";
+import { LayoutDashboard, LogOut, Menu, Shield, ShoppingCart, User } from "lucide-react";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import {
@@ -65,7 +65,7 @@ export function Header({
             className="flex items-center gap-2 text-left z-10"
             onClick={() => handleNavigate("home")}
           >
-            <Baby className="h-7 w-7 sm:h-8 sm:w-8 text-pink-500 shrink-0" />
+            <img src="/logo.jpg" className="h-7 w-7 sm:h-8 sm:w-8 text-pink-500 shrink-0" />
 
             <div className="flex flex-col leading-tight">
               <p className="text-sm font-semibold leading-tight text-gray-900 sm:text-lg">

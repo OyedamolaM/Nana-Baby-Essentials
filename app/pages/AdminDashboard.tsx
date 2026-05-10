@@ -3,15 +3,19 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   BookOpen,
+  ChevronDown,
   DollarSign,
   Edit,
   ExternalLink,
+  Image as ImageIcon,
   Mail,
   MapPin,
+  MessageSquareQuote,
   Package,
   Plus,
   ShoppingBag,
   Sparkles,
+  Star,
   Trash2,
   Users,
 } from "lucide-react";
@@ -51,13 +55,20 @@ import {
   type ProductCategoryRecord,
 } from "../../lib/productCategories";
 import {
+  buildHomepageSiteContent,
+  DEFAULT_ABOUT_IMAGES,
+  type HomepageImageAsset,
+  type HomepageReviewRecord,
+  type HomepageSiteContent,
+  type SiteContentSettingRecord,
+} from "../../lib/siteContent";
+import {
   AdminCampaignManager,
   type CampaignContactRecord,
 } from "../components/admin/AdminCampaignManager";
 import { AdminOrdersManager, type AdminOrderRecord } from "../components/admin/AdminOrdersManager";
 import { AdminProductCategoriesManager } from "../components/admin/AdminProductCategoriesManager";
 import { AdminRegistryAccountsManager } from "../components/admin/AdminRegistryAccountsManager";
-import { AdminRegistryOrdersManager } from "../components/admin/AdminRegistryOrdersManager";
 import { AdminDateTimeField } from "../components/admin/AdminDateTimeField";
 import { useAuth } from "../contexts/AuthContext";
 import { hasSupabaseEnv, supabase } from "../lib/supabase";
@@ -74,6 +85,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from "../components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+} from "../components/ui/dropdown-menu";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import {
@@ -153,11 +170,16 @@ type ShippingTier = {
   created_at?: string;
 };
 
+type AboutImageDraft = HomepageImageAsset & {
+  file: File | null;
+};
+
 type AdminDashboardCacheEntry = {
   blogPosts: BlogPostRecord[];
   campaignContacts: CampaignContactRecord[];
   customers: Customer[];
   deals: HomeDealRecord[];
+  homepageReviews: HomepageReviewRecord[];
   newsletterCampaigns: NewsletterCampaign[];
   newsletterSubscribers: NewsletterSubscriber[];
   orders: AdminOrderRecord[];
@@ -170,6 +192,7 @@ type AdminDashboardCacheEntry = {
   registryPaymentActivities: Record<string, RegistryPaymentActivity[]>;
   registrySummaries: Record<string, RegistrySummary>;
   shippingTiers: ShippingTier[];
+  siteContentSettings: SiteContentSettingRecord[];
 };
 
 const ADMIN_DASHBOARD_CACHE_STORAGE_PREFIX = "nbe:admin-dashboard:";
@@ -313,6 +336,13 @@ function toDatetimeLocalValue(value?: string | null) {
     .slice(0, 16);
 }
 
+function buildAboutImageDrafts(images?: HomepageImageAsset[]) {
+  return DEFAULT_ABOUT_IMAGES.map((fallbackImage, index) => ({
+    ...(images?.[index] ?? fallbackImage),
+    file: null,
+  }));
+}
+
 export function AdminDashboard() {
   const { user, session, loading: authLoading } = useAuth();
   const userId = user?.id ?? null;
@@ -361,11 +391,50 @@ export function AdminDashboard() {
   const [shippingTiers, setShippingTiers] = useState<ShippingTier[]>(
     cachedAdminEntry?.shippingTiers ?? [],
   );
+  const [siteContentSettings, setSiteContentSettings] = useState<SiteContentSettingRecord[]>(
+    cachedAdminEntry?.siteContentSettings ?? [],
+  );
+  const [homepageReviews, setHomepageReviews] = useState<HomepageReviewRecord[]>(
+    cachedAdminEntry?.homepageReviews ?? [],
+  );
+  const homepageSiteContent = useMemo<HomepageSiteContent>(() => {
+    return buildHomepageSiteContent(siteContentSettings);
+  }, [siteContentSettings]);
+  const [heroImageDraft, setHeroImageDraft] = useState<HomepageImageAsset>(
+    homepageSiteContent.heroImage,
+  );
+  const [heroImageFile, setHeroImageFile] = useState<File | null>(null);
+  const [aboutImageDrafts, setAboutImageDrafts] = useState<AboutImageDraft[]>(
+    buildAboutImageDrafts(homepageSiteContent.aboutImages),
+  );
+  const [savingHomepageContent, setSavingHomepageContent] = useState(false);
+
+  const [showHomepageReviewModal, setShowHomepageReviewModal] = useState(false);
+  const [editingHomepageReview, setEditingHomepageReview] = useState<HomepageReviewRecord | null>(null);
+  const [homepageReviewName, setHomepageReviewName] = useState("");
+  const [homepageReviewRole, setHomepageReviewRole] = useState("");
+  const [homepageReviewText, setHomepageReviewText] = useState("");
+  const [homepageReviewRating, setHomepageReviewRating] = useState("5");
+  const [homepageReviewSortOrder, setHomepageReviewSortOrder] = useState("0");
+  const [homepageReviewIsActive, setHomepageReviewIsActive] = useState(true);
+  const [savingHomepageReview, setSavingHomepageReview] = useState(false);
 
   useEffect(() => {
     if (!cachedAdminEntry) {
       return;
     }
+
+    const cachedSiteContentSettings = Array.isArray(
+      cachedAdminEntry.siteContentSettings,
+    )
+      ? cachedAdminEntry.siteContentSettings
+      : [];
+    const cachedHomepageReviews = Array.isArray(cachedAdminEntry.homepageReviews)
+      ? cachedAdminEntry.homepageReviews
+      : [];
+    const cachedHomepageSiteContent = buildHomepageSiteContent(
+      cachedSiteContentSettings,
+    );
 
     const frameId = window.requestAnimationFrame(() => {
       setOrders(cachedAdminEntry.orders);
@@ -384,6 +453,13 @@ export function AdminDashboard() {
       setCampaignContacts(cachedAdminEntry.campaignContacts);
       setProductCategories(cachedAdminEntry.productCategories);
       setShippingTiers(cachedAdminEntry.shippingTiers);
+      setSiteContentSettings(cachedSiteContentSettings);
+      setHomepageReviews(cachedHomepageReviews);
+      setHeroImageDraft(cachedHomepageSiteContent.heroImage);
+      setHeroImageFile(null);
+      setAboutImageDrafts(
+        buildAboutImageDrafts(cachedHomepageSiteContent.aboutImages),
+      );
       setAdminAccessStatus("allowed");
       setLoading(false);
     });
@@ -482,6 +558,8 @@ export function AdminDashboard() {
       productCategoriesResult,
       productCategoryAssignmentsResult,
       shippingTiersResult,
+      siteContentSettingsResult,
+      homepageReviewsResult,
     ] = await Promise.all([
       supabase.from("orders").select("*").order("created_at", { ascending: false }),
       supabase
@@ -532,6 +610,14 @@ export function AdminDashboard() {
         .order("created_at", { ascending: false }),
       supabase
         .from("shipping_tiers")
+        .select("*")
+        .order("sort_order", { ascending: true }),
+      supabase
+        .from("site_content_settings")
+        .select("*")
+        .in("key", ["hero_image", "about_images"]),
+      supabase
+        .from("homepage_reviews")
         .select("*")
         .order("sort_order", { ascending: true }),
     ]);
@@ -588,6 +674,20 @@ export function AdminDashboard() {
     setShippingTiers(
       ((shippingTiersResult.error ? [] : shippingTiersResult.data) ?? []) as ShippingTier[],
     );
+    const nextSiteContentSettings =
+      siteContentSettingsResult.error?.code === "42P01"
+        ? []
+        : ((siteContentSettingsResult.error ? [] : siteContentSettingsResult.data) ?? []) as SiteContentSettingRecord[];
+    const nextHomepageSiteContent = buildHomepageSiteContent(nextSiteContentSettings);
+    setSiteContentSettings(nextSiteContentSettings);
+    setHomepageReviews(
+      homepageReviewsResult.error?.code === "42P01"
+        ? []
+        : ((homepageReviewsResult.error ? [] : homepageReviewsResult.data) ?? []) as HomepageReviewRecord[],
+    );
+    setHeroImageDraft(nextHomepageSiteContent.heroImage);
+    setHeroImageFile(null);
+    setAboutImageDrafts(buildAboutImageDrafts(nextHomepageSiteContent.aboutImages));
 
     const registryItems = ((registryItemsResult.error
       ? []
@@ -694,6 +794,14 @@ export function AdminDashboard() {
       registrySummaries: registrySummaryMap,
       shippingTiers:
         ((shippingTiersResult.error ? [] : shippingTiersResult.data) ?? []) as ShippingTier[],
+      siteContentSettings:
+        siteContentSettingsResult.error?.code === "42P01"
+          ? []
+          : (((siteContentSettingsResult.error ? [] : siteContentSettingsResult.data) ?? []) as SiteContentSettingRecord[]),
+      homepageReviews:
+        homepageReviewsResult.error?.code === "42P01"
+          ? []
+          : (((homepageReviewsResult.error ? [] : homepageReviewsResult.data) ?? []) as HomepageReviewRecord[]),
     });
 
     if (showSpinner) {
@@ -716,6 +824,31 @@ export function AdminDashboard() {
       records: productCategories,
     });
   }, [productCategories, products]);
+  const productCategorySummaryLabel = useMemo(() => {
+    if (productCategoriesSelection.length === 0) {
+      return "Select categories";
+    }
+
+    if (productCategoriesSelection.length <= 2) {
+      return productCategoriesSelection.join(", ");
+    }
+
+    return `${productCategoriesSelection[0]} +${productCategoriesSelection.length - 1} more`;
+  }, [productCategoriesSelection]);
+
+  const toggleProductCategorySelection = (category: string, shouldSelect: boolean) => {
+    setProductCategoriesSelection((current) => {
+      const alreadySelected = current.includes(category);
+      const nextCategories = shouldSelect
+        ? alreadySelected
+          ? current
+          : [...current, category]
+        : current.filter((value) => value !== category);
+
+      setProductCategory(nextCategories[0] ?? "");
+      return nextCategories;
+    });
+  };
 
   const stats = useMemo(() => {
     const paidOrders = orders.filter((order) => order.status === "paid");
@@ -740,10 +873,6 @@ export function AdminDashboard() {
   const monthlyRevenue = monthlyOrders
     .filter((order) => order.status === "paid")
     .reduce((sum, order) => sum + Number(order.total), 0);
-  const unfinishedOrders = useMemo(
-    () => orders.filter((order) => order.status !== "paid"),
-    [orders],
-  );
   const paidOrders = useMemo(
     () => orders.filter((order) => order.status === "paid"),
     [orders],
@@ -854,6 +983,216 @@ export function AdminDashboard() {
       },
       body: JSON.stringify({ tags }),
     }).catch(() => null);
+  };
+
+  const uploadAdminContentImage = useCallback(
+    async (accessToken: string, file: File) => {
+      const formData = new FormData();
+      formData.append("image", file);
+
+      const response = await fetch("/api/admin/content/upload", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: formData,
+      });
+
+      const result = (await response.json().catch(() => null)) as
+        | { dataUrl?: string; message?: string }
+        | null;
+
+      if (!response.ok || !result?.dataUrl) {
+        throw new Error(result?.message ?? "Could not upload the image.");
+      }
+
+      return result.dataUrl;
+    },
+    [],
+  );
+
+  const handleSaveHomepageContent = async (event: React.FormEvent) => {
+    event.preventDefault();
+
+    const accessToken = await getAdminAccessToken();
+    if (!accessToken) {
+      toast.error("Sign in again to manage homepage content.");
+      return;
+    }
+
+    setSavingHomepageContent(true);
+
+    try {
+      const nextHeroImage = {
+        ...heroImageDraft,
+        image: heroImageFile
+          ? await uploadAdminContentImage(accessToken, heroImageFile)
+          : heroImageDraft.image,
+      };
+
+      const nextAboutImages = await Promise.all(
+        aboutImageDrafts.map(async (draft) => {
+          return {
+            image: draft.file
+              ? await uploadAdminContentImage(accessToken, draft.file)
+              : draft.image,
+            alt: draft.alt,
+          };
+        }),
+      );
+
+      const response = await fetch("/api/admin/site-content", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({
+          entries: [
+            { key: "hero_image", value: nextHeroImage },
+            { key: "about_images", value: nextAboutImages },
+          ],
+        }),
+      });
+
+      const result = (await response.json().catch(() => null)) as
+        | { message?: string }
+        | null;
+
+      if (!response.ok) {
+        toast.error(result?.message ?? "Could not save homepage content.");
+        return;
+      }
+
+      toast.success(result?.message ?? "Homepage content updated.");
+      await revalidatePublicTags(["content"]);
+      await loadAdminData();
+    } catch (error) {
+      console.error("Failed to save homepage content.", error);
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Could not save homepage content.",
+      );
+    } finally {
+      setSavingHomepageContent(false);
+    }
+  };
+
+  const resetHomepageReviewForm = () => {
+    setEditingHomepageReview(null);
+    setHomepageReviewName("");
+    setHomepageReviewRole("");
+    setHomepageReviewText("");
+    setHomepageReviewRating("5");
+    setHomepageReviewSortOrder("0");
+    setHomepageReviewIsActive(true);
+  };
+
+  const handleEditHomepageReview = (review: HomepageReviewRecord) => {
+    setEditingHomepageReview(review);
+    setHomepageReviewName(review.reviewer_name);
+    setHomepageReviewRole(review.reviewer_role ?? "");
+    setHomepageReviewText(review.review_text);
+    setHomepageReviewRating(String(Number(review.rating ?? 5)));
+    setHomepageReviewSortOrder(String(Number(review.sort_order ?? 0)));
+    setHomepageReviewIsActive(Boolean(review.is_active));
+    setShowHomepageReviewModal(true);
+  };
+
+  const handleSaveHomepageReview = async (event: React.FormEvent) => {
+    event.preventDefault();
+
+    const accessToken = await getAdminAccessToken();
+    if (!accessToken) {
+      toast.error("Sign in again to manage homepage reviews.");
+      return;
+    }
+
+    setSavingHomepageReview(true);
+
+    try {
+      const response = await fetch(
+        editingHomepageReview
+          ? `/api/admin/reviews/${editingHomepageReview.id}`
+          : "/api/admin/reviews",
+        {
+          method: editingHomepageReview ? "PATCH" : "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${accessToken}`,
+          },
+          body: JSON.stringify({
+            reviewerName: homepageReviewName,
+            reviewerRole: homepageReviewRole,
+            reviewText: homepageReviewText,
+            rating: Number(homepageReviewRating || 5),
+            sortOrder: Number(homepageReviewSortOrder || 0),
+            isActive: homepageReviewIsActive,
+          }),
+        },
+      );
+
+      const result = (await response.json().catch(() => null)) as
+        | { message?: string }
+        | null;
+
+      if (!response.ok) {
+        toast.error(result?.message ?? "Could not save the review.");
+        return;
+      }
+
+      toast.success(
+        result?.message ??
+          (editingHomepageReview ? "Review updated." : "Review created."),
+      );
+      setShowHomepageReviewModal(false);
+      resetHomepageReviewForm();
+      await revalidatePublicTags(["content"]);
+      await loadAdminData();
+    } catch (error) {
+      console.error("Failed to save homepage review.", error);
+      toast.error("Could not save the review.");
+    } finally {
+      setSavingHomepageReview(false);
+    }
+  };
+
+  const handleDeleteHomepageReview = async (reviewId: string) => {
+    if (!window.confirm("Delete this homepage review?")) {
+      return;
+    }
+
+    const accessToken = await getAdminAccessToken();
+    if (!accessToken) {
+      toast.error("Sign in again to manage homepage reviews.");
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/admin/reviews/${reviewId}`, {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      });
+
+      const result = (await response.json().catch(() => null)) as
+        | { message?: string }
+        | null;
+
+      if (!response.ok) {
+        toast.error(result?.message ?? "Could not delete the review.");
+        return;
+      }
+
+      toast.success(result?.message ?? "Review deleted.");
+      await revalidatePublicTags(["content"]);
+      await loadAdminData();
+    } catch (error) {
+      console.error("Failed to delete homepage review.", error);
+      toast.error("Could not delete the review.");
+    }
   };
 
   const resetCustomerForm = () => {
@@ -1612,101 +1951,83 @@ export function AdminDashboard() {
 
   return (
     <div className="container mx-auto px-4 py-8">
-      <div className="mb-8 flex items-center justify-between">
-        <h1 className="text-3xl font-bold">Admin Dashboard</h1>
-      </div>
-
-      <div className="mb-8 grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Total Orders</CardTitle>
-            <Package className="h-4 w-4 text-gray-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{paidOrders.length}</div>
-            <p className="text-xs text-gray-500">{monthlyOrders.length} this month</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Total Revenue</CardTitle>
-            <DollarSign className="h-4 w-4 text-gray-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {formatNairaAmount(stats.totalRevenue)}
-            </div>
-            <p className="text-xs text-gray-500">
-              {formatNairaAmount(monthlyRevenue)} this month
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Customers</CardTitle>
-            <Users className="h-4 w-4 text-gray-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.totalCustomers}</div>
-            <p className="text-xs text-gray-500">Registered users</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Products</CardTitle>
-            <ShoppingBag className="h-4 w-4 text-gray-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.totalProducts}</div>
-            <p className="text-xs text-gray-500">
-              {products.filter((product) => product.in_stock).length} in stock
-            </p>
-          </CardContent>
-        </Card>
-      </div>
-
       <Tabs defaultValue="orders" className="space-y-6">
-        <TabsList className="flex h-auto flex-wrap justify-start gap-2">
-          <TabsTrigger value="orders">Orders</TabsTrigger>
-          <TabsTrigger value="registries">Accounts</TabsTrigger>
-          <TabsTrigger value="customers">Customers</TabsTrigger>
-          <TabsTrigger value="newsletter">Newsletter</TabsTrigger>
-          <TabsTrigger value="campaigns">Campaigns</TabsTrigger>
-          <TabsTrigger value="products">Products</TabsTrigger>
-          <TabsTrigger value="categories">Categories</TabsTrigger>
-          <TabsTrigger value="deals">Deals</TabsTrigger>
-          <TabsTrigger value="shipping">Shipping Tiers</TabsTrigger>
-          <TabsTrigger value="blogs">Blogs</TabsTrigger>
-        </TabsList>
+        <div className="mb-6 space-y-4">
+          <div className="flex items-center justify-between">
+            <h1 className="text-3xl font-bold">Admin Dashboard</h1>
+          </div>
 
+          <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between pb-2">
+                <CardTitle className="text-sm font-medium">Total Orders</CardTitle>
+                <Package className="h-4 w-4 text-gray-500" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{paidOrders.length}</div>
+                <p className="text-xs text-gray-500">{monthlyOrders.length} this month</p>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between pb-2">
+                <CardTitle className="text-sm font-medium">Total Revenue</CardTitle>
+                <DollarSign className="h-4 w-4 text-gray-500" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">
+                  {formatNairaAmount(stats.totalRevenue)}
+                </div>
+                <p className="text-xs text-gray-500">
+                  {formatNairaAmount(monthlyRevenue)} this month
+                </p>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between pb-2">
+                <CardTitle className="text-sm font-medium">Customers</CardTitle>
+                <Users className="h-4 w-4 text-gray-500" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{stats.totalCustomers}</div>
+                <p className="text-xs text-gray-500">Registered users</p>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between pb-2">
+                <CardTitle className="text-sm font-medium">Products</CardTitle>
+                <ShoppingBag className="h-4 w-4 text-gray-500" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{stats.totalProducts}</div>
+                <p className="text-xs text-gray-500">
+                  {products.filter((product) => product.in_stock).length} in stock
+                </p>
+              </CardContent>
+            </Card>
+          </div>
+
+          <TabsList className="flex h-14 w-full items-center justify-start gap-2 overflow-x-auto px-2 no-scrollbar sm:h-auto sm:flex-wrap sm:overflow-visible sm:px-0 [&>*]:shrink-0">
+            <TabsTrigger value="orders" className="h-10 px-4 py-3 whitespace-nowrap">Orders</TabsTrigger>
+            <TabsTrigger value="registries" className="h-10 px-4 py-3 whitespace-nowrap">Registries</TabsTrigger>
+            <TabsTrigger value="customers" className="h-10 px-4 py-3 whitespace-nowrap">Customers</TabsTrigger>
+            <TabsTrigger value="newsletter" className="h-10 px-4 py-3 whitespace-nowrap">Newsletter</TabsTrigger>
+            <TabsTrigger value="campaigns" className="h-10 px-4 py-3 whitespace-nowrap">Campaigns</TabsTrigger>
+            <TabsTrigger value="products" className="h-10 px-4 py-3 whitespace-nowrap">Products</TabsTrigger>
+            <TabsTrigger value="categories" className="h-10 px-4 py-3 whitespace-nowrap">Categories</TabsTrigger>
+            <TabsTrigger value="deals" className="h-10 px-4 py-3 whitespace-nowrap">Deals</TabsTrigger>
+            <TabsTrigger value="content" className="h-10 px-4 py-3 whitespace-nowrap">Content</TabsTrigger>
+            <TabsTrigger value="reviews" className="h-10 px-4 py-3 whitespace-nowrap">Reviews</TabsTrigger>
+            <TabsTrigger value="shipping" className="h-10 px-4 py-3 whitespace-nowrap">Shipping Tiers</TabsTrigger>
+            <TabsTrigger value="blogs" className="h-10 px-4 py-3 whitespace-nowrap">Blogs</TabsTrigger>
+          </TabsList>
+        </div>
+
+        <div className="min-h-[55vh]">
         <TabsContent value="orders">
           <div className="space-y-6">
-            <div className="grid gap-4 md:grid-cols-2">
-              <Card>
-                <CardContent className="p-5">
-                  <p className="text-xs uppercase tracking-[0.18em] text-gray-500">
-                    Paid Orders
-                  </p>
-                  <p className="mt-2 text-3xl font-bold text-green-600">
-                    {paidOrders.length}
-                  </p>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardContent className="p-5">
-                  <p className="text-xs uppercase tracking-[0.18em] text-gray-500">
-                    Unfinished Orders
-                  </p>
-                  <p className="mt-2 text-3xl font-bold text-amber-600">
-                    {unfinishedOrders.length}
-                  </p>
-                </CardContent>
-              </Card>
-            </div>
-
             <AdminOrdersManager
               customers={customers}
               getAdminAccessToken={getAdminAccessToken}
@@ -1719,40 +2040,32 @@ export function AdminDashboard() {
         </TabsContent>
 
         <TabsContent value="registries">
-          <div className="space-y-6">
-            <AdminRegistryAccountsManager
-              customers={customers}
-              registries={registries}
-              registryItemsByRegistry={registryItemsByRegistry}
-              registryPaymentActivities={registryPaymentActivities}
-              registrySummaries={registrySummaries}
-            />
-
-            <AdminRegistryOrdersManager
-              customers={customers}
-              getAdminAccessToken={getAdminAccessToken}
-              onReload={loadAdminData}
-              orderItemsByOrderId={registryOrderItemsByOrder}
-              orders={registryOrders}
-              registries={registries}
-              registryItemsByRegistry={registryItemsByRegistry}
-            />
-          </div>
+          <AdminRegistryAccountsManager
+            customers={customers}
+            registries={registries}
+            registryItemsByRegistry={registryItemsByRegistry}
+            registryPaymentActivities={registryPaymentActivities}
+            registrySummaries={registrySummaries}
+          />
         </TabsContent>
 
         <TabsContent value="customers">
           <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle>Customers</CardTitle>
-              <Button
-                onClick={() => {
-                  resetCustomerForm();
-                  setShowCustomerModal(true);
-                }}
-              >
-                <Users className="mr-2 h-4 w-4" />
-                Add Customer
-              </Button>
+            <CardHeader className="space-y-4">
+              <div className="space-y-1">
+                <CardTitle>Customers</CardTitle>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  onClick={() => {
+                    resetCustomerForm();
+                    setShowCustomerModal(true);
+                  }}
+                >
+                  <Users className="mr-2 h-4 w-4" />
+                  Add Customer
+                </Button>
+              </div>
             </CardHeader>
             <CardContent>
               <Table>
@@ -1812,12 +2125,12 @@ export function AdminDashboard() {
 
         <TabsContent value="newsletter">
           <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
-            <Card>
+            <Card className="min-w-0">
               <CardHeader>
                 <CardTitle>Send Newsletter</CardTitle>
               </CardHeader>
               <CardContent className="space-y-6">
-                <div className="grid gap-4 sm:grid-cols-2">
+                <div className="grid grid-cols-2 gap-4">
                   <div className="rounded-lg border p-4">
                     <div className="text-sm text-gray-500">Active Subscribers</div>
                     <div className="mt-2 text-3xl font-bold">
@@ -1867,7 +2180,7 @@ export function AdminDashboard() {
               </CardContent>
             </Card>
 
-            <div className="space-y-6">
+            <div className="min-w-0 space-y-6">
               <Card>
                 <CardHeader>
                   <CardTitle>Recent Subscribers</CardTitle>
@@ -1876,24 +2189,26 @@ export function AdminDashboard() {
                   {newsletterSubscribers.length === 0 ? (
                     <p className="text-sm text-gray-500">No subscribers yet.</p>
                   ) : (
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Email</TableHead>
-                          <TableHead>Source</TableHead>
-                          <TableHead>Subscribed</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {newsletterSubscribers.slice(0, 8).map((subscriber) => (
-                          <TableRow key={subscriber.id}>
-                            <TableCell>{subscriber.email}</TableCell>
-                            <TableCell>{subscriber.source ?? "Website"}</TableCell>
-                            <TableCell>{formatDate(subscriber.created_at)}</TableCell>
+                    <div className="overflow-x-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Email</TableHead>
+                            <TableHead>Source</TableHead>
+                            <TableHead>Subscribed</TableHead>
                           </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
+                        </TableHeader>
+                        <TableBody>
+                          {newsletterSubscribers.slice(0, 8).map((subscriber) => (
+                            <TableRow key={subscriber.id}>
+                              <TableCell>{subscriber.email}</TableCell>
+                              <TableCell>{subscriber.source ?? "Website"}</TableCell>
+                              <TableCell>{formatDate(subscriber.created_at)}</TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
                   )}
                 </CardContent>
               </Card>
@@ -1906,26 +2221,28 @@ export function AdminDashboard() {
                   {newsletterHistory.length === 0 ? (
                     <p className="text-sm text-gray-500">No newsletter campaigns sent yet.</p>
                   ) : (
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Subject</TableHead>
-                          <TableHead>Status</TableHead>
-                          <TableHead>Recipients</TableHead>
-                          <TableHead>Sent</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {newsletterHistory.slice(0, 6).map((campaign) => (
-                          <TableRow key={campaign.id}>
-                            <TableCell>{campaign.subject}</TableCell>
-                            <TableCell>{campaign.status}</TableCell>
-                            <TableCell>{campaign.recipient_count}</TableCell>
-                            <TableCell>{formatDateTime(campaign.sent_at ?? campaign.created_at)}</TableCell>
+                    <div className="overflow-x-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Subject</TableHead>
+                            <TableHead>Status</TableHead>
+                            <TableHead>Recipients</TableHead>
+                            <TableHead>Sent</TableHead>
                           </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
+                        </TableHeader>
+                        <TableBody>
+                          {newsletterHistory.slice(0, 6).map((campaign) => (
+                            <TableRow key={campaign.id}>
+                              <TableCell>{campaign.subject}</TableCell>
+                              <TableCell>{campaign.status}</TableCell>
+                              <TableCell>{campaign.recipient_count}</TableCell>
+                              <TableCell>{formatDateTime(campaign.sent_at ?? campaign.created_at)}</TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
                   )}
                 </CardContent>
               </Card>
@@ -1945,25 +2262,14 @@ export function AdminDashboard() {
 
         <TabsContent value="products">
           <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <div>
+            <CardHeader className="space-y-4">
+              <div className="space-y-1">
                 <CardTitle>Products</CardTitle>
-                <p className="mt-1 text-sm text-gray-500">
+                <p className="text-sm text-gray-500">
                   Choose from your admin-managed categories when adding or editing products.
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    const categoriesTabButton = document.querySelector(
-                      '[data-state][value="categories"]',
-                    ) as HTMLButtonElement | null;
-                    categoriesTabButton?.click();
-                  }}
-                >
-                  Manage Categories
-                </Button>
                 <Button
                   onClick={() => {
                     resetProductForm();
@@ -2055,22 +2361,24 @@ export function AdminDashboard() {
 
         <TabsContent value="deals">
           <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <div>
+            <CardHeader className="space-y-4">
+              <div className="space-y-1">
                 <CardTitle>Homepage Deals</CardTitle>
-                <p className="mt-1 text-sm text-gray-500">
+                <p className="text-sm text-gray-500">
                   Lower sort-order values appear earlier on the storefront. Deals can be edited or deleted here.
                 </p>
               </div>
-              <Button
-                onClick={() => {
-                  resetDealForm();
-                  setShowDealModal(true);
-                }}
-              >
-                <Sparkles className="mr-2 h-4 w-4" />
-                Add Deal
-              </Button>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  onClick={() => {
+                    resetDealForm();
+                    setShowDealModal(true);
+                  }}
+                >
+                  <Sparkles className="mr-2 h-4 w-4" />
+                  Add Deal
+                </Button>
+              </div>
             </CardHeader>
             <CardContent>
               <Table>
@@ -2134,24 +2442,251 @@ export function AdminDashboard() {
           </Card>
         </TabsContent>
 
+        <TabsContent value="content">
+          <div className="space-y-6">
+            <Card>
+              <CardHeader>
+                <div className="flex items-center gap-3">
+                  <div className="rounded-full bg-pink-100 p-2 text-pink-600">
+                    <ImageIcon className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <CardTitle>Homepage Visual Content</CardTitle>
+                    <p className="mt-1 text-sm text-gray-500">
+                      Update the main hero image and the four gallery images in the About section.
+                    </p>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <form onSubmit={handleSaveHomepageContent} className="space-y-8">
+                  <div className="space-y-4 rounded-2xl border border-rose-100 bg-rose-50/40 p-5">
+                    <div>
+                      <h3 className="text-lg font-semibold text-gray-900">Hero Image</h3>
+                      <p className="text-sm text-gray-500">
+                        This image appears in the main homepage hero banner.
+                      </p>
+                    </div>
+                    <div className="grid gap-5 lg:grid-cols-[220px_minmax(0,1fr)]">
+                      <div className="overflow-hidden rounded-2xl border border-rose-100 bg-white">
+                        <img
+                          src={heroImageDraft.image}
+                          alt={heroImageDraft.alt}
+                          className="h-56 w-full object-cover"
+                        />
+                      </div>
+                      <div className="space-y-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="hero-image-upload">Upload Hero Image</Label>
+                          <Input
+                            id="hero-image-upload"
+                            type="file"
+                            accept="image/*"
+                            onChange={(event) =>
+                              setHeroImageFile(event.target.files?.[0] ?? null)
+                            }
+                          />
+                          <p className="text-xs text-gray-500">
+                            Upload an image file up to 500KB. The current image stays in place until you save.
+                          </p>
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="hero-image-alt">Hero Image Alt Text</Label>
+                          <Input
+                            id="hero-image-alt"
+                            value={heroImageDraft.alt}
+                            onChange={(event) =>
+                              setHeroImageDraft((current) => ({
+                                ...current,
+                                alt: event.target.value,
+                              }))
+                            }
+                            placeholder="Happy baby with toys"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-4 rounded-2xl border border-rose-100 bg-white p-5">
+                    <div>
+                      <h3 className="text-lg font-semibold text-gray-900">About Gallery Images</h3>
+                      <p className="text-sm text-gray-500">
+                        These four images appear in the About section on the homepage.
+                      </p>
+                    </div>
+                    <div className="grid gap-5 md:grid-cols-2">
+                      {aboutImageDrafts.map((imageDraft, index) => (
+                        <div
+                          key={`about-image-${index}`}
+                          className="space-y-4 rounded-2xl border border-gray-100 p-4"
+                        >
+                          <div className="overflow-hidden rounded-2xl border border-gray-100 bg-gray-50">
+                            <img
+                              src={imageDraft.image}
+                              alt={imageDraft.alt}
+                              className="h-48 w-full object-cover"
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label htmlFor={`about-image-upload-${index}`}>
+                              Upload About Image {index + 1}
+                            </Label>
+                            <Input
+                              id={`about-image-upload-${index}`}
+                              type="file"
+                              accept="image/*"
+                              onChange={(event) =>
+                                setAboutImageDrafts((currentDrafts) =>
+                                  currentDrafts.map((currentDraft, currentIndex) =>
+                                    currentIndex === index
+                                      ? {
+                                          ...currentDraft,
+                                          file: event.target.files?.[0] ?? null,
+                                        }
+                                      : currentDraft,
+                                  ),
+                                )
+                              }
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label htmlFor={`about-image-alt-${index}`}>Alt Text</Label>
+                            <Input
+                              id={`about-image-alt-${index}`}
+                              value={imageDraft.alt}
+                              onChange={(event) =>
+                                setAboutImageDrafts((currentDrafts) =>
+                                  currentDrafts.map((currentDraft, currentIndex) =>
+                                    currentIndex === index
+                                      ? { ...currentDraft, alt: event.target.value }
+                                      : currentDraft,
+                                  ),
+                                )
+                              }
+                              placeholder={`About image ${index + 1} description`}
+                            />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <Button type="submit" disabled={savingHomepageContent}>
+                    {savingHomepageContent ? "Saving Content..." : "Save Homepage Content"}
+                  </Button>
+                </form>
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="reviews">
+          <Card>
+            <CardHeader className="space-y-4">
+              <div className="space-y-1">
+                <CardTitle>Homepage Reviews</CardTitle>
+                <p className="text-sm text-gray-500">
+                  Add and manage parent testimonials shown on the homepage review section.
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  onClick={() => {
+                    resetHomepageReviewForm();
+                    setShowHomepageReviewModal(true);
+                  }}
+                >
+                  <MessageSquareQuote className="mr-2 h-4 w-4" />
+                  Add Review
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Reviewer</TableHead>
+                    <TableHead>Rating</TableHead>
+                    <TableHead>Review</TableHead>
+                    <TableHead>Order</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {(homepageReviews ?? []).map((review) => (
+                    <TableRow key={review.id}>
+                      <TableCell>
+                        <div className="font-medium">{review.reviewer_name}</div>
+                        <div className="text-xs text-gray-500">
+                          {review.reviewer_role || "No reviewer role"}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-1 text-amber-500">
+                          {Array.from({ length: 5 }).map((_, index) => (
+                            <Star
+                              key={`${review.id}-admin-star-${index}`}
+                              className="h-4 w-4"
+                              fill={index < Number(review.rating ?? 5) ? "currentColor" : "none"}
+                            />
+                          ))}
+                        </div>
+                      </TableCell>
+                      <TableCell className="max-w-md">
+                        <p className="line-clamp-3 text-sm text-gray-600">
+                          {review.review_text}
+                        </p>
+                      </TableCell>
+                      <TableCell>{Number(review.sort_order ?? 0)}</TableCell>
+                      <TableCell>{review.is_active ? "Active" : "Inactive"}</TableCell>
+                      <TableCell>
+                        <div className="flex gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleEditHomepageReview(review)}
+                          >
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="destructive"
+                            size="sm"
+                            onClick={() => handleDeleteHomepageReview(review.id)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
         <TabsContent value="shipping">
           <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <div>
+            <CardHeader className="space-y-4">
+              <div className="space-y-1">
                 <CardTitle>Shipping Tiers</CardTitle>
-                <p className="mt-1 text-sm text-gray-500">
+                <p className="text-sm text-gray-500">
                   Create the delivery options customers can choose at checkout. Put Lagos options first by giving them lower display order numbers.
                 </p>
               </div>
-              <Button
-                onClick={() => {
-                  resetShippingTierForm();
-                  setShowShippingTierModal(true);
-                }}
-              >
-                <MapPin className="mr-2 h-4 w-4" />
-                Add Shipping Tier
-              </Button>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  onClick={() => {
+                    resetShippingTierForm();
+                    setShowShippingTierModal(true);
+                  }}
+                >
+                  <MapPin className="mr-2 h-4 w-4" />
+                  Add Shipping Tier
+                </Button>
+              </div>
             </CardHeader>
             <CardContent>
               <Table>
@@ -2206,17 +2741,21 @@ export function AdminDashboard() {
 
         <TabsContent value="blogs">
           <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle>Blog Posts</CardTitle>
-              <Button
-                onClick={() => {
-                  resetBlogForm();
-                  setShowBlogModal(true);
-                }}
-              >
-                <BookOpen className="mr-2 h-4 w-4" />
-                Write Blog Post
-              </Button>
+            <CardHeader className="space-y-4">
+              <div className="space-y-1">
+                <CardTitle>Blog Posts</CardTitle>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  onClick={() => {
+                    resetBlogForm();
+                    setShowBlogModal(true);
+                  }}
+                >
+                  <BookOpen className="mr-2 h-4 w-4" />
+                  Write Blog Post
+                </Button>
+              </div>
             </CardHeader>
             <CardContent>
               <Table>
@@ -2273,6 +2812,7 @@ export function AdminDashboard() {
             </CardContent>
           </Card>
         </TabsContent>
+        </div>
       </Tabs>
 
       <Dialog open={showCustomerModal} onOpenChange={setShowCustomerModal}>
@@ -2390,7 +2930,7 @@ export function AdminDashboard() {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="shipping-tier-fee">Delivery Fee (NGN)</Label>
                 <Input
@@ -2414,17 +2954,6 @@ export function AdminDashboard() {
                 <p className="text-xs text-gray-500">
                   Lower numbers appear first. Use this to keep Lagos options above other delivery choices.
                 </p>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="shipping-tier-status">Availability</Label>
-                <div
-                  id="shipping-tier-status"
-                  className="rounded-md border border-dashed border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-600"
-                >
-                  {shippingTierIsActive
-                    ? "Visible to customers at checkout"
-                    : "Hidden from customers until reactivated"}
-                </div>
               </div>
             </div>
 
@@ -2459,8 +2988,97 @@ export function AdminDashboard() {
         </DialogContent>
       </Dialog>
 
+      <Dialog open={showHomepageReviewModal} onOpenChange={setShowHomepageReviewModal}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>
+              {editingHomepageReview ? "Edit Homepage Review" : "Add Homepage Review"}
+            </DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleSaveHomepageReview} className="space-y-4">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="homepage-review-name">Reviewer Name</Label>
+                <Input
+                  id="homepage-review-name"
+                  value={homepageReviewName}
+                  onChange={(event) => setHomepageReviewName(event.target.value)}
+                  placeholder="Amaka O."
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="homepage-review-role">Reviewer Role / Context</Label>
+                <Input
+                  id="homepage-review-role"
+                  value={homepageReviewRole}
+                  onChange={(event) => setHomepageReviewRole(event.target.value)}
+                  placeholder="First-time mum in Lagos"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="homepage-review-text">Review Text</Label>
+              <Textarea
+                id="homepage-review-text"
+                value={homepageReviewText}
+                onChange={(event) => setHomepageReviewText(event.target.value)}
+                rows={5}
+                required
+              />
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="homepage-review-rating">Rating</Label>
+                <Select value={homepageReviewRating} onValueChange={setHomepageReviewRating}>
+                  <SelectTrigger id="homepage-review-rating">
+                    <SelectValue placeholder="Select a rating" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="5">5 Stars</SelectItem>
+                    <SelectItem value="4">4 Stars</SelectItem>
+                    <SelectItem value="3">3 Stars</SelectItem>
+                    <SelectItem value="2">2 Stars</SelectItem>
+                    <SelectItem value="1">1 Star</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="homepage-review-sort-order">Display Order</Label>
+                <Input
+                  id="homepage-review-sort-order"
+                  type="number"
+                  min="0"
+                  value={homepageReviewSortOrder}
+                  onChange={(event) => setHomepageReviewSortOrder(event.target.value)}
+                />
+              </div>
+            </div>
+
+            <label className="flex items-center gap-2 text-sm text-gray-700">
+              <input
+                type="checkbox"
+                checked={homepageReviewIsActive}
+                onChange={(event) => setHomepageReviewIsActive(event.target.checked)}
+              />
+              Show this review on the homepage
+            </label>
+
+            <Button type="submit" className="w-full" disabled={savingHomepageReview}>
+              {savingHomepageReview
+                ? "Saving..."
+                : editingHomepageReview
+                  ? "Update Review"
+                  : "Create Review"}
+            </Button>
+          </form>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={showProductModal} onOpenChange={setShowProductModal}>
-        <DialogContent className="max-w-3xl">
+        <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editingProduct ? "Edit Product" : "Add Product"}</DialogTitle>
           </DialogHeader>
@@ -2504,32 +3122,42 @@ export function AdminDashboard() {
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <div className="space-y-2">
                 <Label>Categories</Label>
-                <div className="flex flex-wrap gap-2">
-                  {productCategoryOptions.map((category) => {
-                    const isSelected = productCategoriesSelection.includes(category);
-
-                    return (
-                      <Button
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="w-full justify-between"
+                    >
+                      <span className="truncate text-left">
+                        {productCategorySummaryLabel}
+                      </span>
+                      <div className="ml-3 flex shrink-0 items-center gap-2 text-xs text-gray-500">
+                        <span>{productCategoriesSelection.length} selected</span>
+                        <ChevronDown className="h-4 w-4" />
+                      </div>
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent
+                    align="start"
+                    className="w-[var(--radix-dropdown-menu-trigger-width)] min-w-[16rem] max-w-[calc(100vw-2rem)]"
+                  >
+                    {productCategoryOptions.map((category) => (
+                      <DropdownMenuCheckboxItem
                         key={category}
-                        type="button"
-                        variant={isSelected ? "default" : "outline"}
-                        className="rounded-full"
-                        onClick={() => {
-                          const nextCategories = isSelected
-                            ? productCategoriesSelection.filter((value) => value !== category)
-                            : [...productCategoriesSelection, category];
-                          setProductCategoriesSelection(nextCategories);
-                          setProductCategory(nextCategories[0] ?? "");
-                        }}
+                        checked={productCategoriesSelection.includes(category)}
+                        onCheckedChange={(checked) =>
+                          toggleProductCategorySelection(category, checked === true)
+                        }
+                        onSelect={(event) => event.preventDefault()}
                       >
                         {category}
-                      </Button>
-                    );
-                  })}
-                </div>
+                      </DropdownMenuCheckboxItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
                 <p className="text-xs text-gray-500">
-                  Select one or more categories. The first selected category becomes the primary
-                  product badge and default display category.
+                  Choose one or more categories. The first selected one stays the primary product category.
                 </p>
               </div>
             </div>

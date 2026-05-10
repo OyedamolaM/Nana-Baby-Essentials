@@ -1,6 +1,14 @@
 import { Shield, Truck, HeadphonesIcon, Award } from "lucide-react";
+import {
+  DEFAULT_ABOUT_IMAGES,
+  type HomepageImageAsset,
+} from "../../lib/siteContent";
 
-export function About() {
+interface AboutProps {
+  images?: HomepageImageAsset[];
+}
+
+export function About({ images = DEFAULT_ABOUT_IMAGES }: AboutProps) {
   const values = [
     {
       icon: Shield,
@@ -62,23 +70,23 @@ export function About() {
 
           <div className="grid grid-cols-2 gap-4">
             <img
-              src="https://images.unsplash.com/photo-1522771930-78848d9293e8?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHw2fHxiYWJ5JTIwY2xvdGhlc3xlbnwxfHx8fDE3Nzc1MzA0OTl8MA&ixlib=rb-4.1.0&q=80&w=1080"
-              alt="Baby with parent"
+              src={images[0]?.image ?? DEFAULT_ABOUT_IMAGES[0].image}
+              alt={images[0]?.alt ?? DEFAULT_ABOUT_IMAGES[0].alt}
               className="rounded-2xl shadow-lg h-64 w-full object-cover"
             />
             <img
-              src="https://images.unsplash.com/photo-1647687663833-fcc91fd99792?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwyfHxiYWJ5JTIwcHJvZHVjdHMlMjB0b3lzfGVufDF8fHx8MTc3NzUzMDQ5OHww&ixlib=rb-4.1.0&q=80&w=1080"
-              alt="Baby playing"
+              src={images[1]?.image ?? DEFAULT_ABOUT_IMAGES[1].image}
+              alt={images[1]?.alt ?? DEFAULT_ABOUT_IMAGES[1].alt}
               className="rounded-2xl shadow-lg h-64 w-full object-cover mt-8"
             />
             <img
-              src="https://images.unsplash.com/photo-1709380830070-2c0da9348126?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwzfHxiYWJ5JTIwcHJvZHVjdHMlMjB0b3lzfGVufDF8fHx8MTc3NzUzMDQ5OHww&ixlib=rb-4.1.0&q=80&w=1080"
-              alt="Baby with toys"
+              src={images[2]?.image ?? DEFAULT_ABOUT_IMAGES[2].image}
+              alt={images[2]?.alt ?? DEFAULT_ABOUT_IMAGES[2].alt}
               className="rounded-2xl shadow-lg h-64 w-full object-cover -mt-4"
             />
             <img
-              src="https://images.unsplash.com/photo-1560506840-ec148e82a604?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwyfHxiYWJ5JTIwY2xvdGhlc3xlbnwxfHx8fDE3Nzc1MzA0OTl8MA&ixlib=rb-4.1.0&q=80&w=1080"
-              alt="Baby clothes"
+              src={images[3]?.image ?? DEFAULT_ABOUT_IMAGES[3].image}
+              alt={images[3]?.alt ?? DEFAULT_ABOUT_IMAGES[3].alt}
               className="rounded-2xl shadow-lg h-64 w-full object-cover mt-4"
             />
           </div>

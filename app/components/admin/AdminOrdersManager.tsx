@@ -422,22 +422,24 @@ export function AdminOrdersManager({
   return (
     <>
       <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
-          <div>
+        <CardHeader className="space-y-4">
+          <div className="space-y-1">
             <CardTitle>Store Orders</CardTitle>
-            <p className="mt-1 text-sm text-gray-500">
+            <p className="text-sm text-gray-500">
               Create, edit, and delete store orders without reloading the dashboard.
             </p>
           </div>
-          <Button
-            onClick={() => {
-              resetOrderForm();
-              setShowOrderModal(true);
-            }}
-          >
-            <Plus className="mr-2 h-4 w-4" />
-            Add Order
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              onClick={() => {
+                resetOrderForm();
+                setShowOrderModal(true);
+              }}
+            >
+              <Plus className="mr-2 h-4 w-4" />
+              Add Order
+            </Button>
+          </div>
         </CardHeader>
         <CardContent>
           {orders.length === 0 ? (
@@ -445,10 +447,10 @@ export function AdminOrdersManager({
           ) : (
             <Tabs defaultValue={paidOrders.length > 0 ? "paid" : "unpaid"} className="space-y-4">
               <TabsList className="grid w-full grid-cols-2">
-                <TabsTrigger value="paid" className="cursor-pointer">
+                <TabsTrigger value="paid" className="min-w-0 cursor-pointer whitespace-normal px-3 py-2 text-center text-xs leading-tight sm:text-sm">
                   Paid Orders ({paidOrders.length})
                 </TabsTrigger>
-                <TabsTrigger value="unpaid" className="cursor-pointer">
+                <TabsTrigger value="unpaid" className="min-w-0 cursor-pointer whitespace-normal px-3 py-2 text-center text-xs leading-tight sm:text-sm">
                   Unpaid Orders ({unpaidOrders.length})
                 </TabsTrigger>
               </TabsList>

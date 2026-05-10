@@ -16,6 +16,7 @@ import {
 import { hasSupabaseEnv, supabase } from "../lib/supabase";
 
 interface UsePaginatedProductsOptions {
+  featuredOnly?: boolean;
   initialPage?: number;
   initialProducts?: StoreProduct[];
   initialSearchQuery?: string;
@@ -35,12 +36,14 @@ const PAGINATED_PRODUCTS_CACHE_STORAGE_PREFIX = "nbe:product-page:";
 const paginatedProductsCache = new Map<string, PaginatedProductsCacheEntry>();
 
 function getPaginatedProductsCacheKey({
+  featuredOnly,
   onlyInStock,
   page,
   pageSize,
   searchQuery,
   selectedCategory,
 }: {
+  featuredOnly: boolean;
   onlyInStock: boolean;
   page: number;
   pageSize: number;
@@ -48,6 +51,7 @@ function getPaginatedProductsCacheKey({
   selectedCategory: string;
 }) {
   return JSON.stringify({
+    featuredOnly,
     onlyInStock,
     page,
     pageSize,
@@ -104,10 +108,12 @@ function persistPaginatedProductsCache(
 
 function filterSeedProducts(
   products: StoreProduct[],
+  featuredOnly: boolean,
   selectedCategory: string,
   searchQuery: string,
 ) {
   return products.filter((product) => {
+    const matchesFeatured = !featuredOnly || product.isFeatured;
     const matchesCategory =
       selectedCategory === "All" ||
       normalizeProductCategoryLabels(product.category, product.categories).includes(
@@ -118,7 +124,7 @@ function filterSeedProducts(
       product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       product.description.toLowerCase().includes(searchQuery.toLowerCase());
 
-    return matchesCategory && matchesSearch;
+    return matchesFeatured && matchesCategory && matchesSearch;
   });
 }
 
@@ -215,6 +221,7 @@ async function getProductIdsForSelectedCategory(selectedCategory: string) {
 }
 
 export function usePaginatedProducts({
+  featuredOnly = false,
   initialPage = 1,
   initialProducts,
   initialSearchQuery = "",
@@ -229,6 +236,7 @@ export function usePaginatedProducts({
   const hasInitialResult =
     Array.isArray(initialProducts) && typeof initialTotalCount === "number";
   const initialCacheKey = getPaginatedProductsCacheKey({
+    featuredOnly,
     onlyInStock,
     page: initialPage,
     pageSize,
@@ -280,6 +288,7 @@ export function usePaginatedProducts({
 
   const loadProducts = useCallback(async () => {
     const cacheKey = getPaginatedProductsCacheKey({
+      featuredOnly,
       onlyInStock,
       page,
       pageSize,
@@ -298,7 +307,12 @@ export function usePaginatedProducts({
       const seedBase = onlyInStock
         ? SEED_PRODUCTS.filter((product) => product.inStock)
         : SEED_PRODUCTS;
-      const filtered = filterSeedProducts(seedBase, selectedCategory, searchQuery);
+      const filtered = filterSeedProducts(
+        seedBase,
+        featuredOnly,
+        selectedCategory,
+        searchQuery,
+      );
       const offset = (page - 1) * pageSize;
       const nextProducts = filtered.slice(offset, offset + pageSize);
       setProducts(nextProducts);
@@ -324,6 +338,10 @@ export function usePaginatedProducts({
 
     if (onlyInStock) {
       query = query.eq("in_stock", true);
+    }
+
+    if (featuredOnly) {
+      query = query.eq("is_featured", true);
     }
 
     if (selectedCategory !== "All") {
@@ -359,7 +377,12 @@ export function usePaginatedProducts({
       const seedBase = onlyInStock
         ? SEED_PRODUCTS.filter((product) => product.inStock)
         : SEED_PRODUCTS;
-      const filtered = filterSeedProducts(seedBase, selectedCategory, searchQuery);
+      const filtered = filterSeedProducts(
+        seedBase,
+        featuredOnly,
+        selectedCategory,
+        searchQuery,
+      );
       const nextProducts = filtered.slice(from, to + 1);
       setProducts(nextProducts);
       setTotalCount(filtered.length);
@@ -388,7 +411,7 @@ export function usePaginatedProducts({
       totalCount: nextTotalCount,
     });
     setLoading(false);
-  }, [onlyInStock, page, pageSize, searchQuery, selectedCategory]);
+  }, [featuredOnly, onlyInStock, page, pageSize, searchQuery, selectedCategory]);
 
   useEffect(() => {
     if (skipInitialFetchRef.current) {
@@ -412,6 +435,7 @@ export function usePaginatedProducts({
 
   useEffect(() => {
     const cacheKey = getPaginatedProductsCacheKey({
+      featuredOnly,
       onlyInStock,
       page,
       pageSize,
@@ -424,7 +448,7 @@ export function usePaginatedProducts({
       products,
       totalCount,
     });
-  }, [onlyInStock, page, pageSize, products, searchQuery, selectedCategory, totalCount]);
+  }, [featuredOnly, onlyInStock, page, pageSize, products, searchQuery, selectedCategory, totalCount]);
 
   return {
     loading,

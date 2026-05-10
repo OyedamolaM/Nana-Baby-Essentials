@@ -439,22 +439,24 @@ export function AdminRegistryOrdersManager({
   return (
     <>
       <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
-          <div>
+        <CardHeader className="space-y-4">
+          <div className="space-y-1">
             <CardTitle>Registry Orders</CardTitle>
-            <p className="mt-1 text-sm text-gray-500">
+            <p className="text-sm text-gray-500">
               Manually create, edit, or delete registry gift orders and keep funding totals in sync.
             </p>
           </div>
-          <Button
-            onClick={() => {
-              resetOrderForm();
-              setShowOrderModal(true);
-            }}
-          >
-            <Plus className="mr-2 h-4 w-4" />
-            Add Registry Order
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              onClick={() => {
+                resetOrderForm();
+                setShowOrderModal(true);
+              }}
+            >
+              <Plus className="mr-2 h-4 w-4" />
+              Add Registry Order
+            </Button>
+          </div>
         </CardHeader>
         <CardContent>
           {orders.length === 0 ? (
@@ -548,7 +550,7 @@ export function AdminRegistryOrdersManager({
                   <SelectContent>
                     {registries.map((registry) => (
                       <SelectItem key={registry.id} value={registry.id}>
-                        {registry.name}
+                        {registry.name?.trim() || "Unnamed registry"}
                       </SelectItem>
                     ))}
                   </SelectContent>

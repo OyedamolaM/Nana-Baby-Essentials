@@ -211,7 +211,9 @@ export function AdminRegistryAccountsManager({
                         <div key={registry.id} className="rounded-2xl border bg-white p-4">
                           <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
                             <div>
-                              <p className="text-lg font-semibold text-gray-900">{registry.name}</p>
+                              <p className="text-lg font-semibold text-gray-900">
+                                {registry.name?.trim() || "Unnamed registry"}
+                              </p>
                               <p className="text-sm text-gray-500">
                                 Due: {formatDueMonth(registry.due_month)} / {formatBabyGender(registry.baby_gender)}
                               </p>

@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { useState } from "react";
 import {
-  Baby,
   Gift,
   LayoutDashboard,
   LogOut,
@@ -67,7 +66,7 @@ export function RegistryHeader({
             className="z-10 flex items-center gap-2 text-left"
             onClick={closeMobileMenu}
           >
-            <Baby className="h-7 w-7 shrink-0 text-pink-500 sm:h-8 sm:w-8" />
+            <img src="/logo.jpg"className="h-7 w-7 shrink-0 text-pink-500 sm:h-8 sm:w-8" />
 
             <div className="flex flex-col leading-tight">
               <p className="text-sm font-semibold leading-tight text-gray-900 sm:text-lg">

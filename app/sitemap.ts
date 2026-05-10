@@ -55,6 +55,12 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       changeFrequency: "yearly",
       priority: 0.4,
     },
+    {
+      url: buildAbsoluteUrl("/shipping-returns-policy"),
+      lastModified: now,
+      changeFrequency: "yearly",
+      priority: 0.4,
+    },
   ];
 
   if (!hasSupabaseServerEnv) {

@@ -832,10 +832,10 @@ export function UserDashboard({
   return (
     <div className="container mx-auto px-4 py-8">
       <div className="mx-auto max-w-4xl">
-        <h1 className="mb-8 text-3xl font-bold">My Dashboard</h1>
-
         <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-6">
-          <TabsList className="flex w-full overflow-x-auto gap-2 justify-start no-scrollbar h-14 items-center px-2">
+          <div className="mb-6 space-y-4">
+            <h1 className="text-3xl font-bold">My Dashboard</h1>
+            <TabsList className="flex h-14 w-full items-center justify-start gap-2 overflow-x-auto px-2 no-scrollbar sm:h-auto sm:flex-wrap sm:overflow-visible sm:px-0 [&>*]:shrink-0">
             <TabsTrigger
               value="orders"
               className="flex cursor-pointer items-center gap-2 whitespace-nowrap px-4 py-3 text-sm h-10"
@@ -871,8 +871,10 @@ export function UserDashboard({
               <Lock className="h-4 w-4" />
               Security
             </TabsTrigger>
-          </TabsList>
+            </TabsList>
+          </div>
 
+          <div className="min-h-[55vh]">
           <TabsContent value="orders">
             <Card>
               <CardHeader>
@@ -884,10 +886,10 @@ export function UserDashboard({
                   className="space-y-4"
                 >
                   <TabsList className="grid w-full grid-cols-2">
-                    <TabsTrigger value="paid">
+                    <TabsTrigger value="paid" className="min-w-0 whitespace-normal px-3 py-2 text-center leading-tight">
                       Paid Orders ({paidOrders.length})
                     </TabsTrigger>
-                    <TabsTrigger value="unfinished">
+                    <TabsTrigger value="unfinished" className="min-w-0 whitespace-normal px-3 py-2 text-center leading-tight">
                       Unfinished ({unfinishedOrders.length})
                     </TabsTrigger>
                   </TabsList>
@@ -1364,6 +1366,7 @@ export function UserDashboard({
               </CardContent>
             </Card>
           </TabsContent>
+          </div>
         </Tabs>
       </div>
 

@@ -274,12 +274,12 @@ export function AdminCampaignManager({
   return (
     <>
       <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
-        <Card>
+        <Card className="min-w-0">
           <CardHeader>
             <CardTitle>Send Customer Campaign</CardTitle>
           </CardHeader>
           <CardContent className="space-y-6">
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
               <div className="rounded-lg border p-4">
                 <div className="text-sm text-gray-500">Eligible Customers</div>
                 <div className="mt-2 text-3xl font-bold">{eligibleCustomers.length}</div>
@@ -331,7 +331,7 @@ export function AdminCampaignManager({
           </CardContent>
         </Card>
 
-        <div className="space-y-6">
+        <div className="min-w-0 space-y-6">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle>Manual Campaign Contacts</CardTitle>
@@ -346,48 +346,50 @@ export function AdminCampaignManager({
                   Add manual campaign contacts here to reach people who are not registered customers.
                 </p>
               ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Name</TableHead>
-                      <TableHead>Email</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Last Sent</TableHead>
-                      <TableHead>Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {contacts.map((contact) => (
-                      <TableRow key={contact.id}>
-                        <TableCell>{contact.full_name?.trim() || "Manual contact"}</TableCell>
-                        <TableCell>{contact.email}</TableCell>
-                        <TableCell>{contact.is_active ? "Active" : "Inactive"}</TableCell>
-                        <TableCell>{formatDateTime(contact.last_sent_at ?? contact.created_at)}</TableCell>
-                        <TableCell>
-                          {contact.is_active ? (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => void handleToggleContact(contact, false)}
-                            >
-                              <Trash2 className="mr-2 h-4 w-4" />
-                              Remove
-                            </Button>
-                          ) : (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => void handleToggleContact(contact, true)}
-                            >
-                              <RefreshCcw className="mr-2 h-4 w-4" />
-                              Reactivate
-                            </Button>
-                          )}
-                        </TableCell>
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Name</TableHead>
+                        <TableHead>Email</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Last Sent</TableHead>
+                        <TableHead>Actions</TableHead>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                    </TableHeader>
+                    <TableBody>
+                      {contacts.map((contact) => (
+                        <TableRow key={contact.id}>
+                          <TableCell>{contact.full_name?.trim() || "Manual contact"}</TableCell>
+                          <TableCell>{contact.email}</TableCell>
+                          <TableCell>{contact.is_active ? "Active" : "Inactive"}</TableCell>
+                          <TableCell>{formatDateTime(contact.last_sent_at ?? contact.created_at)}</TableCell>
+                          <TableCell>
+                            {contact.is_active ? (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => void handleToggleContact(contact, false)}
+                              >
+                                <Trash2 className="mr-2 h-4 w-4" />
+                                Remove
+                              </Button>
+                            ) : (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => void handleToggleContact(contact, true)}
+                              >
+                                <RefreshCcw className="mr-2 h-4 w-4" />
+                                Reactivate
+                              </Button>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
               )}
             </CardContent>
           </Card>
@@ -400,24 +402,26 @@ export function AdminCampaignManager({
               {mergedRecipients.length === 0 ? (
                 <p className="text-sm text-gray-500">No campaign recipients are available yet.</p>
               ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Name</TableHead>
-                      <TableHead>Email</TableHead>
-                      <TableHead>Source</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {mergedRecipients.slice(0, 10).map((recipient) => (
-                      <TableRow key={recipient.email}>
-                        <TableCell>{recipient.name}</TableCell>
-                        <TableCell>{recipient.email}</TableCell>
-                        <TableCell>{recipient.source}</TableCell>
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Name</TableHead>
+                        <TableHead>Email</TableHead>
+                        <TableHead>Source</TableHead>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                    </TableHeader>
+                    <TableBody>
+                      {mergedRecipients.slice(0, 10).map((recipient) => (
+                        <TableRow key={recipient.email}>
+                          <TableCell>{recipient.name}</TableCell>
+                          <TableCell>{recipient.email}</TableCell>
+                          <TableCell>{recipient.source}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
               )}
             </CardContent>
           </Card>
@@ -430,26 +434,28 @@ export function AdminCampaignManager({
               {customerCampaignHistory.length === 0 ? (
                 <p className="text-sm text-gray-500">No customer campaigns sent yet.</p>
               ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Subject</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Recipients</TableHead>
-                      <TableHead>Sent</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {customerCampaignHistory.slice(0, 6).map((campaign) => (
-                      <TableRow key={campaign.id}>
-                        <TableCell>{campaign.subject}</TableCell>
-                        <TableCell>{campaign.status}</TableCell>
-                        <TableCell>{campaign.recipient_count}</TableCell>
-                        <TableCell>{formatDateTime(campaign.sent_at ?? campaign.created_at)}</TableCell>
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Subject</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Recipients</TableHead>
+                        <TableHead>Sent</TableHead>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                    </TableHeader>
+                    <TableBody>
+                      {customerCampaignHistory.slice(0, 6).map((campaign) => (
+                        <TableRow key={campaign.id}>
+                          <TableCell>{campaign.subject}</TableCell>
+                          <TableCell>{campaign.status}</TableCell>
+                          <TableCell>{campaign.recipient_count}</TableCell>
+                          <TableCell>{formatDateTime(campaign.sent_at ?? campaign.created_at)}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
               )}
             </CardContent>
           </Card>

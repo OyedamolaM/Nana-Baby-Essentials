@@ -115,6 +115,13 @@ export default function TermsOfServicePage() {
           Customers choose from the active shipping tiers shown during checkout. Delivery fees, labels,
           and estimated delivery windows may vary by tier.
         </p>
+        <p>
+          For fuller operational details about delivery handling, failed delivery attempts, return
+          review, exchanges, and refund treatment, please review our{" "}
+          <Link className="text-pink-600 hover:text-pink-700" href="/shipping-returns-policy">
+            Shipping and Returns Policy
+          </Link>.
+        </p>
         <ul className="list-disc space-y-2 pl-5">
           <li>Shipping fees are added according to the selected shipping tier.</li>
           <li>Estimated delivery times are estimates only and are not guaranteed deadlines.</li>
@@ -131,7 +138,10 @@ export default function TermsOfServicePage() {
         </p>
         <p>
           Unless we expressly agree otherwise, do not assume that an item is returnable without first
-          contacting us for instructions.
+          contacting us for instructions. Additional guidance is available in our{" "}
+          <Link className="text-pink-600 hover:text-pink-700" href="/shipping-returns-policy">
+            Shipping and Returns Policy
+          </Link>.
         </p>
       </Section>
 

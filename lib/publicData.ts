@@ -36,6 +36,15 @@ import {
   normalizeShippingAddress,
   type ShippingAddress,
 } from "./userProfile";
+import {
+  buildHomepageReviews,
+  buildHomepageSiteContent,
+  DEFAULT_HOMEPAGE_REVIEWS,
+  type HomepageReview,
+  type HomepageReviewRecord,
+  type HomepageSiteContent,
+  type SiteContentSettingRecord,
+} from "./siteContent";
 
 function buildProductLookup(records: ProductRecord[] | null | undefined) {
   return Object.fromEntries(
@@ -60,10 +69,12 @@ type RegistrySnapshot = {
 
 function filterSeedProducts(
   products: StoreProduct[],
+  featuredOnly: boolean,
   selectedCategory: string,
   searchQuery: string,
 ) {
   return products.filter((product) => {
+    const matchesFeatured = !featuredOnly || product.isFeatured;
     const matchesCategory =
       selectedCategory === "All" ||
       normalizeProductCategoryLabels(product.category, product.categories).includes(
@@ -75,7 +86,7 @@ function filterSeedProducts(
       product.name.toLowerCase().includes(normalizedQuery) ||
       product.description.toLowerCase().includes(normalizedQuery);
 
-    return matchesCategory && matchesSearch;
+    return matchesFeatured && matchesCategory && matchesSearch;
   });
 }
 
@@ -295,6 +306,7 @@ const getProductCatalogPageCached = unstable_cache(
     page: number,
     pageSize: number,
     onlyInStock: boolean,
+    featuredOnly: boolean,
     selectedCategory: string,
     searchQuery: string,
   ) => {
@@ -303,6 +315,7 @@ const getProductCatalogPageCached = unstable_cache(
       : SEED_PRODUCTS;
     const fallbackFiltered = filterSeedProducts(
       fallbackBase,
+      featuredOnly,
       selectedCategory,
       searchQuery,
     );
@@ -331,6 +344,10 @@ const getProductCatalogPageCached = unstable_cache(
 
     if (onlyInStock) {
       query = query.eq("in_stock", true);
+    }
+
+    if (featuredOnly) {
+      query = query.eq("is_featured", true);
     }
 
     if (selectedCategory !== "All") {
@@ -484,6 +501,59 @@ const getHomepageDealsCached = unstable_cache(
   },
   ["public-homepage-deals"],
   { revalidate: 300, tags: ["products"] },
+);
+
+const getHomepageSiteContentCached = unstable_cache(
+  async () => {
+    if (!hasSupabaseServerEnv) {
+      return buildHomepageSiteContent([]);
+    }
+
+    const client = createSupabaseServerClient();
+    if (!client) {
+      return buildHomepageSiteContent([]);
+    }
+
+    const { data, error } = await client
+      .from("site_content_settings")
+      .select("*")
+      .in("key", ["hero_image", "about_images"]);
+
+    if (error?.code === "42P01" || error || !data) {
+      return buildHomepageSiteContent([]);
+    }
+
+    return buildHomepageSiteContent(data as SiteContentSettingRecord[]);
+  },
+  ["homepage-site-content"],
+  { revalidate: 300, tags: ["content"] },
+);
+
+const getHomepageReviewsCached = unstable_cache(
+  async () => {
+    if (!hasSupabaseServerEnv) {
+      return DEFAULT_HOMEPAGE_REVIEWS;
+    }
+
+    const client = createSupabaseServerClient();
+    if (!client) {
+      return DEFAULT_HOMEPAGE_REVIEWS;
+    }
+
+    const { data, error } = await client
+      .from("homepage_reviews")
+      .select("*")
+      .eq("is_active", true)
+      .order("sort_order", { ascending: true });
+
+    if (error?.code === "42P01" || error || !data) {
+      return DEFAULT_HOMEPAGE_REVIEWS;
+    }
+
+    return buildHomepageReviews(data as HomepageReviewRecord[]);
+  },
+  ["homepage-reviews"],
+  { revalidate: 300, tags: ["content"] },
 );
 
 const getPublishedBlogPostsCached = unstable_cache(
@@ -661,6 +731,7 @@ export async function getFeaturedProducts(limit: number, onlyInStock = false) {
 }
 
 export async function getPublicProductCatalogPage(options?: {
+  featuredOnly?: boolean;
   onlyInStock?: boolean;
   page?: number;
   pageSize?: number;
@@ -669,6 +740,7 @@ export async function getPublicProductCatalogPage(options?: {
 }) {
   const page = options?.page ?? 1;
   const pageSize = options?.pageSize ?? 20;
+  const featuredOnly = options?.featuredOnly ?? false;
   const onlyInStock = options?.onlyInStock ?? false;
   const selectedCategory = options?.selectedCategory ?? "All";
   const searchQuery = options?.searchQuery ?? "";
@@ -677,6 +749,7 @@ export async function getPublicProductCatalogPage(options?: {
     page,
     pageSize,
     onlyInStock,
+    featuredOnly,
     selectedCategory,
     searchQuery,
   );
@@ -684,6 +757,14 @@ export async function getPublicProductCatalogPage(options?: {
 
 export async function getHomepageDeals() {
   return getHomepageDealsCached();
+}
+
+export async function getHomepageSiteContent(): Promise<HomepageSiteContent> {
+  return getHomepageSiteContentCached();
+}
+
+export async function getHomepageReviews(): Promise<HomepageReview[]> {
+  return getHomepageReviewsCached();
 }
 
 export async function getPublicProductCategories() {

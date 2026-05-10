@@ -51,17 +51,25 @@ function buildPagination(currentPage: number, totalPages: number) {
 }
 
 interface ProductsPageProps {
+  initialFeaturedOnly?: boolean;
   initialFocusSearch?: boolean;
   initialCategories?: string[];
   initialProducts?: StoreProduct[];
+  initialSearchQuery?: string;
+  initialSelectedCategory?: string;
   initialTotalCount?: number;
+  initialView?: "all" | "best-sellers" | "new-arrivals";
 }
 
 export function ProductsPage({
+  initialFeaturedOnly = false,
   initialFocusSearch = false,
   initialCategories,
   initialProducts,
+  initialSearchQuery = "",
+  initialSelectedCategory = "All",
   initialTotalCount,
+  initialView = "all",
 }: ProductsPageProps) {
   const router = useRouter();
   const { isAdmin, signOut, user } = useAuth();
@@ -92,8 +100,11 @@ export function ProductsPage({
     totalCount,
     totalPages,
   } = usePaginatedProducts({
+    featuredOnly: initialFeaturedOnly,
     pageSize: 20,
     initialProducts,
+    initialSearchQuery,
+    initialSelectedCategory,
     initialTotalCount,
   });
 
@@ -218,7 +229,36 @@ export function ProductsPage({
     router.push("/");
   };
 
+  const activeViewLabel = initialFeaturedOnly
+    ? "best sellers"
+    : initialView === "new-arrivals"
+      ? "new arrivals"
+      : null;
+  const pageHeading = searchQuery
+    ? `Search Results for "${searchQuery}"`
+    : selectedCategory !== "All"
+      ? selectedCategory
+      : initialFeaturedOnly
+        ? "Best Sellers"
+        : initialView === "new-arrivals"
+          ? "New Arrivals"
+          : "All Products";
+  const pageDescription = searchQuery
+    ? `${totalCount} products found`
+    : selectedCategory !== "All"
+      ? `Browse ${selectedCategory.toLowerCase()} products from Nana's Baby Essentials.`
+      : initialFeaturedOnly
+        ? "Shop customer-favorite and featured baby essentials in one place."
+        : initialView === "new-arrivals"
+          ? "Browse the latest products added to the Nana's Baby Essentials catalog."
+          : "Browse the full Nana's Baby Essentials catalog with search, category filters, and pagination.";
+
   const clearFilters = () => {
+    if (initialFeaturedOnly || initialView !== "all") {
+      router.push("/products");
+      return;
+    }
+
     setSearchQuery("");
     setSelectedCategory("All");
   };
@@ -243,12 +283,10 @@ export function ProductsPage({
           <div className="container mx-auto px-4">
             <div className="mb-10 text-center">
               <h1 className="mb-2 text-4xl font-bold text-gray-900 sm:text-5xl">
-                {searchQuery ? `Search Results for "${searchQuery}"` : "All Products"}
+                {pageHeading}
               </h1>
               <p className="mx-auto max-w-2xl text-gray-600">
-                {searchQuery
-                  ? `${totalCount} products found`
-                  : "Browse the full Nana's Baby Essentials catalog with search, category filters, and pagination."}
+                {pageDescription}
               </p>
             </div>
 
@@ -276,6 +314,8 @@ export function ProductsPage({
               <div className="mb-6 flex flex-wrap items-center gap-3 text-sm text-gray-600">
                 <span>
                   Active filters:
+                  {activeViewLabel ? ` ${activeViewLabel}` : ""}
+                  {activeViewLabel && (searchQuery || selectedCategory !== "All") ? "," : ""}
                   {searchQuery ? ` search "${searchQuery}"` : ""}
                   {searchQuery && selectedCategory !== "All" ? " and" : ""}
                   {selectedCategory !== "All" ? ` category "${selectedCategory}"` : ""}
@@ -286,6 +326,20 @@ export function ProductsPage({
                   onClick={clearFilters}
                 >
                   Clear filters
+                </button>
+              </div>
+            )}
+            {!searchQuery && selectedCategory === "All" && activeViewLabel && (
+              <div className="mb-6 flex flex-wrap items-center gap-3 text-sm text-gray-600">
+                <span>
+                  Active view: {activeViewLabel}
+                </span>
+                <button
+                  type="button"
+                  className="font-medium text-pink-600"
+                  onClick={clearFilters}
+                >
+                  Show full catalog
                 </button>
               </div>
             )}

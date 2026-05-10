@@ -79,6 +79,7 @@ export function RegistryCreateModal({
 
   const handleCreate = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    const normalizedRegistryName = registryName.trim();
 
     if (!user) {
       toast.error("Please sign in to create a registry.");
@@ -87,6 +88,11 @@ export function RegistryCreateModal({
 
     if (!hasSupabaseEnv) {
       toast.error("Supabase is not configured yet.");
+      return;
+    }
+
+    if (!normalizedRegistryName) {
+      toast.error("Add a registry name before continuing.");
       return;
     }
 
@@ -100,7 +106,7 @@ export function RegistryCreateModal({
         .from("registries")
         .insert({
           user_id: user.id,
-          name: registryName,
+          name: normalizedRegistryName,
           partner_email: partnerEmail.trim() || null,
           partner_name: partnerName.trim() || null,
           whatsapp,
@@ -153,7 +159,7 @@ export function RegistryCreateModal({
       onCreated?.({
         dashboardPath: buildRegistryDashboardPath(registry),
         id: registry.id,
-        name: registry.name,
+        name: registry.name?.trim() || normalizedRegistryName,
         shareCode: registry.share_code,
       });
     } catch (error) {

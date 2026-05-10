@@ -1,13 +1,15 @@
 'use client'
 
 import { Button } from "./ui/button";
+import { DEFAULT_HERO_IMAGE, type HomepageImageAsset } from "../../lib/siteContent";
 
 interface HeroProps {
+  image?: HomepageImageAsset;
   onCreateRegistry: () => void;
   onShopNow: () => void;
 }
 
-export function Hero({ onCreateRegistry, onShopNow }: HeroProps) {
+export function Hero({ image = DEFAULT_HERO_IMAGE, onCreateRegistry, onShopNow }: HeroProps) {
   return (
     <section className="relative overflow-hidden bg-gradient-to-br from-pink-100 via-purple-50 to-blue-100 py-20 lg:py-32">
       <div className="container mx-auto px-4">
@@ -56,8 +58,8 @@ export function Hero({ onCreateRegistry, onShopNow }: HeroProps) {
           <div className="relative">
             <div className="relative z-10">
               <img
-                src="https://images.unsplash.com/photo-1515488042361-ee00e0ddd4e4?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxMHx8YmFieSUyMHByb2R1Y3RzJTIwdG95c3xlbnwxfHx8fDE3Nzc1MzA0OTl8MA&ixlib=rb-4.1.0&q=80&w=1080"
-                alt="Happy baby with toys"
+                src={image.image}
+                alt={image.alt}
                 className="rounded-3xl shadow-2xl"
               />
             </div>

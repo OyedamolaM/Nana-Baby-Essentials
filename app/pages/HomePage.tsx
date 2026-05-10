@@ -13,6 +13,7 @@ import { Header } from "../components/Header";
 import { Hero } from "../components/Hero";
 import { type Product } from "../components/ProductCard";
 import { ProductDetailModal } from "../components/ProductDetailModal";
+import { ReviewsSection } from "../components/ReviewsSection";
 import { ShoppingCartDrawer } from "../components/ShoppingCartDrawer";
 import { AuthModal } from "../components/auth/AuthModal";
 import { CheckoutModal } from "../components/checkout/CheckoutModal";
@@ -23,6 +24,10 @@ import { useStoreCart } from "../contexts/StoreCartContext";
 import { type StoreProduct } from "../../lib/commerce";
 import { type HomepageDeal } from "../../lib/content";
 import {
+  type HomepageReview,
+  type HomepageSiteContent,
+} from "../../lib/siteContent";
+import {
   clearProductDetailReturnContext,
   getCurrentProductReturnPath,
   readProductDetailReturnContext,
@@ -32,6 +37,8 @@ type AuthTab = "login" | "signup";
 
 interface HomePageProps {
   initialDeals?: HomepageDeal[];
+  initialHomepageReviews?: HomepageReview[];
+  initialHomepageSiteContent?: HomepageSiteContent;
   initialProductCategories?: string[];
   initialProducts?: StoreProduct[];
   initialProductTotalCount?: number;
@@ -39,6 +46,8 @@ interface HomePageProps {
 
 export function HomePage({
   initialDeals,
+  initialHomepageReviews,
+  initialHomepageSiteContent,
   initialProductCategories,
   initialProducts,
   initialProductTotalCount,
@@ -191,7 +200,11 @@ export function HomePage({
 
       <main>
         <section id="home">
-          <Hero onCreateRegistry={handleCreateRegistry} onShopNow={handleShopNow} />
+          <Hero
+            image={initialHomepageSiteContent?.heroImage}
+            onCreateRegistry={handleCreateRegistry}
+            onShopNow={handleShopNow}
+          />
         </section>
 
         <section id="registry">
@@ -217,7 +230,11 @@ export function HomePage({
         />
 
         <section id="about">
-          <About />
+          <About images={initialHomepageSiteContent?.aboutImages} />
+        </section>
+
+        <section id="reviews">
+          <ReviewsSection reviews={initialHomepageReviews} />
         </section>
 
         <section id="faq">

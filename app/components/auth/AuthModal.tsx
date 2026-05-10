@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { Lock, Mail, Phone, User as UserIcon } from "lucide-react";
+import { Eye, EyeOff, Lock, Mail, Phone, User as UserIcon } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "../../contexts/AuthContext";
 import { Button } from "../ui/button";
@@ -34,9 +34,11 @@ export function AuthModal({
 
   const [loginEmail, setLoginEmail] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
+  const [loginPasswordVisible, setLoginPasswordVisible] = useState(false);
 
   const [signupEmail, setSignupEmail] = useState("");
   const [signupPassword, setSignupPassword] = useState("");
+  const [signupPasswordVisible, setSignupPasswordVisible] = useState(false);
   const [signupFullName, setSignupFullName] = useState("");
   const [signupPhone, setSignupPhone] = useState("");
   const [acceptTerms, setAcceptTerms] = useState(false);
@@ -124,7 +126,7 @@ export function AuthModal({
 
   return (
     <Dialog open={open} onOpenChange={(nextOpen) => !nextOpen && onClose()}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Welcome to Nana&apos;s Baby Essentials</DialogTitle>
           <DialogDescription>
@@ -162,13 +164,25 @@ export function AuthModal({
                   <Lock className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
                   <Input
                     id="login-password"
-                    type="password"
+                    type={loginPasswordVisible ? "text" : "password"}
                     placeholder="********"
                     value={loginPassword}
                     onChange={(event) => setLoginPassword(event.target.value)}
-                    className="pl-10"
+                    className="pl-10 pr-10"
                     required
                   />
+                  <button
+                    type="button"
+                    aria-label={loginPasswordVisible ? "Hide password" : "Show password"}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 transition-colors hover:text-gray-600"
+                    onClick={() => setLoginPasswordVisible((current) => !current)}
+                  >
+                    {loginPasswordVisible ? (
+                      <EyeOff className="h-4 w-4" />
+                    ) : (
+                      <Eye className="h-4 w-4" />
+                    )}
+                  </button>
                 </div>
               </div>
 
@@ -285,19 +299,31 @@ export function AuthModal({
                   <Lock className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
                   <Input
                     id="signup-password"
-                    type="password"
+                    type={signupPasswordVisible ? "text" : "password"}
                     placeholder="********"
                     value={signupPassword}
                     onChange={(event) => setSignupPassword(event.target.value)}
-                    className="pl-10"
+                    className="pl-10 pr-10"
                     required
                     minLength={6}
                   />
+                  <button
+                    type="button"
+                    aria-label={signupPasswordVisible ? "Hide password" : "Show password"}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 transition-colors hover:text-gray-600"
+                    onClick={() => setSignupPasswordVisible((current) => !current)}
+                  >
+                    {signupPasswordVisible ? (
+                      <EyeOff className="h-4 w-4" />
+                    ) : (
+                      <Eye className="h-4 w-4" />
+                    )}
+                  </button>
                 </div>
                 <p className="text-xs text-gray-500">Minimum 6 characters</p>
               </div>
 
-              <div className="space-y-3 rounded-xl border border-rose-100 bg-rose-50/60 p-4">
+              <div className="space-y-3">
                 <div className="flex items-start gap-3">
                   <Checkbox
                     id="accept-terms"
@@ -305,24 +331,18 @@ export function AuthModal({
                     onCheckedChange={(checked) => setAcceptTerms(Boolean(checked))}
                     className="mt-1"
                   />
-                  <div className="space-y-1">
-                    <Label htmlFor="accept-terms" className="text-sm font-medium text-gray-900">
-                      I agree to the{" "}
-                      <Link
-                        href="/terms-of-service"
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-pink-600 hover:text-pink-700"
-                      >
-                        Terms of Service
-                      </Link>
-                      .
-                    </Label>
-                    <p className="text-xs text-gray-500">
-                      This covers account use, orders, registry activity, delivery options, and
-                      payment-related rules.
-                    </p>
-                  </div>
+                  <Label htmlFor="accept-terms" className="text-sm font-medium text-gray-900">
+                    I agree to the{" "}
+                    <Link
+                      href="/terms-of-service"
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-pink-600 hover:text-pink-700"
+                    >
+                      terms and conditions
+                    </Link>
+                    .
+                  </Label>
                 </div>
 
                 <div className="flex items-start gap-3">
@@ -332,24 +352,18 @@ export function AuthModal({
                     onCheckedChange={(checked) => setAcceptPrivacy(Boolean(checked))}
                     className="mt-1"
                   />
-                  <div className="space-y-1">
-                    <Label htmlFor="accept-privacy" className="text-sm font-medium text-gray-900">
-                      I have read the{" "}
-                      <Link
-                        href="/privacy-policy"
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-pink-600 hover:text-pink-700"
-                      >
-                        Privacy Policy
-                      </Link>
-                      {" "}and consent to Nana&apos;s Baby Essentials using my information as described there.
-                    </Label>
-                    <p className="text-xs text-gray-500">
-                      This includes account setup, Google sign-in, order processing, registry
-                      features, support, and payment verification.
-                    </p>
-                  </div>
+                  <Label htmlFor="accept-privacy" className="text-sm font-medium text-gray-900">
+                    I have read the{" "}
+                    <Link
+                      href="/privacy-policy"
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-pink-600 hover:text-pink-700"
+                    >
+                      privacy policy
+                    </Link>
+                    .
+                  </Label>
                 </div>
               </div>
 
@@ -395,9 +409,6 @@ export function AuthModal({
                 </svg>
                 Google
               </Button>
-              <p className="text-center text-xs text-gray-500">
-                To continue with Google from the signup tab, both legal checkboxes must be selected.
-              </p>
             </form>
           </TabsContent>
         </Tabs>

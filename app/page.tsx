@@ -1,6 +1,8 @@
 import { HomePage } from "./pages/HomePage";
 import {
   getHomepageDeals,
+  getHomepageReviews,
+  getHomepageSiteContent,
   getPublicProductCatalogPage,
   getPublicProductCategories,
 } from "../lib/publicData";
@@ -14,7 +16,13 @@ export const metadata = buildPageMetadata({
 });
 
 export default async function Page() {
-  const [initialProductPage, initialDeals, initialProductCategories] = await Promise.all([
+  const [
+    initialProductPage,
+    initialDeals,
+    initialProductCategories,
+    initialHomepageSiteContent,
+    initialHomepageReviews,
+  ] = await Promise.all([
     getPublicProductCatalogPage({
       page: 1,
       pageSize: 20,
@@ -24,11 +32,15 @@ export default async function Page() {
     }),
     getHomepageDeals(),
     getPublicProductCategories(),
+    getHomepageSiteContent(),
+    getHomepageReviews(),
   ]);
 
   return (
     <HomePage
       initialDeals={initialDeals}
+      initialHomepageReviews={initialHomepageReviews}
+      initialHomepageSiteContent={initialHomepageSiteContent}
       initialProductCategories={initialProductCategories}
       initialProducts={initialProductPage.products}
       initialProductTotalCount={initialProductPage.totalCount}

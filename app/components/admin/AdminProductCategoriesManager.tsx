@@ -153,22 +153,24 @@ export function AdminProductCategoriesManager({
   return (
     <>
       <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
-          <div>
+        <CardHeader className="space-y-4">
+          <div className="space-y-1">
             <CardTitle>Product Categories</CardTitle>
-            <p className="mt-1 text-sm text-gray-500">
+            <p className="text-sm text-gray-500">
               Manage the category list used when products are created and filtered on the storefront.
             </p>
           </div>
-          <Button
-            onClick={() => {
-              resetCategoryForm();
-              setShowCategoryModal(true);
-            }}
-          >
-            <Plus className="mr-2 h-4 w-4" />
-            Add Category
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              onClick={() => {
+                resetCategoryForm();
+                setShowCategoryModal(true);
+              }}
+            >
+              <Plus className="mr-2 h-4 w-4" />
+              Add Category
+            </Button>
+          </div>
         </CardHeader>
         <CardContent>
           {categories.length === 0 ? (

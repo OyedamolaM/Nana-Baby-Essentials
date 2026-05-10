@@ -8,8 +8,30 @@ const Instagram = (props: LucideProps) => (
   <svg {...props} xmlns="http://w3.org" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="20" height="20" x="2" y="2" rx="5" ry="5"/><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/><line x1="17.5" x2="17.51" y1="6.5" y2="6.5"/></svg>
 );
 
+type FooterLink = {
+  href: string;
+  isExternal?: boolean;
+  label: string;
+};
+
 export function Footer() {
   const currentYear = new Date().getFullYear();
+  const shopLinks: FooterLink[] = [
+    { href: "/products", label: "All Products" },
+    { href: "/products?category=Toys", label: "Toys" },
+    { href: "/products?category=Clothing", label: "Clothing" },
+    { href: "/products?category=Accessories", label: "Accessories" },
+    { href: "/products?view=new-arrivals", label: "New Arrivals" },
+    { href: "/products?featured=1&view=best-sellers", label: "Best Sellers" },
+  ];
+  const serviceLinks: FooterLink[] = [
+    { href: "mailto:nanasbabyessentials@gmail.com", label: "Contact Us", isExternal: true },
+    { href: "/shipping-returns-policy#shipping-policy", label: "Shipping Policy" },
+    { href: "/shipping-returns-policy#return-policy", label: "Return Policy" },
+    { href: "/privacy-policy", label: "Privacy Policy" },
+    { href: "/terms-of-service", label: "Terms of Service" },
+    { href: "/#faq", label: "FAQ" },
+  ];
 
   return (
     <footer className="bg-gray-900 text-gray-300">
@@ -36,28 +58,36 @@ export function Footer() {
           <div>
             <h4 className="text-white font-semibold mb-4">Shop</h4>
             <ul className="space-y-2 text-sm">
-              <li><Link href="/products" className="hover:text-pink-400 transition-colors">All Products</Link></li>
-              <li><Link href="/products" className="hover:text-pink-400 transition-colors">Toys</Link></li>
-              <li><Link href="/products" className="hover:text-pink-400 transition-colors">Clothing</Link></li>
-              <li><Link href="/products" className="hover:text-pink-400 transition-colors">Accessories</Link></li>
-              <li><Link href="/products" className="hover:text-pink-400 transition-colors">New Arrivals</Link></li>
-              <li><Link href="/products" className="hover:text-pink-400 transition-colors">Best Sellers</Link></li>
+              {shopLinks.map((link) => (
+                <li key={link.label}>
+                  <Link href={link.href} className="hover:text-pink-400 transition-colors">
+                    {link.label}
+                  </Link>
+                </li>
+              ))}
             </ul>
           </div>
 
           <div>
             <h4 className="text-white font-semibold mb-4">Customer Service</h4>
             <ul className="space-y-2 text-sm">
-              <li><a href="mailto:nanasbabyessentials@gmail.com" className="hover:text-pink-400 transition-colors">Contact Us</a></li>
-              <li><a href="#" className="hover:text-pink-400 transition-colors">Shipping Policy</a></li>
-              <li><a href="#" className="hover:text-pink-400 transition-colors">Return Policy</a></li>
-              <li><Link href="/privacy-policy" className="hover:text-pink-400 transition-colors">Privacy Policy</Link></li>
-              <li><Link href="/terms-of-service" className="hover:text-pink-400 transition-colors">Terms of Service</Link></li>
-              <li><Link href="/#faq" className="hover:text-pink-400 transition-colors">FAQ</Link></li>
+              {serviceLinks.map((link) => (
+                <li key={link.label}>
+                  {link.isExternal ? (
+                    <a href={link.href} className="hover:text-pink-400 transition-colors">
+                      {link.label}
+                    </a>
+                  ) : (
+                    <Link href={link.href} className="hover:text-pink-400 transition-colors">
+                      {link.label}
+                    </Link>
+                  )}
+                </li>
+              ))}
             </ul>
           </div>
 
-          <div className="col-span-2 lg:col-span-1">
+          <div id="contact-info" className="col-span-2 lg:col-span-1">
             <h4 className="text-white font-semibold mb-4">Contact Info</h4>
             <ul className="space-y-3 text-sm">
               <li className="flex items-start gap-2">
