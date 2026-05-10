@@ -199,9 +199,11 @@ function getDashboardTabRoute(tab: DashboardTab) {
     case "registries":
       return "/dashboard/registries";
     case "profile":
-    case "address":
-    case "security":
       return "/dashboard/profile";
+    case "address":
+      return "/dashboard/address";
+    case "security":
+      return "/dashboard/security";
     default:
       return "/dashboard/orders";
   }

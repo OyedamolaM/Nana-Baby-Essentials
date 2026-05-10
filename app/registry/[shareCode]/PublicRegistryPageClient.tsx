@@ -261,8 +261,8 @@ export function PublicRegistryPageClient({
     (sum, item) => sum + getRegistryItemRemainingAmount(item),
     0,
   );
-  const paymentExceedsSelection =
-    selectedItems.length > 0 && paymentAmount > selectedItemsTargetAmount;
+  const paymentFallsShortOfSelection =
+    selectedItems.length > 0 && paymentAmount < selectedItemsTargetAmount;
   const registryIsClosed = registry?.status === "closed";
 
   const handleQuantityChange = (item: RegistryItem, nextQuantity: number) => {
@@ -632,7 +632,9 @@ export function PublicRegistryPageClient({
                           <p className="mt-3 w-full max-w-none text-sm text-gray-600 md:mt-4 md:text-base">
                             {paymentMode === "auto"
                               ? "This amount is automatically calculated from the items you select."
-                              : "Enter a custom amount within the value of selected items."}
+                              : selectedItems.length > 0
+                                ? "Enter an amount that covers the selected items. Anything extra will be added as a cash gift."
+                                : "Enter the amount you want to gift to this registry."}
                           </p>
                         </div>
 
@@ -687,7 +689,7 @@ export function PublicRegistryPageClient({
                               {paymentMode === "custom" ? (
                                 <>
                                   <p className="text-sm text-amber-600">
-                                    Enter an amount within the total value of selected items.
+                                    Enter at least the total value of the selected items. Anything above that becomes an extra cash gift.
                                   </p>
 
                                   <Button
@@ -701,9 +703,9 @@ export function PublicRegistryPageClient({
                                 </>
                               ) : null}
 
-                              {paymentExceedsSelection ? (
+                              {paymentFallsShortOfSelection ? (
                                 <p className="text-sm text-red-600">
-                                  The amount exceeds the total remaining value of selected items.
+                                  The amount must cover the selected items you chose.
                                 </p>
                               ) : null}
                             </div>
@@ -721,7 +723,7 @@ export function PublicRegistryPageClient({
                             disabled={
                               selectedItems.length === 0 ||
                               paymentAmount <= 0 ||
-                              paymentExceedsSelection
+                              paymentFallsShortOfSelection
                             }
                             className="w-full bg-black text-white hover:bg-black/90"
                           >

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { revalidateTag } from "next/cache";
 
+import { toNairaAmount } from "@/lib/commerce";
 import {
   createSupabaseServiceRoleClient,
   hasSupabaseServiceRoleEnv,
@@ -115,6 +116,10 @@ function shouldFallbackRegistryCheckoutRpc(error: unknown, functionName: string)
   }
 
   const maybeError = error as SupabaseRpcErrorLike;
+  if (maybeError.code === "42883") {
+    return maybeError.message?.includes("function min(uuid) does not exist") ?? false;
+  }
+
   return maybeError.message?.includes("function min(uuid) does not exist") ?? false;
 }
 
@@ -150,6 +155,49 @@ function normalizeSelectedItems(value: unknown) {
       registry_item_id: item.registryItemId.trim(),
     }))
     .filter((item) => item.quantity > 0);
+}
+
+function roundCurrencyAmount(value: number) {
+  return Math.round(value * 100) / 100;
+}
+
+function getSelectedRegistryItemAmount(
+  registryItem: {
+    funded_amount?: number | null;
+    purchased_quantity?: number | null;
+    requested_quantity?: number | null;
+    unit_price_snapshot?: number | null;
+  },
+  quantity: number,
+) {
+  const requestedQuantity = Math.max(1, Number(registryItem.requested_quantity ?? 1));
+  const purchasedQuantity = Math.max(0, Number(registryItem.purchased_quantity ?? 0));
+  const normalizedQuantity = Math.max(0, Math.floor(quantity));
+  const unitAmount = Math.max(0, toNairaAmount(Number(registryItem.unit_price_snapshot ?? 0)));
+
+  if (normalizedQuantity <= 0 || unitAmount <= 0) {
+    return 0;
+  }
+
+  const targetAmount = unitAmount * requestedQuantity;
+  const fundedFallback = unitAmount * purchasedQuantity;
+  const fundedAmount = Math.min(
+    targetAmount,
+    Math.max(0, Number(registryItem.funded_amount ?? fundedFallback)),
+  );
+  const remainingAmount = Math.max(0, targetAmount - fundedAmount);
+
+  if (remainingAmount <= 0) {
+    return 0;
+  }
+
+  const partialUnitAmount =
+    purchasedQuantity < requestedQuantity ? fundedAmount % unitAmount : 0;
+
+  return Math.min(
+    remainingAmount,
+    Math.max((normalizedQuantity * unitAmount) - partialUnitAmount, 0),
+  );
 }
 
 function parseRegistryCheckoutSession(value: unknown) {
@@ -276,9 +324,82 @@ async function handleInitiateCheckout(
     );
   }
 
+  let extraCashAmount = paymentAmount;
+  if (selectedItems.length > 0) {
+    const selectedItemIds = selectedItems.map((item) => item.registry_item_id);
+    const { data: registryItemRows, error: registryItemError } = await adminClient
+      .from("registry_items")
+      .select("id, funded_amount, requested_quantity, purchased_quantity, unit_price_snapshot")
+      .eq("registry_id", registryId)
+      .in("id", selectedItemIds);
+
+    if (registryItemError) {
+      return jsonError(
+        getErrorMessage(
+          registryItemError,
+          "Selected registry items could not be prepared for checkout.",
+        ),
+        400,
+      );
+    }
+
+    const selectedRegistryItems = new Map(
+      ((registryItemRows as Array<{
+        id: string;
+        funded_amount?: number | null;
+        purchased_quantity?: number | null;
+        requested_quantity?: number | null;
+        unit_price_snapshot?: number | null;
+      }> | null) ?? []).map((registryItem) => [registryItem.id, registryItem]),
+    );
+
+    let selectedItemsTotal = 0;
+
+    for (const selectedItem of selectedItems) {
+      const registryItem = selectedRegistryItems.get(selectedItem.registry_item_id);
+      if (!registryItem) {
+        return jsonError("One or more selected registry items could not be found.", 400);
+      }
+
+      const requestedQuantity = Number(registryItem.requested_quantity ?? 0);
+      const purchasedQuantity = Number(registryItem.purchased_quantity ?? 0);
+      const remainingQuantity = Math.max(requestedQuantity - purchasedQuantity, 0);
+      if (selectedItem.quantity > remainingQuantity) {
+        return jsonError(
+          "Some registry items are no longer available in the requested quantity.",
+          400,
+        );
+      }
+
+      const selectedItemAmount = getSelectedRegistryItemAmount(
+        registryItem,
+        selectedItem.quantity,
+      );
+      if (selectedItemAmount <= 0) {
+        return jsonError(
+          "One or more selected registry items are already fully funded.",
+          400,
+        );
+      }
+
+      selectedItemsTotal += selectedItemAmount;
+    }
+
+    selectedItemsTotal = roundCurrencyAmount(selectedItemsTotal);
+
+    if (paymentAmount < selectedItemsTotal) {
+      return jsonError(
+        "Selected product gifts must be paid in full. Increase the amount to cover the selected items, or remove items and make a cash gift instead.",
+        400,
+      );
+    }
+
+    extraCashAmount = roundCurrencyAmount(paymentAmount - selectedItemsTotal);
+  }
+
   const reference = createPaystackReference();
   const { data, error } = await adminClient.rpc("create_registry_checkout", {
-    p_cash_amount: paymentAmount,
+    p_cash_amount: extraCashAmount,
     p_buyer_email: buyerEmail,
     p_buyer_message: buyerMessage || null,
     p_buyer_name: buyerName,

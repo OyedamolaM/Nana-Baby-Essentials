@@ -153,8 +153,10 @@ export function RegistryGiftCheckoutModal({
       return;
     }
 
-    if (selectedItems.length > 0 && paymentAmount > selectedItemsTargetAmount) {
-      toast.error("This payment is higher than the remaining amount on the selected items.");
+    if (selectedItems.length > 0 && paymentAmount < selectedItemsTargetAmount) {
+      toast.error(
+        "This payment must cover the selected items you chose. Increase the amount or remove some items first.",
+      );
       return;
     }
 
@@ -450,8 +452,8 @@ export function RegistryGiftCheckoutModal({
                 ))}
               </ul>
               <p className="mt-3">
-                Your payment will auto-fill the selected items in order until the
-                amount you&apos;re paying now is fully assigned.
+                Your payment now covers the selected items in full. If you pay more
+                than that amount, the extra value is added as a cash gift to the same registry.
               </p>
             </div>
           )}

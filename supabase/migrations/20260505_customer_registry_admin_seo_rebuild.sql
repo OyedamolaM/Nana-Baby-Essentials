@@ -502,7 +502,7 @@ begin
   select
     count(*),
     coalesce(sum(unit_price_snapshot * quantity), 0)::numeric(10, 2),
-    min(id)
+    min(id::text)::uuid
   into v_locked_item_count, v_item_total, v_single_item_id
   from locked_items;
 

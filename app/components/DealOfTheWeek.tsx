@@ -124,8 +124,14 @@ export function DealOfTheWeek({
                   ((compareAtPrice - deal.salePrice) / compareAtPrice) * 100
                 );
 
-                const endsAt = new Date(deal.endsAt!).getTime();
-                const timeLeft = now === null ? null : getTimeLeft(endsAt, now);
+                const hasEndDate = Boolean(deal.endsAt);
+                const endsAt = hasEndDate
+                  ? new Date(deal.endsAt as string).getTime()
+                  : null;
+                const timeLeft =
+                  now === null || endsAt === null || Number.isNaN(endsAt)
+                    ? null
+                    : getTimeLeft(endsAt, now);
 
                 return (
                   <CarouselItem key={deal.id}>
@@ -181,7 +187,7 @@ export function DealOfTheWeek({
                             <div className="mb-1 flex items-center gap-2">
                               <Clock className="h-4 w-4 text-orange-600" />
                               <span className="text-sm font-semibold text-gray-900">
-                                Ends in:
+                                {timeLeft ? "Ends in:" : "Available now"}
                               </span>
                             </div>
 
@@ -195,7 +201,7 @@ export function DealOfTheWeek({
                                 <div key={`${deal.id}-${unit.label}`}>
                                   <div className="text-base sm:text-xl font-bold text-orange-600">
                                     {unit.value === null
-                                      ? "--"
+                                      ? "00"
                                       : String(unit.value).padStart(2, "0")}
                                   </div>
                                   <div className="text-[10px] text-gray-600">

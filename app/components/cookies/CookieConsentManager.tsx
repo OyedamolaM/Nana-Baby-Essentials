@@ -17,6 +17,7 @@ import { Button } from "../ui/button";
 export type CookieConsentState = "accepted" | "rejected" | "unknown";
 
 const COOKIE_CONSENT_KEY = "nbe_cookie_consent";
+const COOKIE_CONSENT_STORAGE_KEY = "nbe:cookie-consent";
 const COOKIE_CONSENT_MAX_AGE_SECONDS = 60 * 60 * 24 * 180;
 
 type CookieConsentContextValue = {
@@ -45,6 +46,32 @@ function readConsentCookie(): CookieConsentState {
   return "unknown";
 }
 
+function readConsentStorage(): CookieConsentState {
+  if (typeof window === "undefined") {
+    return "unknown";
+  }
+
+  try {
+    const value = window.localStorage.getItem(COOKIE_CONSENT_STORAGE_KEY);
+    if (value === "accepted" || value === "rejected") {
+      return value;
+    }
+  } catch {
+    // Ignore storage read failures and fall back to the cookie.
+  }
+
+  return "unknown";
+}
+
+function readStoredConsent(): CookieConsentState {
+  const storageValue = readConsentStorage();
+  if (storageValue !== "unknown") {
+    return storageValue;
+  }
+
+  return readConsentCookie();
+}
+
 function writeConsentCookie(value: Exclude<CookieConsentState, "unknown">) {
   if (typeof document === "undefined") {
     return;
@@ -58,12 +85,26 @@ function writeConsentCookie(value: Exclude<CookieConsentState, "unknown">) {
   ].join("; ");
 }
 
+function writeConsentStorage(value: Exclude<CookieConsentState, "unknown">) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  try {
+    window.localStorage.setItem(COOKIE_CONSENT_STORAGE_KEY, value);
+  } catch {
+    // Ignore storage write failures and rely on the cookie.
+  }
+}
+
 export function CookieConsentProvider({ children }: { children: ReactNode }) {
-  const [consent, setConsentState] = useState<CookieConsentState>("unknown");
+  const [consent, setConsentState] = useState<CookieConsentState>(() => {
+    return readStoredConsent();
+  });
 
   useEffect(() => {
     const frameId = window.requestAnimationFrame(() => {
-      setConsentState(readConsentCookie());
+      setConsentState(readStoredConsent());
     });
 
     return () => {
@@ -74,6 +115,7 @@ export function CookieConsentProvider({ children }: { children: ReactNode }) {
   const setConsent = useCallback(
     (nextConsent: Exclude<CookieConsentState, "unknown">) => {
       writeConsentCookie(nextConsent);
+      writeConsentStorage(nextConsent);
       setConsentState(nextConsent);
     },
     [],

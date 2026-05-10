@@ -108,6 +108,42 @@ function buildFallbackDeals() {
   })) satisfies HomepageDeal[];
 }
 
+function mapHomepageDeals(
+  data: DealRow[],
+  fallbackProductsById?: Record<number, ProductRecord>,
+) {
+  return data
+    .filter((deal) => isDealActive(deal))
+    .flatMap((deal) => {
+      const productRecord = (Array.isArray(deal.products)
+        ? deal.products[0]
+        : deal.products) ?? fallbackProductsById?.[Number(deal.product_id)] ?? null;
+      if (!productRecord) {
+        return [];
+      }
+
+      const product = mapProductRecord(productRecord as ProductRecord);
+
+      return [{
+        id: deal.id,
+        title: deal.title || product.name,
+        subtitle:
+          deal.subtitle ||
+          product.description ||
+          "A featured baby essential for the week.",
+        badgeText: deal.badge_text || "Deal of the Week",
+        salePrice: Number(deal.sale_price ?? product.price),
+        compareAtPrice: Number(
+          deal.compare_at_price ?? Math.max(product.price, product.price * 1.25),
+        ),
+        image: deal.override_image || product.image,
+        startsAt: deal.starts_at,
+        endsAt: deal.ends_at,
+        product,
+      } satisfies HomepageDeal];
+    });
+}
+
 const getFeaturedProductsCached = unstable_cache(
   async (limit: number, onlyInStock: boolean) => {
     const fallbackProducts = (onlyInStock
@@ -295,32 +331,28 @@ const getHomepageDealsCached = unstable_cache(
       return buildFallbackDeals();
     }
 
-    const mappedDeals = (data as DealRow[])
-      .filter((deal) => Boolean(deal.products) && isDealActive(deal))
-      .map((deal) => {
-        const productRecord = Array.isArray(deal.products)
-          ? deal.products[0]
-          : deal.products;
-        const product = mapProductRecord(productRecord as ProductRecord);
+    const dealRows = data as DealRow[];
+    const missingProductIds = dealRows
+      .filter((deal) => !deal.products)
+      .map((deal) => Number(deal.product_id))
+      .filter((productId) => Number.isFinite(productId));
+    let fallbackProductsById: Record<number, ProductRecord> | undefined;
 
-        return {
-          id: deal.id,
-          title: deal.title || product.name,
-          subtitle:
-            deal.subtitle ||
-            product.description ||
-            "A featured baby essential for the week.",
-          badgeText: deal.badge_text || "Deal of the Week",
-          salePrice: Number(deal.sale_price ?? product.price),
-          compareAtPrice: Number(
-            deal.compare_at_price ?? Math.max(product.price, product.price * 1.25),
-          ),
-          image: deal.override_image || product.image,
-          startsAt: deal.starts_at,
-          endsAt: deal.ends_at,
+    if (missingProductIds.length > 0) {
+      const { data: fallbackProductRows } = await client
+        .from("products")
+        .select("*")
+        .in("id", missingProductIds);
+
+      fallbackProductsById = Object.fromEntries(
+        ((fallbackProductRows as ProductRecord[] | null) ?? []).map((product) => [
+          Number(product.id),
           product,
-        } satisfies HomepageDeal;
-      });
+        ]),
+      ) as Record<number, ProductRecord>;
+    }
+
+    const mappedDeals = mapHomepageDeals(dealRows, fallbackProductsById);
 
     return mappedDeals.length > 0 ? mappedDeals : buildFallbackDeals();
   },
