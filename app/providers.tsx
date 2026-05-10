@@ -8,12 +8,19 @@ import {
   AnalyticsBridge,
   CookieConsentBanner,
   CookieConsentProvider,
+  type CookieConsentState,
 } from "./components/cookies/CookieConsentManager";
 import { NewsletterPopup } from "./components/newsletter/NewsletterPopup";
 
-export function Providers({ children }: { children: React.ReactNode }) {
+export function Providers({
+  children,
+  initialCookieConsent = "unknown",
+}: {
+  children: React.ReactNode;
+  initialCookieConsent?: CookieConsentState;
+}) {
   return (
-    <CookieConsentProvider>
+    <CookieConsentProvider initialConsent={initialCookieConsent}>
       <AuthProvider>
         <ProfileCompletionGate />
         <StoreCartProvider>

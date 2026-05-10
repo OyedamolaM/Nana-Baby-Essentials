@@ -7,6 +7,12 @@ export type ProductCategoryRecord = {
   sort_order?: number | null;
 };
 
+export type ProductCategoryAssignmentRecord = {
+  category_id: string;
+  product_categories?: ProductCategoryRecord | ProductCategoryRecord[] | null;
+  product_id: number;
+};
+
 export const DEFAULT_PRODUCT_CATEGORIES = ["Toys", "Clothing", "Accessories"] as const;
 
 export function createCategorySlug(value: string) {
@@ -68,4 +74,40 @@ export function buildFilterCategoryOptions(options: {
   records?: ProductCategoryRecord[] | null;
 }) {
   return ["All", ...buildProductCategoryOptions(options)];
+}
+
+export function extractAssignedCategoryLabel(
+  assignment: ProductCategoryAssignmentRecord,
+) {
+  const joinedCategory = Array.isArray(assignment.product_categories)
+    ? assignment.product_categories[0] ?? null
+    : assignment.product_categories;
+
+  return joinedCategory?.label?.trim() ?? "";
+}
+
+export function normalizeProductCategoryLabels(
+  primaryCategory?: string | null,
+  categories?: Array<string | null | undefined> | null,
+) {
+  const labels = new Set<string>();
+  const normalizedLabels: string[] = [];
+
+  const pushLabel = (value?: string | null) => {
+    const normalizedValue = value?.trim() ?? "";
+    if (!normalizedValue || labels.has(normalizedValue)) {
+      return;
+    }
+
+    labels.add(normalizedValue);
+    normalizedLabels.push(normalizedValue);
+  };
+
+  pushLabel(primaryCategory);
+
+  for (const category of categories ?? []) {
+    pushLabel(category);
+  }
+
+  return normalizedLabels;
 }

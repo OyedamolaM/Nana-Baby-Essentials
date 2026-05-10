@@ -1,6 +1,6 @@
 "use client";
 
-import { Analytics } from "@vercel/analytics/next";
+import dynamic from "next/dynamic";
 import { usePathname } from "next/navigation";
 import {
   createContext,
@@ -14,6 +14,11 @@ import {
 
 import { Button } from "../ui/button";
 
+const ClientAnalytics = dynamic(
+  () => import("@vercel/analytics/next").then((module) => module.Analytics),
+  { ssr: false },
+);
+
 export type CookieConsentState = "accepted" | "rejected" | "unknown";
 
 const COOKIE_CONSENT_KEY = "nbe_cookie_consent";
@@ -22,6 +27,7 @@ const COOKIE_CONSENT_MAX_AGE_SECONDS = 60 * 60 * 24 * 180;
 
 type CookieConsentContextValue = {
   consent: CookieConsentState;
+  hasResolvedConsent: boolean;
   setConsent: (nextConsent: Exclude<CookieConsentState, "unknown">) => void;
 };
 
@@ -97,14 +103,25 @@ function writeConsentStorage(value: Exclude<CookieConsentState, "unknown">) {
   }
 }
 
-export function CookieConsentProvider({ children }: { children: ReactNode }) {
-  const [consent, setConsentState] = useState<CookieConsentState>(() => {
-    return readStoredConsent();
-  });
+export function CookieConsentProvider({
+  children,
+  initialConsent = "unknown",
+}: {
+  children: ReactNode;
+  initialConsent?: CookieConsentState;
+}) {
+  const [consent, setConsentState] = useState<CookieConsentState>(initialConsent);
+  const [hasResolvedConsent, setHasResolvedConsent] = useState(
+    initialConsent !== "unknown",
+  );
 
   useEffect(() => {
     const frameId = window.requestAnimationFrame(() => {
-      setConsentState(readStoredConsent());
+      const nextConsent = readStoredConsent();
+      setConsentState((currentConsent) =>
+        currentConsent === nextConsent ? currentConsent : nextConsent,
+      );
+      setHasResolvedConsent(true);
     });
 
     return () => {
@@ -124,9 +141,10 @@ export function CookieConsentProvider({ children }: { children: ReactNode }) {
   const value = useMemo(
     () => ({
       consent,
+      hasResolvedConsent,
       setConsent,
     }),
-    [consent, setConsent],
+    [consent, hasResolvedConsent, setConsent],
   );
 
   return (
@@ -148,7 +166,7 @@ export function useCookieConsent() {
 
 export function CookieConsentBanner() {
   const pathname = usePathname();
-  const { consent, setConsent } = useCookieConsent();
+  const { consent, hasResolvedConsent, setConsent } = useCookieConsent();
 
   const isPublicRoute = useMemo(() => {
     return !(
@@ -158,7 +176,7 @@ export function CookieConsentBanner() {
     );
   }, [pathname]);
 
-  if (!isPublicRoute || consent !== "unknown") {
+  if (!isPublicRoute || !hasResolvedConsent || consent !== "unknown") {
     return null;
   }
 
@@ -199,11 +217,11 @@ export function CookieConsentBanner() {
 }
 
 export function AnalyticsBridge() {
-  const { consent } = useCookieConsent();
+  const { consent, hasResolvedConsent } = useCookieConsent();
 
-  if (consent !== "accepted") {
+  if (!hasResolvedConsent || consent !== "accepted") {
     return null;
   }
 
-  return <Analytics />;
+  return <ClientAnalytics />;
 }

@@ -45,6 +45,9 @@ import {
 } from "../../lib/registry";
 import {
   buildProductCategoryOptions,
+  extractAssignedCategoryLabel,
+  normalizeProductCategoryLabels,
+  type ProductCategoryAssignmentRecord,
   type ProductCategoryRecord,
 } from "../../lib/productCategories";
 import {
@@ -149,6 +152,78 @@ type ShippingTier = {
   created_at?: string;
 };
 
+type AdminDashboardCacheEntry = {
+  blogPosts: BlogPostRecord[];
+  campaignContacts: CampaignContactRecord[];
+  customers: Customer[];
+  deals: HomeDealRecord[];
+  newsletterCampaigns: NewsletterCampaign[];
+  newsletterSubscribers: NewsletterSubscriber[];
+  orders: AdminOrderRecord[];
+  productCategories: ProductCategoryRecord[];
+  products: ProductRecord[];
+  registries: RegistryRecord[];
+  registryItemsByRegistry: Record<string, RegistryItem[]>;
+  registryOrderItemsByOrder: Record<string, RegistryOrderItemRecord[]>;
+  registryOrders: RegistryOrderRecord[];
+  registryPaymentActivities: Record<string, RegistryPaymentActivity[]>;
+  registrySummaries: Record<string, RegistrySummary>;
+  shippingTiers: ShippingTier[];
+};
+
+const ADMIN_DASHBOARD_CACHE_STORAGE_PREFIX = "nbe:admin-dashboard:";
+const adminDashboardCache = new Map<string, AdminDashboardCacheEntry>();
+
+function getAdminDashboardCacheStorageKey(userId: string) {
+  return `${ADMIN_DASHBOARD_CACHE_STORAGE_PREFIX}${userId}`;
+}
+
+function readAdminDashboardCacheEntry(userId: string) {
+  if (typeof window === "undefined") {
+    return undefined;
+  }
+
+  const memoryEntry = adminDashboardCache.get(userId);
+  if (memoryEntry) {
+    return memoryEntry;
+  }
+
+  try {
+    const rawValue = window.sessionStorage.getItem(
+      getAdminDashboardCacheStorageKey(userId),
+    );
+    if (!rawValue) {
+      return undefined;
+    }
+
+    const parsed = JSON.parse(rawValue) as AdminDashboardCacheEntry;
+    adminDashboardCache.set(userId, parsed);
+    return parsed;
+  } catch {
+    return undefined;
+  }
+}
+
+function persistAdminDashboardCacheEntry(
+  userId: string,
+  entry: AdminDashboardCacheEntry,
+) {
+  adminDashboardCache.set(userId, entry);
+
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  try {
+    window.sessionStorage.setItem(
+      getAdminDashboardCacheStorageKey(userId),
+      JSON.stringify(entry),
+    );
+  } catch {
+    // Ignore storage failures and keep the in-memory cache.
+  }
+}
+
 function formatDate(value?: string | null) {
   if (!value) {
     return "N/A";
@@ -185,6 +260,43 @@ function formatDateTime(value?: string | null) {
   });
 }
 
+function getDealStatusLabel(deal: HomeDealRecord) {
+  if (!deal.is_active) {
+    return "Inactive";
+  }
+
+  const now = Date.now();
+  const startsAt = deal.starts_at ? new Date(deal.starts_at).getTime() : null;
+  const endsAt = deal.ends_at ? new Date(deal.ends_at).getTime() : null;
+
+  if (startsAt && !Number.isNaN(startsAt) && startsAt > now) {
+    return "Scheduled";
+  }
+
+  if (endsAt && !Number.isNaN(endsAt) && endsAt <= now) {
+    return "Ended";
+  }
+
+  return "Live";
+}
+
+function buildAssignedProductCategoriesByProductId(
+  assignments: ProductCategoryAssignmentRecord[],
+) {
+  return assignments.reduce<Record<number, string[]>>((accumulator, assignment) => {
+    const label = extractAssignedCategoryLabel(assignment);
+    if (!label) {
+      return accumulator;
+    }
+
+    const productId = Number(assignment.product_id);
+    const existing = accumulator[productId] ?? [];
+    existing.push(label);
+    accumulator[productId] = existing;
+    return accumulator;
+  }, {});
+}
+
 function toDatetimeLocalValue(value?: string | null) {
   if (!value) {
     return "";
@@ -202,37 +314,83 @@ function toDatetimeLocalValue(value?: string | null) {
 
 export function AdminDashboard() {
   const { user, session, loading: authLoading } = useAuth();
-  const [loading, setLoading] = useState(false);
+  const userId = user?.id ?? null;
+  const cachedAdminEntry = useMemo(
+    () => (userId ? readAdminDashboardCacheEntry(userId) : undefined),
+    [userId],
+  );
+  const [loading, setLoading] = useState(Boolean(userId && !cachedAdminEntry));
   const [adminAccessStatus, setAdminAccessStatus] = useState<
     "checking" | "allowed" | "denied"
-  >("checking");
+  >(cachedAdminEntry ? "allowed" : "checking");
   const initialAdminLoadKeyRef = useRef<string | null>(null);
-  const [orders, setOrders] = useState<AdminOrderRecord[]>([]);
-  const [customers, setCustomers] = useState<Customer[]>([]);
-  const [products, setProducts] = useState<ProductRecord[]>([]);
-  const [registries, setRegistries] = useState<RegistryRecord[]>([]);
-  const [registryOrders, setRegistryOrders] = useState<RegistryOrderRecord[]>([]);
+  const [orders, setOrders] = useState<AdminOrderRecord[]>(cachedAdminEntry?.orders ?? []);
+  const [customers, setCustomers] = useState<Customer[]>(cachedAdminEntry?.customers ?? []);
+  const [products, setProducts] = useState<ProductRecord[]>(cachedAdminEntry?.products ?? []);
+  const [registries, setRegistries] = useState<RegistryRecord[]>(cachedAdminEntry?.registries ?? []);
+  const [registryOrders, setRegistryOrders] = useState<RegistryOrderRecord[]>(
+    cachedAdminEntry?.registryOrders ?? [],
+  );
   const [registryOrderItemsByOrder, setRegistryOrderItemsByOrder] = useState<
     Record<string, RegistryOrderItemRecord[]>
-  >({});
+  >(cachedAdminEntry?.registryOrderItemsByOrder ?? {});
   const [registryItemsByRegistry, setRegistryItemsByRegistry] = useState<
     Record<string, RegistryItem[]>
-  >({});
-  const [registrySummaries, setRegistrySummaries] = useState<Record<string, RegistrySummary>>({});
+  >(cachedAdminEntry?.registryItemsByRegistry ?? {});
+  const [registrySummaries, setRegistrySummaries] = useState<Record<string, RegistrySummary>>(
+    cachedAdminEntry?.registrySummaries ?? {},
+  );
   const [registryPaymentActivities, setRegistryPaymentActivities] = useState<
     Record<string, RegistryPaymentActivity[]>
-  >({});
-  const [deals, setDeals] = useState<HomeDealRecord[]>([]);
-  const [blogPosts, setBlogPosts] = useState<BlogPostRecord[]>([]);
+  >(cachedAdminEntry?.registryPaymentActivities ?? {});
+  const [deals, setDeals] = useState<HomeDealRecord[]>(cachedAdminEntry?.deals ?? []);
+  const [blogPosts, setBlogPosts] = useState<BlogPostRecord[]>(cachedAdminEntry?.blogPosts ?? []);
   const [newsletterSubscribers, setNewsletterSubscribers] = useState<
     NewsletterSubscriber[]
-  >([]);
+  >(cachedAdminEntry?.newsletterSubscribers ?? []);
   const [newsletterCampaigns, setNewsletterCampaigns] = useState<
     NewsletterCampaign[]
-  >([]);
-  const [campaignContacts, setCampaignContacts] = useState<CampaignContactRecord[]>([]);
-  const [productCategories, setProductCategories] = useState<ProductCategoryRecord[]>([]);
-  const [shippingTiers, setShippingTiers] = useState<ShippingTier[]>([]);
+  >(cachedAdminEntry?.newsletterCampaigns ?? []);
+  const [campaignContacts, setCampaignContacts] = useState<CampaignContactRecord[]>(
+    cachedAdminEntry?.campaignContacts ?? [],
+  );
+  const [productCategories, setProductCategories] = useState<ProductCategoryRecord[]>(
+    cachedAdminEntry?.productCategories ?? [],
+  );
+  const [shippingTiers, setShippingTiers] = useState<ShippingTier[]>(
+    cachedAdminEntry?.shippingTiers ?? [],
+  );
+
+  useEffect(() => {
+    if (!cachedAdminEntry) {
+      return;
+    }
+
+    const frameId = window.requestAnimationFrame(() => {
+      setOrders(cachedAdminEntry.orders);
+      setCustomers(cachedAdminEntry.customers);
+      setProducts(cachedAdminEntry.products);
+      setRegistries(cachedAdminEntry.registries);
+      setRegistryOrders(cachedAdminEntry.registryOrders);
+      setRegistryOrderItemsByOrder(cachedAdminEntry.registryOrderItemsByOrder);
+      setRegistryItemsByRegistry(cachedAdminEntry.registryItemsByRegistry);
+      setRegistrySummaries(cachedAdminEntry.registrySummaries);
+      setRegistryPaymentActivities(cachedAdminEntry.registryPaymentActivities);
+      setDeals(cachedAdminEntry.deals);
+      setBlogPosts(cachedAdminEntry.blogPosts);
+      setNewsletterSubscribers(cachedAdminEntry.newsletterSubscribers);
+      setNewsletterCampaigns(cachedAdminEntry.newsletterCampaigns);
+      setCampaignContacts(cachedAdminEntry.campaignContacts);
+      setProductCategories(cachedAdminEntry.productCategories);
+      setShippingTiers(cachedAdminEntry.shippingTiers);
+      setAdminAccessStatus("allowed");
+      setLoading(false);
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+    };
+  }, [cachedAdminEntry]);
 
   const [showCustomerModal, setShowCustomerModal] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
@@ -250,7 +408,9 @@ export function AdminDashboard() {
   const [productSellingPrice, setProductSellingPrice] = useState("");
   const [productCostPrice, setProductCostPrice] = useState("");
   const [productCategory, setProductCategory] = useState("Toys");
+  const [productCategoriesSelection, setProductCategoriesSelection] = useState<string[]>(["Toys"]);
   const [productImage, setProductImage] = useState("");
+  const [productImageFile, setProductImageFile] = useState<File | null>(null);
   const [productDescription, setProductDescription] = useState("");
   const [productInStock, setProductInStock] = useState(true);
   const [productIsFeatured, setProductIsFeatured] = useState(false);
@@ -297,8 +457,14 @@ export function AdminDashboard() {
   const [newsletterBody, setNewsletterBody] = useState("");
   const [sendingNewsletter, setSendingNewsletter] = useState(false);
 
-  const loadAdminData = useCallback(async () => {
-    setLoading(true);
+  const loadAdminData = useCallback(async (showSpinner = false) => {
+    if (!userId) {
+      return;
+    }
+
+    if (showSpinner) {
+      setLoading(true);
+    }
 
     const [
       ordersResult,
@@ -314,6 +480,7 @@ export function AdminDashboard() {
       newsletterCampaignsResult,
       campaignContactsResult,
       productCategoriesResult,
+      productCategoryAssignmentsResult,
       shippingTiersResult,
     ] = await Promise.all([
       supabase.from("orders").select("*").order("created_at", { ascending: false }),
@@ -360,6 +527,10 @@ export function AdminDashboard() {
         .select("*")
         .order("sort_order", { ascending: true }),
       supabase
+        .from("product_category_assignments")
+        .select("product_id, category_id, product_categories(label, sort_order, is_active)")
+        .order("created_at", { ascending: false }),
+      supabase
         .from("shipping_tiers")
         .select("*")
         .order("sort_order", { ascending: true }),
@@ -369,9 +540,24 @@ export function AdminDashboard() {
     setCustomers(
       ((customersResult.error ? [] : customersResult.data) ?? []) as Customer[],
     );
-    setProducts(
-      ((productsResult.error ? [] : productsResult.data) ?? []) as ProductRecord[],
+    const rawProducts = ((productsResult.error ? [] : productsResult.data) ?? []) as ProductRecord[];
+    const productCategoryAssignments =
+      productCategoryAssignmentsResult.error?.code === "42P01"
+        ? []
+        : (((productCategoryAssignmentsResult.error
+            ? []
+            : productCategoryAssignmentsResult.data) ?? []) as ProductCategoryAssignmentRecord[]);
+    const assignedProductCategoriesByProductId = buildAssignedProductCategoriesByProductId(
+      productCategoryAssignments,
     );
+    const nextProducts = rawProducts.map((product) => ({
+      ...product,
+      categories: normalizeProductCategoryLabels(
+        product.category,
+        assignedProductCategoriesByProductId[Number(product.id)],
+      ),
+    }));
+    setProducts(nextProducts);
     setRegistries(
       ((registriesResult.error ? [] : registriesResult.data) ?? []) as RegistryRecord[],
     );
@@ -482,8 +668,38 @@ export function AdminDashboard() {
     );
     setRegistryPaymentActivities(registryPaymentsMap);
 
-    setLoading(false);
-  }, []);
+    persistAdminDashboardCacheEntry(userId, {
+      blogPosts: ((blogPostsResult.error ? [] : blogPostsResult.data) ?? []) as BlogPostRecord[],
+      campaignContacts:
+        campaignContactsResult.error?.code === "42P01"
+          ? []
+          : (((campaignContactsResult.error ? [] : campaignContactsResult.data) ?? []) as CampaignContactRecord[]),
+      customers: ((customersResult.error ? [] : customersResult.data) ?? []) as Customer[],
+      deals: ((dealsResult.error ? [] : dealsResult.data) ?? []) as HomeDealRecord[],
+      newsletterCampaigns:
+        ((newsletterCampaignsResult.error ? [] : newsletterCampaignsResult.data) ?? []) as NewsletterCampaign[],
+      newsletterSubscribers:
+        ((newsletterSubscribersResult.error ? [] : newsletterSubscribersResult.data) ?? []) as NewsletterSubscriber[],
+      orders: ((ordersResult.error ? [] : ordersResult.data) ?? []) as AdminOrderRecord[],
+      productCategories:
+        productCategoriesResult.error?.code === "42P01"
+          ? []
+          : (((productCategoriesResult.error ? [] : productCategoriesResult.data) ?? []) as ProductCategoryRecord[]),
+      products: nextProducts,
+      registries: ((registriesResult.error ? [] : registriesResult.data) ?? []) as RegistryRecord[],
+      registryItemsByRegistry: registryItemsById,
+      registryOrderItemsByOrder: registryOrderItemsMap,
+      registryOrders,
+      registryPaymentActivities: registryPaymentsMap,
+      registrySummaries: registrySummaryMap,
+      shippingTiers:
+        ((shippingTiersResult.error ? [] : shippingTiersResult.data) ?? []) as ShippingTier[],
+    });
+
+    if (showSpinner) {
+      setLoading(false);
+    }
+  }, [userId]);
 
   const productLookup = useMemo(() => {
     return Object.fromEntries(products.map((product) => [product.id, product])) as Record<
@@ -494,7 +710,9 @@ export function AdminDashboard() {
   const productCategoryOptions = useMemo(() => {
     return buildProductCategoryOptions({
       includeInactive: true,
-      includeProductCategories: products.map((product) => product.category),
+      includeProductCategories: products.flatMap((product) =>
+        normalizeProductCategoryLabels(product.category, product.categories),
+      ),
       records: productCategories,
     });
   }, [productCategories, products]);
@@ -554,7 +772,7 @@ export function AdminDashboard() {
   }, [session]);
 
   const verifyAdminAccess = useCallback(async () => {
-    if (!user || !hasSupabaseEnv) {
+    if (!userId || !hasSupabaseEnv) {
       setAdminAccessStatus("denied");
       return false;
     }
@@ -579,14 +797,14 @@ export function AdminDashboard() {
 
     setAdminAccessStatus("allowed");
     return true;
-  }, [getAdminAccessToken, user]);
+  }, [getAdminAccessToken, userId]);
 
   useEffect(() => {
     if (authLoading) {
       return;
     }
 
-    if (!user || !hasSupabaseEnv) {
+    if (!userId || !hasSupabaseEnv) {
       queueMicrotask(() => {
         setAdminAccessStatus("denied");
         setLoading(false);
@@ -594,7 +812,7 @@ export function AdminDashboard() {
       return;
     }
 
-    const loadKey = `${user.id}:admin`;
+    const loadKey = `${userId}:admin`;
     if (initialAdminLoadKeyRef.current === loadKey) {
       return;
     }
@@ -603,7 +821,7 @@ export function AdminDashboard() {
 
     queueMicrotask(() => {
       setAdminAccessStatus("checking");
-      setLoading(true);
+      setLoading(!cachedAdminEntry);
       void (async () => {
         const hasAccess = await verifyAdminAccess();
         if (!hasAccess) {
@@ -611,10 +829,16 @@ export function AdminDashboard() {
           return;
         }
 
-        await loadAdminData();
+        if (cachedAdminEntry) {
+          setAdminAccessStatus("allowed");
+          setLoading(false);
+          return;
+        }
+
+        await loadAdminData(!cachedAdminEntry);
       })();
     });
-  }, [authLoading, loadAdminData, user, verifyAdminAccess]);
+  }, [authLoading, cachedAdminEntry, loadAdminData, userId, verifyAdminAccess]);
 
   const revalidatePublicTags = async (tags: string[]) => {
     const accessToken = await getAdminAccessToken();
@@ -863,12 +1087,15 @@ export function AdminDashboard() {
   };
 
   const resetProductForm = () => {
+    const defaultCategory = productCategoryOptions[0] ?? "Toys";
     setEditingProduct(null);
     setProductName("");
     setProductSellingPrice("");
     setProductCostPrice("");
-    setProductCategory(productCategoryOptions[0] ?? "Toys");
+    setProductCategory(defaultCategory);
+    setProductCategoriesSelection([defaultCategory]);
     setProductImage("");
+    setProductImageFile(null);
     setProductDescription("");
     setProductInStock(true);
     setProductIsFeatured(false);
@@ -882,8 +1109,11 @@ export function AdminDashboard() {
       String(toNairaAmount(getProductSellingPrice(product))),
     );
     setProductCostPrice(String(toNairaAmount(getProductCostPrice(product))));
-    setProductCategory(product.category);
+    const nextCategories = normalizeProductCategoryLabels(product.category, product.categories);
+    setProductCategory(nextCategories[0] ?? product.category);
+    setProductCategoriesSelection(nextCategories.length > 0 ? nextCategories : [product.category]);
     setProductImage(product.image);
+    setProductImageFile(null);
     setProductDescription(product.description);
     setProductInStock(Boolean(product.in_stock));
     setProductIsFeatured(Boolean(product.is_featured));
@@ -896,16 +1126,73 @@ export function AdminDashboard() {
 
     const sellingPrice = Number(productSellingPrice) / 1000;
     const costPrice = Number(productCostPrice) / 1000;
-    const normalizedCategory = productCategory.trim();
+    const normalizedCategories = normalizeProductCategoryLabels(
+      productCategoriesSelection[0] ?? productCategory,
+      productCategoriesSelection,
+    );
+    const normalizedCategory = normalizedCategories[0] ?? "";
 
     if (!Number.isFinite(sellingPrice) || !Number.isFinite(costPrice)) {
       toast.error("Enter valid product prices.");
       return;
     }
 
-    if (!normalizedCategory) {
-      toast.error("Choose a product category first.");
+    if (normalizedCategories.length === 0) {
+      toast.error("Choose at least one product category first.");
       return;
+    }
+
+    const categoryIdByLabel = new Map(
+      productCategories.map((category) => [category.label.trim(), category.id] as const),
+    );
+    const selectedCategoryIds = normalizedCategories
+      .map((category) => categoryIdByLabel.get(category) ?? null)
+      .filter((categoryId): categoryId is string => Boolean(categoryId));
+
+    if (selectedCategoryIds.length !== normalizedCategories.length) {
+      toast.error("One or more selected categories are missing. Refresh the categories and try again.");
+      return;
+    }
+
+    const nextStoredProductImage =
+      typeof productImage === "string" && productImage.trim().length > 0
+        ? productImage.trim()
+        : null;
+    let nextProductImage = nextStoredProductImage;
+
+    if (!productImageFile && !nextProductImage) {
+      toast.error("Upload a product image file that is 500KB or smaller.");
+      return;
+    }
+
+    if (productImageFile) {
+      const accessToken = await getAdminAccessToken();
+      if (!accessToken) {
+        toast.error("Sign in again to upload product images.");
+        return;
+      }
+
+      const uploadFormData = new FormData();
+      uploadFormData.append("image", productImageFile);
+
+      const uploadResponse = await fetch("/api/admin/products/upload", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: uploadFormData,
+      });
+
+      const uploadResult = (await uploadResponse.json().catch(() => null)) as
+        | { dataUrl?: string; message?: string }
+        | null;
+
+      if (!uploadResponse.ok || !uploadResult?.dataUrl) {
+        toast.error(uploadResult?.message ?? "Could not upload the product image.");
+        return;
+      }
+
+      nextProductImage = uploadResult.dataUrl;
     }
 
     const baseProductSlug = createProductSlug(productName) || "product";
@@ -925,7 +1212,7 @@ export function AdminDashboard() {
       selling_price: sellingPrice,
       cost_price: costPrice,
       category: normalizedCategory,
-      image: productImage,
+      image: nextProductImage,
       description: productDescription,
       in_stock: productInStock,
       is_featured: productIsFeatured,
@@ -944,6 +1231,42 @@ export function AdminDashboard() {
     if (error || !savedProduct) {
       toast.error("Failed to save product.");
       return;
+    }
+
+    const { error: deleteAssignmentsError } = await supabase
+      .from("product_category_assignments")
+      .delete()
+      .eq("product_id", Number(savedProduct.id));
+
+    if (deleteAssignmentsError?.code === "42P01") {
+      toast.error("Run the multi-category migration before assigning products to multiple categories.");
+      return;
+    }
+
+    if (deleteAssignmentsError) {
+      toast.error("Product saved, but its categories could not be updated.");
+      return;
+    }
+
+    if (selectedCategoryIds.length > 0) {
+      const { error: assignmentInsertError } = await supabase
+        .from("product_category_assignments")
+        .insert(
+          selectedCategoryIds.map((categoryId) => ({
+            product_id: Number(savedProduct.id),
+            category_id: categoryId,
+          })),
+        );
+
+      if (assignmentInsertError?.code === "42P01") {
+        toast.error("Run the multi-category migration before assigning products to multiple categories.");
+        return;
+      }
+
+      if (assignmentInsertError) {
+        toast.error("Product saved, but its categories could not be updated.");
+        return;
+      }
     }
 
     if (!editingProduct && nextProductSlug !== baseProductSlug) {
@@ -1660,7 +1983,7 @@ export function AdminDashboard() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Name</TableHead>
-                    <TableHead>Category</TableHead>
+                    <TableHead>Categories</TableHead>
                     <TableHead>Featured</TableHead>
                     <TableHead>Selling</TableHead>
                     <TableHead>Cost</TableHead>
@@ -1677,7 +2000,9 @@ export function AdminDashboard() {
                           /products/{product.slug?.trim() || createProductSlug(product.name)}
                         </div>
                       </TableCell>
-                      <TableCell>{product.category}</TableCell>
+                      <TableCell>
+                        {normalizeProductCategoryLabels(product.category, product.categories).join(", ")}
+                      </TableCell>
                       <TableCell>
                         {product.is_featured
                           ? `Yes${Number(product.featured_sort_order ?? 0) > 0
@@ -1785,7 +2110,7 @@ export function AdminDashboard() {
                         {formatDate(deal.starts_at)} to {formatDate(deal.ends_at)}
                       </TableCell>
                       <TableCell>{Number(deal.sort_order ?? 0)}</TableCell>
-                      <TableCell>{deal.is_active ? "Active" : "Inactive"}</TableCell>
+                      <TableCell>{getDealStatusLabel(deal)}</TableCell>
                       <TableCell>
                         <div className="flex gap-2">
                           <Button
@@ -2174,33 +2499,54 @@ export function AdminDashboard() {
 
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <div className="space-y-2">
-                <Label htmlFor="product-category">Category</Label>
-                <Select value={productCategory} onValueChange={setProductCategory}>
-                  <SelectTrigger id="product-category">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {productCategoryOptions.map((category) => (
-                      <SelectItem key={category} value={category}>
+                <Label>Categories</Label>
+                <div className="flex flex-wrap gap-2">
+                  {productCategoryOptions.map((category) => {
+                    const isSelected = productCategoriesSelection.includes(category);
+
+                    return (
+                      <Button
+                        key={category}
+                        type="button"
+                        variant={isSelected ? "default" : "outline"}
+                        className="rounded-full"
+                        onClick={() => {
+                          const nextCategories = isSelected
+                            ? productCategoriesSelection.filter((value) => value !== category)
+                            : [...productCategoriesSelection, category];
+                          setProductCategoriesSelection(nextCategories);
+                          setProductCategory(nextCategories[0] ?? "");
+                        }}
+                      >
                         {category}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                      </Button>
+                    );
+                  })}
+                </div>
                 <p className="text-xs text-gray-500">
-                  Categories are managed from the Categories tab in this admin panel.
+                  Select one or more categories. The first selected category becomes the primary
+                  product badge and default display category.
                 </p>
               </div>
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="product-image">Image URL</Label>
+              <Label htmlFor="product-image">Product Image Upload</Label>
               <Input
                 id="product-image"
-                value={productImage}
-                onChange={(event) => setProductImage(event.target.value)}
-                required
+                type="file"
+                accept="image/*"
+                required={!editingProduct && !productImage}
+                onChange={(event) => setProductImageFile(event.target.files?.[0] ?? null)}
               />
+              <p className="text-xs text-gray-500">
+                Upload an image file up to 500KB. URLs are no longer supported.
+              </p>
+              {productImage ? (
+                <p className="text-xs text-gray-500">
+                  Existing image will stay in place unless you upload a new one.
+                </p>
+              ) : null}
             </div>
 
             <div className="space-y-2">
@@ -2379,6 +2725,11 @@ export function AdminDashboard() {
                 </p>
               </div>
             </div>
+
+            <p className="text-xs text-gray-500">
+              Homepage deals only show when the deal is active and the current date falls within
+              the selected start and end window.
+            </p>
 
             <label className="flex items-center gap-2 text-sm text-gray-700">
               <input

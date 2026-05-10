@@ -14,6 +14,9 @@ import {
 } from "./commerce";
 import {
   buildFilterCategoryOptions,
+  extractAssignedCategoryLabel,
+  normalizeProductCategoryLabels,
+  type ProductCategoryAssignmentRecord,
   type ProductCategoryRecord,
 } from "./productCategories";
 import {
@@ -34,11 +37,11 @@ import {
   type ShippingAddress,
 } from "./userProfile";
 
-type ProductJoinRow = {
-  products: ProductRecord | ProductRecord[] | null;
-};
-
-type DealRow = HomeDealRecord & ProductJoinRow;
+function buildProductLookup(records: ProductRecord[] | null | undefined) {
+  return Object.fromEntries(
+    (records ?? []).map((product) => [Number(product.id), product]),
+  ) as Record<number, ProductRecord>;
+}
 
 type ProductCatalogSnapshot = {
   products: StoreProduct[];
@@ -62,7 +65,10 @@ function filterSeedProducts(
 ) {
   return products.filter((product) => {
     const matchesCategory =
-      selectedCategory === "All" || product.category === selectedCategory;
+      selectedCategory === "All" ||
+      normalizeProductCategoryLabels(product.category, product.categories).includes(
+        selectedCategory,
+      );
     const normalizedQuery = searchQuery.trim().toLowerCase();
     const matchesSearch =
       normalizedQuery === "" ||
@@ -71,6 +77,108 @@ function filterSeedProducts(
 
     return matchesCategory && matchesSearch;
   });
+}
+
+function applyProductCategoryAssignments(
+  records: ProductRecord[],
+  assignments: ProductCategoryAssignmentRecord[],
+) {
+  const assignmentsByProductId = assignments.reduce<Record<number, string[]>>(
+    (accumulator, assignment) => {
+      const label = extractAssignedCategoryLabel(assignment);
+      if (!label) {
+        return accumulator;
+      }
+
+      const productId = Number(assignment.product_id);
+      const existing = accumulator[productId] ?? [];
+      existing.push(label);
+      accumulator[productId] = existing;
+      return accumulator;
+    },
+    {},
+  );
+
+  return records.map((record) => ({
+    ...record,
+    categories: normalizeProductCategoryLabels(
+      record.category,
+      assignmentsByProductId[Number(record.id)],
+    ),
+  }));
+}
+
+async function getProductCategoryAssignmentsForProducts(
+  client: ReturnType<typeof createSupabaseServerClient>,
+  productIds: number[],
+) {
+  if (!client || productIds.length === 0) {
+    return [] as ProductCategoryAssignmentRecord[];
+  }
+
+  const { data, error } = await client
+    .from("product_category_assignments")
+    .select("product_id, category_id, product_categories(label, sort_order, is_active)")
+    .in("product_id", productIds);
+
+  if (error?.code === "42P01") {
+    return [] as ProductCategoryAssignmentRecord[];
+  }
+
+  if (error || !data) {
+    return [] as ProductCategoryAssignmentRecord[];
+  }
+
+  return data as ProductCategoryAssignmentRecord[];
+}
+
+async function getProductIdsForSelectedCategory(
+  client: ReturnType<typeof createSupabaseServerClient>,
+  selectedCategory: string,
+) {
+  if (!client || selectedCategory === "All") {
+    return null as number[] | null;
+  }
+
+  const { data: categoryRows, error: categoryError } = await client
+    .from("product_categories")
+    .select("id")
+    .eq("label", selectedCategory)
+    .limit(1);
+
+  if (categoryError?.code === "42P01") {
+    return null;
+  }
+
+  if (categoryError || !categoryRows?.length) {
+    return [] as number[];
+  }
+
+  const categoryId = categoryRows[0]?.id;
+  if (!categoryId) {
+    return [] as number[];
+  }
+
+  const { data: assignmentRows, error: assignmentError } = await client
+    .from("product_category_assignments")
+    .select("product_id")
+    .eq("category_id", categoryId);
+
+  if (assignmentError?.code === "42P01") {
+    return null;
+  }
+
+  if (assignmentError || !assignmentRows) {
+    return [] as number[];
+  }
+
+  return Array.from(
+    new Set(
+      assignmentRows
+        .map((assignment) => Number(assignment.product_id))
+        .filter((productId) => Number.isFinite(productId)),
+    ),
+  );
 }
 
 function isDealActive(deal: HomeDealRecord) {
@@ -108,16 +216,11 @@ function buildFallbackDeals() {
   })) satisfies HomepageDeal[];
 }
 
-function mapHomepageDeals(
-  data: DealRow[],
-  fallbackProductsById?: Record<number, ProductRecord>,
-) {
+function mapHomepageDeals(data: HomeDealRecord[], productsById?: Record<number, ProductRecord>) {
   return data
     .filter((deal) => isDealActive(deal))
     .flatMap((deal) => {
-      const productRecord = (Array.isArray(deal.products)
-        ? deal.products[0]
-        : deal.products) ?? fallbackProductsById?.[Number(deal.product_id)] ?? null;
+      const productRecord = productsById?.[Number(deal.product_id)] ?? null;
       if (!productRecord) {
         return [];
       }
@@ -231,7 +334,21 @@ const getProductCatalogPageCached = unstable_cache(
     }
 
     if (selectedCategory !== "All") {
-      query = query.eq("category", selectedCategory);
+      const matchingProductIds = await getProductIdsForSelectedCategory(
+        client,
+        selectedCategory,
+      );
+
+      if (matchingProductIds === null) {
+        query = query.eq("category", selectedCategory);
+      } else if (matchingProductIds.length === 0) {
+        return {
+          products: [],
+          totalCount: 0,
+        } satisfies ProductCatalogSnapshot;
+      } else {
+        query = query.in("id", matchingProductIds);
+      }
     }
 
     if (searchQuery.trim()) {
@@ -250,8 +367,15 @@ const getProductCatalogPageCached = unstable_cache(
       } satisfies ProductCatalogSnapshot;
     }
 
+    const productRows = data as ProductRecord[];
+    const assignments = await getProductCategoryAssignmentsForProducts(
+      client,
+      productRows.map((product) => Number(product.id)),
+    );
+    const enrichedProducts = applyProductCategoryAssignments(productRows, assignments);
+
     return {
-      products: (data as ProductRecord[]).map(mapProductRecord),
+      products: enrichedProducts.map(mapProductRecord),
       totalCount: count ?? data.length,
     } satisfies ProductCatalogSnapshot;
   },
@@ -295,9 +419,13 @@ const getProductCategoriesCached = unstable_cache(
     const productCategories =
       (productResult.error
         ? []
-        : ((productResult.data ?? []) as Array<{ category?: string | null }>))
-        .map((product) => product.category?.trim() ?? "")
-        .filter(Boolean);
+        : ((productResult.data ?? []) as Array<{
+            categories?: string[] | null;
+            category?: string | null;
+          }>))
+        .flatMap((product) =>
+          normalizeProductCategoryLabels(product.category, product.categories),
+        );
 
     return {
       categories: buildFilterCategoryOptions({
@@ -323,7 +451,7 @@ const getHomepageDealsCached = unstable_cache(
 
     const { data, error } = await client
       .from("homepage_deals")
-      .select("*, products(*)")
+      .select("*")
       .eq("is_active", true)
       .order("sort_order", { ascending: true });
 
@@ -331,28 +459,26 @@ const getHomepageDealsCached = unstable_cache(
       return buildFallbackDeals();
     }
 
-    const dealRows = data as DealRow[];
-    const missingProductIds = dealRows
-      .filter((deal) => !deal.products)
-      .map((deal) => Number(deal.product_id))
-      .filter((productId) => Number.isFinite(productId));
-    let fallbackProductsById: Record<number, ProductRecord> | undefined;
+    const dealRows = data as HomeDealRecord[];
+    const productIds = Array.from(
+      new Set(
+        dealRows
+          .map((deal) => Number(deal.product_id))
+          .filter((productId) => Number.isFinite(productId)),
+      ),
+    );
+    let productsById: Record<number, ProductRecord> | undefined;
 
-    if (missingProductIds.length > 0) {
-      const { data: fallbackProductRows } = await client
+    if (productIds.length > 0) {
+      const { data: productRows } = await client
         .from("products")
         .select("*")
-        .in("id", missingProductIds);
+        .in("id", productIds);
 
-      fallbackProductsById = Object.fromEntries(
-        ((fallbackProductRows as ProductRecord[] | null) ?? []).map((product) => [
-          Number(product.id),
-          product,
-        ]),
-      ) as Record<number, ProductRecord>;
+      productsById = buildProductLookup((productRows as ProductRecord[] | null) ?? []);
     }
 
-    const mappedDeals = mapHomepageDeals(dealRows, fallbackProductsById);
+    const mappedDeals = mapHomepageDeals(dealRows, productsById);
 
     return mappedDeals.length > 0 ? mappedDeals : buildFallbackDeals();
   },
@@ -542,7 +668,7 @@ export async function getPublicProductCatalogPage(options?: {
   selectedCategory?: string;
 }) {
   const page = options?.page ?? 1;
-  const pageSize = options?.pageSize ?? 16;
+  const pageSize = options?.pageSize ?? 20;
   const onlyInStock = options?.onlyInStock ?? false;
   const selectedCategory = options?.selectedCategory ?? "All";
   const searchQuery = options?.searchQuery ?? "";

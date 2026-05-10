@@ -24,6 +24,12 @@ export function ProductCard({
   addLabel = "Add to Cart",
 }: ProductCardProps) {
   const useCompactAddButton = addLabel.length > 12;
+  const productCategories =
+    product.categories && product.categories.length > 0
+      ? product.categories
+      : [product.category];
+  const primaryCategory = productCategories[0] ?? product.category;
+  const extraCategoryCount = Math.max(productCategories.length - 1, 0);
 
   return (
     <Card className="flex h-full flex-col overflow-hidden transition-all hover:shadow-lg">
@@ -39,10 +45,15 @@ export function ProductCard({
         />
       </button>
       <CardContent className="flex flex-1 flex-col p-3 sm:p-4">
-        <div className="mb-2">
+        <div className="mb-2 flex flex-wrap gap-2">
           <Badge variant="secondary" className="text-xs">
-            {product.category}
+            {primaryCategory}
           </Badge>
+          {extraCategoryCount > 0 ? (
+            <Badge variant="outline" className="text-xs">
+              +{extraCategoryCount} more
+            </Badge>
+          ) : null}
         </div>
         <button
           type="button"

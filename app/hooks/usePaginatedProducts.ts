@@ -8,6 +8,11 @@ import {
   type ProductRecord,
   type StoreProduct,
 } from "../../lib/commerce";
+import {
+  extractAssignedCategoryLabel,
+  normalizeProductCategoryLabels,
+  type ProductCategoryAssignmentRecord,
+} from "../../lib/productCategories";
 import { hasSupabaseEnv, supabase } from "../lib/supabase";
 
 interface UsePaginatedProductsOptions {
@@ -104,7 +109,10 @@ function filterSeedProducts(
 ) {
   return products.filter((product) => {
     const matchesCategory =
-      selectedCategory === "All" || product.category === selectedCategory;
+      selectedCategory === "All" ||
+      normalizeProductCategoryLabels(product.category, product.categories).includes(
+        selectedCategory,
+      );
     const matchesSearch =
       searchQuery.trim() === "" ||
       product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -114,6 +122,98 @@ function filterSeedProducts(
   });
 }
 
+function applyProductCategoryAssignments(
+  records: ProductRecord[],
+  assignments: ProductCategoryAssignmentRecord[],
+) {
+  const assignmentsByProductId = assignments.reduce<Record<number, string[]>>(
+    (accumulator, assignment) => {
+      const label = extractAssignedCategoryLabel(assignment);
+      if (!label) {
+        return accumulator;
+      }
+
+      const productId = Number(assignment.product_id);
+      const existing = accumulator[productId] ?? [];
+      existing.push(label);
+      accumulator[productId] = existing;
+      return accumulator;
+    },
+    {},
+  );
+
+  return records.map((record) => ({
+    ...record,
+    categories: normalizeProductCategoryLabels(
+      record.category,
+      assignmentsByProductId[Number(record.id)],
+    ),
+  }));
+}
+
+async function getProductCategoryAssignmentsForProducts(productIds: number[]) {
+  if (productIds.length === 0) {
+    return [] as ProductCategoryAssignmentRecord[];
+  }
+
+  const { data, error } = await supabase
+    .from("product_category_assignments")
+    .select("product_id, category_id, product_categories(label, sort_order, is_active)")
+    .in("product_id", productIds);
+
+  if (error?.code === "42P01") {
+    return [] as ProductCategoryAssignmentRecord[];
+  }
+
+  if (error || !data) {
+    return [] as ProductCategoryAssignmentRecord[];
+  }
+
+  return data as ProductCategoryAssignmentRecord[];
+}
+
+async function getProductIdsForSelectedCategory(selectedCategory: string) {
+  const { data: categoryRows, error: categoryError } = await supabase
+    .from("product_categories")
+    .select("id")
+    .eq("label", selectedCategory)
+    .limit(1);
+
+  if (categoryError?.code === "42P01") {
+    return null as number[] | null;
+  }
+
+  if (categoryError || !categoryRows?.length) {
+    return [] as number[];
+  }
+
+  const categoryId = categoryRows[0]?.id;
+  if (!categoryId) {
+    return [] as number[];
+  }
+
+  const { data: assignmentRows, error: assignmentError } = await supabase
+    .from("product_category_assignments")
+    .select("product_id")
+    .eq("category_id", categoryId);
+
+  if (assignmentError?.code === "42P01") {
+    return null;
+  }
+
+  if (assignmentError || !assignmentRows) {
+    return [] as number[];
+  }
+
+  return Array.from(
+    new Set(
+      assignmentRows
+        .map((assignment) => Number(assignment.product_id))
+        .filter((productId) => Number.isFinite(productId)),
+    ),
+  );
+}
+
 export function usePaginatedProducts({
   initialPage = 1,
   initialProducts,
@@ -121,30 +221,47 @@ export function usePaginatedProducts({
   initialSelectedCategory = CATEGORIES[0],
   initialTotalCount,
   onlyInStock = false,
-  pageSize = 16,
+  pageSize = 20,
 }: UsePaginatedProductsOptions = {}) {
   const fallbackProducts = onlyInStock
     ? SEED_PRODUCTS.filter((product) => product.inStock)
     : SEED_PRODUCTS;
   const hasInitialResult =
     Array.isArray(initialProducts) && typeof initialTotalCount === "number";
+  const initialCacheKey = getPaginatedProductsCacheKey({
+    onlyInStock,
+    page: initialPage,
+    pageSize,
+    searchQuery: initialSearchQuery,
+    selectedCategory: initialSelectedCategory,
+  });
+  const initialCachedResult =
+    !hasInitialResult && hasSupabaseEnv
+      ? readPaginatedProductsCache(initialCacheKey)
+      : undefined;
   const [products, setProducts] = useState<StoreProduct[]>(
-    Array.isArray(initialProducts) ? initialProducts : fallbackProducts,
+    Array.isArray(initialProducts)
+      ? initialProducts
+      : initialCachedResult?.products ?? fallbackProducts,
   );
   const [loading, setLoading] = useState(
-    Boolean(hasSupabaseEnv && !hasInitialResult),
+    Boolean(hasSupabaseEnv && !hasInitialResult && !initialCachedResult),
   );
   const [page, setPage] = useState(initialPage);
   const [totalCount, setTotalCount] = useState(
     typeof initialTotalCount === "number"
       ? initialTotalCount
-      : (initialProducts?.length ?? fallbackProducts.length),
+      : (initialCachedResult?.totalCount ??
+        initialProducts?.length ??
+        fallbackProducts.length),
   );
   const [selectedCategory, setSelectedCategoryState] = useState<string>(
     initialSelectedCategory,
   );
   const [searchQuery, setSearchQueryState] = useState(initialSearchQuery);
-  const skipInitialFetchRef = useRef(hasInitialResult);
+  const skipInitialFetchRef = useRef(
+    hasInitialResult || Boolean(initialCachedResult),
+  );
 
   const totalPages = useMemo(
     () => Math.max(1, Math.ceil(totalCount / pageSize)),
@@ -210,7 +327,23 @@ export function usePaginatedProducts({
     }
 
     if (selectedCategory !== "All") {
-      query = query.eq("category", selectedCategory);
+      const matchingProductIds = await getProductIdsForSelectedCategory(selectedCategory);
+
+      if (matchingProductIds === null) {
+        query = query.eq("category", selectedCategory);
+      } else if (matchingProductIds.length === 0) {
+        setProducts([]);
+        setTotalCount(0);
+        persistPaginatedProductsCache(cacheKey, {
+          page,
+          products: [],
+          totalCount: 0,
+        });
+        setLoading(false);
+        return;
+      } else {
+        query = query.in("id", matchingProductIds);
+      }
     }
 
     if (searchQuery.trim()) {
@@ -239,7 +372,13 @@ export function usePaginatedProducts({
       return;
     }
 
-    const nextProducts = (data as ProductRecord[]).map(mapProductRecord);
+    const productRows = data as ProductRecord[];
+    const assignments = await getProductCategoryAssignmentsForProducts(
+      productRows.map((product) => Number(product.id)),
+    );
+    const nextProducts = applyProductCategoryAssignments(productRows, assignments).map(
+      mapProductRecord,
+    );
     const nextTotalCount = count ?? data.length;
     setProducts(nextProducts);
     setTotalCount(nextTotalCount);

@@ -1,7 +1,7 @@
 import { HomePage } from "./pages/HomePage";
 import {
-  getFeaturedProducts,
   getHomepageDeals,
+  getPublicProductCatalogPage,
   getPublicProductCategories,
 } from "../lib/publicData";
 import { buildPageMetadata } from "../lib/site";
@@ -14,17 +14,24 @@ export const metadata = buildPageMetadata({
 });
 
 export default async function Page() {
-  const [initialFeaturedProducts, initialDeals, initialProductCategories] = await Promise.all([
-    getFeaturedProducts(8, false),
+  const [initialProductPage, initialDeals, initialProductCategories] = await Promise.all([
+    getPublicProductCatalogPage({
+      page: 1,
+      pageSize: 20,
+      onlyInStock: false,
+      selectedCategory: "All",
+      searchQuery: "",
+    }),
     getHomepageDeals(),
     getPublicProductCategories(),
   ]);
 
   return (
     <HomePage
-      initialFeaturedProducts={initialFeaturedProducts}
       initialDeals={initialDeals}
       initialProductCategories={initialProductCategories}
+      initialProducts={initialProductPage.products}
+      initialProductTotalCount={initialProductPage.totalCount}
     />
   );
 }

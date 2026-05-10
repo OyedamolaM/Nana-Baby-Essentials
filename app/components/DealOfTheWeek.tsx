@@ -216,7 +216,7 @@ export function DealOfTheWeek({
                           <div className="flex flex-col gap-2 sm:flex-row">
                             <Button
                               size="lg"
-                              className="min-h-11 flex-1 bg-orange-600 hover:bg-orange-700 text-sm"
+                              className="min-h-11 flex-1 bg-orange-600 text-sm hover:bg-orange-700 !hover:translate-y-0 !hover:shadow-none !active:translate-y-0 !active:scale-100 !active:shadow-none"
                               onClick={() => onAddToCart(displayProduct)}
                             >
                               <ShoppingCart className="mr-1 h-4 w-4" />
@@ -226,7 +226,7 @@ export function DealOfTheWeek({
                             <Button
                               size="lg"
                               variant="outline"
-                              className="min-h-11 text-sm"
+                              className="min-h-11 text-sm !hover:translate-y-0 !hover:shadow-none !active:translate-y-0 !active:scale-100 !active:shadow-none"
                               onClick={() => onViewDetails(displayProduct)}
                             >
                               Details
@@ -246,8 +246,8 @@ export function DealOfTheWeek({
 
             {activeDeals.length > 1 && (
               <>
-                <CarouselPrevious className="-left-3 sm:-left-5 md:-left-12 size-8 sm:size-10 border-orange-200 bg-white text-orange-700 shadow-sm hover:bg-orange-50" />
-                <CarouselNext className="-right-3 sm:-right-5 md:-right-12 size-8 sm:size-10 border-orange-200 bg-white text-orange-700 shadow-sm hover:bg-orange-50" />
+                <CarouselPrevious className="-left-3 sm:-left-5 md:-left-12 size-8 sm:size-10 border-orange-200 bg-white text-orange-700 shadow-sm transition-colors hover:bg-orange-50 !hover:translate-y-0 !hover:shadow-sm !active:translate-y-0 !active:scale-100 !active:shadow-sm" />
+                <CarouselNext className="-right-3 sm:-right-5 md:-right-12 size-8 sm:size-10 border-orange-200 bg-white text-orange-700 shadow-sm transition-colors hover:bg-orange-50 !hover:translate-y-0 !hover:shadow-sm !active:translate-y-0 !active:scale-100 !active:shadow-sm" />
               </>
             )}
           </Carousel>

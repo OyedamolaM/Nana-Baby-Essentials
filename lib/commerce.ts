@@ -1,4 +1,7 @@
+import { normalizeProductCategoryLabels } from "./productCategories";
+
 export interface StoreProduct {
+  categories?: string[];
   id: number;
   name: string;
   slug: string;
@@ -14,6 +17,7 @@ export interface StoreProduct {
 }
 
 export interface ProductRecord {
+  categories?: string[] | null;
   id: number;
   name: string;
   slug?: string | null;
@@ -258,15 +262,17 @@ export function getProductCostPrice(record: ProductRecord) {
 export function mapProductRecord(record: ProductRecord): StoreProduct {
   const sellingPrice = getProductSellingPrice(record);
   const costPrice = getProductCostPrice(record);
+  const categories = normalizeProductCategoryLabels(record.category, record.categories);
 
   return {
+    categories,
     id: Number(record.id),
     name: record.name,
     slug: record.slug?.trim() || createProductSlug(record.name) || `product-${record.id}`,
     price: sellingPrice,
     sellingPrice,
     costPrice,
-    category: record.category,
+    category: categories[0] ?? record.category,
     image: record.image,
     description: record.description,
     inStock: Boolean(record.in_stock),

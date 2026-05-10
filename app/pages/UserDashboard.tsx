@@ -86,6 +86,7 @@ type RegistryRecord = {
 type DashboardCacheEntry = {
   campaignOptOut: boolean;
   fullName: string;
+  hasRegistryData: boolean;
   orders: UserOrder[];
   phone: string;
   registries: RegistryRecord[];
@@ -216,7 +217,11 @@ export function UserDashboard({
 }) {
   const router = useRouter();
   const { user, signOut, updateProfile, loading: authLoading } = useAuth();
-  const cachedEntry = user ? readDashboardCacheEntry(user.id) : undefined;
+  const userId = user?.id ?? null;
+  const cachedEntry = useMemo(
+    () => (userId ? readDashboardCacheEntry(userId) : undefined),
+    [userId],
+  );
   const [orders, setOrders] = useState<UserOrder[]>(cachedEntry?.orders ?? []);
   const [registries, setRegistries] = useState<RegistryRecord[]>(cachedEntry?.registries ?? []);
   const [registryItemsByRegistry, setRegistryItemsByRegistry] = useState<
@@ -248,8 +253,26 @@ export function UserDashboard({
   const [profileEditOpen, setProfileEditOpen] = useState(false);
   const [savingRegistryStatus, setSavingRegistryStatus] = useState(false);
   const [savingCampaignPreference, setSavingCampaignPreference] = useState(false);
+  const [activeTab, setActiveTab] = useState<DashboardTab>(initialTab);
   const loadRequestIdRef = useRef(0);
   const initialLoadKeyRef = useRef<string | null>(null);
+  const registryItemsByRegistryRef = useRef(cachedEntry?.registryItemsByRegistry ?? {});
+  const registrySummariesRef = useRef(cachedEntry?.registrySummaries ?? {});
+  const registryPaymentActivitiesRef = useRef(
+    cachedEntry?.registryPaymentActivities ?? {},
+  );
+
+  useEffect(() => {
+    registryItemsByRegistryRef.current = registryItemsByRegistry;
+  }, [registryItemsByRegistry]);
+
+  useEffect(() => {
+    registrySummariesRef.current = registrySummaries;
+  }, [registrySummaries]);
+
+  useEffect(() => {
+    registryPaymentActivitiesRef.current = registryPaymentActivities;
+  }, [registryPaymentActivities]);
 
   useEffect(() => {
     if (!cachedEntry) {
@@ -284,9 +307,12 @@ export function UserDashboard({
     () => orders.filter((order) => order.status === "paid"),
     [orders],
   );
-  const shouldLoadRegistryData = initialTab === "registries" || initialTab === "profile";
+  const shouldLoadRegistryData = activeTab === "registries" || activeTab === "profile";
+  const hasCurrentTabCache = Boolean(
+    cachedEntry && (!shouldLoadRegistryData || cachedEntry.hasRegistryData),
+  );
   const loadUserData = useCallback(async (showSpinner = false) => {
-    if (!user) {
+    if (!userId) {
       return;
     }
 
@@ -298,17 +324,17 @@ export function UserDashboard({
     }
 
     const [{ data: profileData }, { data: ordersData }, { data: registriesData }] = await Promise.all([
-      supabase.from("user_profiles").select("*").eq("id", user.id).maybeSingle(),
+      supabase.from("user_profiles").select("*").eq("id", userId).maybeSingle(),
       supabase
         .from("orders")
         .select("*")
-        .eq("user_id", user.id)
+        .eq("user_id", userId)
         .order("created_at", { ascending: false }),
       shouldLoadRegistryData
         ? supabase
             .from("registries")
             .select("*")
-            .eq("user_id", user.id)
+            .eq("user_id", userId)
             .order("created_at", { ascending: false })
         : Promise.resolve({ data: [] as RegistryRecord[] }),
     ]);
@@ -334,10 +360,12 @@ export function UserDashboard({
     setOrders((ordersData as UserOrder[] | null) ?? []);
     setRegistries(typedRegistries);
 
-    let registryItemsById: Record<string, RegistryItem[]> = cachedEntry?.registryItemsByRegistry ?? {};
-    let registrySummaryMap: Record<string, RegistrySummary> = cachedEntry?.registrySummaries ?? {};
+    let registryItemsById: Record<string, RegistryItem[]> =
+      registryItemsByRegistryRef.current;
+    let registrySummaryMap: Record<string, RegistrySummary> =
+      registrySummariesRef.current;
     let registryPaymentsMap: Record<string, RegistryPaymentActivity[]> =
-      cachedEntry?.registryPaymentActivities ?? {};
+      registryPaymentActivitiesRef.current;
     if (shouldLoadRegistryData && typedRegistries.length > 0) {
       const registryIds = typedRegistries.map((registry) => registry.id);
       const [
@@ -425,18 +453,15 @@ export function UserDashboard({
         },
         {},
       );
-    } else if (!shouldLoadRegistryData) {
-      registryItemsById = cachedEntry?.registryItemsByRegistry ?? {};
-      registrySummaryMap = cachedEntry?.registrySummaries ?? {};
-      registryPaymentsMap = cachedEntry?.registryPaymentActivities ?? {};
     }
 
     setRegistryItemsByRegistry(registryItemsById);
     setRegistrySummaries(registrySummaryMap);
     setRegistryPaymentActivities(registryPaymentsMap);
-    persistDashboardCacheEntry(user.id, {
+    persistDashboardCacheEntry(userId, {
       campaignOptOut: Boolean(typedProfile?.campaign_opt_out),
       fullName: typedProfile?.full_name ?? "",
+      hasRegistryData: shouldLoadRegistryData,
       orders: (ordersData as UserOrder[] | null) ?? [],
       phone: typedProfile?.phone ?? "",
       registries: typedRegistries,
@@ -448,24 +473,35 @@ export function UserDashboard({
       shippingState: typedProfile?.shipping_address?.state ?? "",
     });
     setLoading(false);
-  }, [cachedEntry, shouldLoadRegistryData, user]);
+  }, [shouldLoadRegistryData, userId]);
 
   useEffect(() => {
-    if (!user || !hasSupabaseEnv) {
+    if (!userId || !hasSupabaseEnv) {
       return;
     }
 
-    const requestKey = `${user.id}:${initialTab}:${cachedEntry ? "cached" : "fresh"}`;
+    const isInitialDashboardLoad = initialLoadKeyRef.current === null;
+    const requestKey = `${userId}:${activeTab}`;
     if (initialLoadKeyRef.current === requestKey) {
       return;
     }
 
     initialLoadKeyRef.current = requestKey;
 
+    if (hasCurrentTabCache) {
+      const frameId = window.requestAnimationFrame(() => {
+        setLoading(false);
+      });
+
+      return () => {
+        window.cancelAnimationFrame(frameId);
+      };
+    }
+
     queueMicrotask(() => {
-      void loadUserData(!cachedEntry);
+      void loadUserData(isInitialDashboardLoad && !cachedEntry);
     });
-  }, [cachedEntry, initialTab, loadUserData, user]);
+  }, [activeTab, cachedEntry, hasCurrentTabCache, loadUserData, userId]);
 
   const handleShareRegistry = async (registry: RegistryRecord) => {
     const shareUrl = `${window.location.origin}/registry/${registry.share_code}`;
@@ -750,7 +786,14 @@ export function UserDashboard({
 
   const handleTabChange = (nextTab: string) => {
     const normalizedTab = nextTab as DashboardTab;
-    router.push(getDashboardTabRoute(normalizedTab));
+    setActiveTab(normalizedTab);
+
+    if (typeof window !== "undefined") {
+      const nextRoute = getDashboardTabRoute(normalizedTab);
+      if (window.location.pathname !== nextRoute) {
+        window.history.replaceState(window.history.state, "", nextRoute);
+      }
+    }
   };
 
   if (authLoading) {
@@ -791,7 +834,7 @@ export function UserDashboard({
       <div className="mx-auto max-w-4xl">
         <h1 className="mb-8 text-3xl font-bold">My Dashboard</h1>
 
-        <Tabs value={initialTab} onValueChange={handleTabChange} className="space-y-6">
+        <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-6">
           <TabsList className="flex w-full overflow-x-auto gap-2 justify-start no-scrollbar h-14 items-center px-2">
             <TabsTrigger
               value="orders"

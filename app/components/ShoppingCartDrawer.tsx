@@ -14,6 +14,7 @@ import { Separator } from "./ui/separator";
 import { Product } from "./ProductCard";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
 import { formatNaira, formatNairaAmount, toNairaAmount } from "../../lib/commerce";
+import { Input } from "./ui/input";
 
 interface CartItem extends Product {
   quantity: number;
@@ -63,7 +64,10 @@ export function ShoppingCartDrawer({
           ) : (
             <div className="space-y-4">
               {cartItems.map((item) => (
-                <div key={item.id} className="flex gap-4 pb-4 border-b">
+                <div
+                  key={item.id}
+                  className="flex gap-4 rounded-2xl border border-gray-200 p-4"
+                >
                   <ImageWithFallback
                     src={item.image}
                     alt={item.name}
@@ -72,7 +76,7 @@ export function ShoppingCartDrawer({
                   <div className="flex-1">
                     <h4 className="font-semibold text-sm">{item.name}</h4>
                     <p className="text-sm text-gray-600">{formatNaira(item.price)}</p>
-                    <div className="flex items-center gap-2 mt-2">
+                    <div className="mt-3 flex items-center gap-2">
                       <Button
                         variant="outline"
                         size="sm"
@@ -82,7 +86,26 @@ export function ShoppingCartDrawer({
                       >
                         -
                       </Button>
-                      <span className="text-sm w-8 text-center">{item.quantity}</span>
+                      <Input
+                        type="number"
+                        min="1"
+                        inputMode="numeric"
+                        value={item.quantity}
+                        onChange={(event) => {
+                          const nextValue = event.target.value.trim();
+                          if (!nextValue) {
+                            return;
+                          }
+
+                          const nextQuantity = Math.floor(Number(nextValue));
+                          if (!Number.isFinite(nextQuantity) || nextQuantity <= 0) {
+                            return;
+                          }
+
+                          onUpdateQuantity(item.id, nextQuantity);
+                        }}
+                        className="h-8 w-20 text-center"
+                      />
                       <Button
                         variant="outline"
                         size="sm"

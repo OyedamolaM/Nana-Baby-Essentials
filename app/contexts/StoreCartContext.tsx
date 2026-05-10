@@ -53,7 +53,7 @@ function normalizeCartQuantity(quantity: unknown) {
     return 0;
   }
 
-  return Math.min(normalizedQuantity, 99);
+  return Math.min(normalizedQuantity, 9999);
 }
 
 function isStoreCartItem(value: unknown): value is StoreCartItem {

@@ -92,7 +92,7 @@ export function ProductsPage({
     totalCount,
     totalPages,
   } = usePaginatedProducts({
-    pageSize: 16,
+    pageSize: 20,
     initialProducts,
     initialTotalCount,
   });

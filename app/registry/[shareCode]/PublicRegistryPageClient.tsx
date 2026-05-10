@@ -109,41 +109,27 @@ export function PublicRegistryPageClient({
   initialShippingAddress,
   shareCode,
 }: PublicRegistryPageClientProps) {
+  const cachedEntry = useMemo(
+    () => (initialRegistry || !shareCode ? undefined : readPublicRegistryCache(shareCode)),
+    [initialRegistry, shareCode],
+  );
   const [loading, setLoading] = useState(() =>
-    Boolean(!initialRegistry && shareCode && hasSupabaseEnv),
+    Boolean(!initialRegistry && !cachedEntry?.registry && shareCode && hasSupabaseEnv),
   );
-  const [registry, setRegistry] = useState<RegistryRecord | null>(initialRegistry);
-  const [registryItems, setRegistryItems] = useState<RegistryItem[]>(initialItems);
+  const [registry, setRegistry] = useState<RegistryRecord | null>(
+    initialRegistry ?? cachedEntry?.registry ?? null,
+  );
+  const [registryItems, setRegistryItems] = useState<RegistryItem[]>(
+    initialRegistry ? initialItems : cachedEntry?.items ?? initialItems,
+  );
   const [shippingAddress, setShippingAddress] = useState<ShippingAddress | null>(
-    initialShippingAddress,
+    initialRegistry ? initialShippingAddress : cachedEntry?.shippingAddress ?? initialShippingAddress,
   );
-  const skipInitialLoadRef = useRef(Boolean(initialRegistry));
+  const skipInitialLoadRef = useRef(Boolean(initialRegistry || cachedEntry?.registry));
   const [giftQuantities, setGiftQuantities] = useState<Record<string, number>>({});
   const [paymentAmountInput, setPaymentAmountInput] = useState("");
   const [giftModalOpen, setGiftModalOpen] = useState(false);
   const [paymentMode, setPaymentMode] = useState<"auto" | "custom">("auto");
-
-  useEffect(() => {
-    if (initialRegistry || !shareCode) {
-      return;
-    }
-
-    const cachedEntry = readPublicRegistryCache(shareCode);
-    if (!cachedEntry) {
-      return;
-    }
-
-    const frameId = window.requestAnimationFrame(() => {
-      setRegistry(cachedEntry.registry);
-      setRegistryItems(cachedEntry.items);
-      setShippingAddress(cachedEntry.shippingAddress);
-      setLoading(false);
-    });
-
-    return () => {
-      window.cancelAnimationFrame(frameId);
-    };
-  }, [initialRegistry, shareCode]);
 
   useEffect(() => {
     if (!shareCode || !hasSupabaseEnv) {

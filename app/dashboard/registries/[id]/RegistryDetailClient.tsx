@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Download, Gift, Pencil, Share2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
@@ -136,7 +136,12 @@ function formatDateTime(value?: string | null) {
 export function RegistryDetailClient({ registryId }: { registryId: string }) {
   const router = useRouter();
   const { user, loading: authLoading, isAdmin, signOut } = useAuth();
-  const cachedEntry = readRegistryDetailCacheEntry(registryId);
+  const userId = user?.id ?? null;
+  const cachedEntry = useMemo(
+    () => readRegistryDetailCacheEntry(registryId),
+    [registryId],
+  );
+  const initialRegistryLoadKeyRef = useRef<string | null>(null);
 
   const [loading, setLoading] = useState(Boolean(user && hasSupabaseEnv && !cachedEntry));
   const [registry, setRegistry] = useState<RegistryRecord | null>(cachedEntry?.registry ?? null);
@@ -165,7 +170,7 @@ export function RegistryDetailClient({ registryId }: { registryId: string }) {
   }, []);
 
   const loadRegistry = useCallback(async (showSpinner = false) => {
-    if (!user || !hasSupabaseEnv) {
+    if (!userId || !hasSupabaseEnv) {
       return;
     }
 
@@ -177,13 +182,13 @@ export function RegistryDetailClient({ registryId }: { registryId: string }) {
     const registryLookupQuery = supabase
       .from("registries")
       .select("*")
-      .eq("user_id", user.id);
+      .eq("user_id", userId);
 
     const [{ data: registriesData }, { data: registryData }] = await Promise.all([
       supabase
         .from("registries")
         .select("*")
-        .eq("user_id", user.id)
+        .eq("user_id", userId)
         .order("created_at", { ascending: false }),
       lookup.field === "id"
         ? registryLookupQuery.eq("id", lookup.value).maybeSingle()
@@ -265,17 +270,34 @@ export function RegistryDetailClient({ registryId }: { registryId: string }) {
       registryItems: items,
     });
     setLoading(false);
-  }, [registryId, user]);
+  }, [registryId, userId]);
 
   useEffect(() => {
-    if (!user || !hasSupabaseEnv) {
+    if (!userId || !hasSupabaseEnv) {
       return;
     }
 
+    const requestKey = `${userId}:${registryId}`;
+    if (initialRegistryLoadKeyRef.current === requestKey) {
+      return;
+    }
+
+    initialRegistryLoadKeyRef.current = requestKey;
+
+    if (cachedEntry) {
+      const frameId = window.requestAnimationFrame(() => {
+        setLoading(false);
+      });
+
+      return () => {
+        window.cancelAnimationFrame(frameId);
+      };
+    }
+
     queueMicrotask(() => {
-      void loadRegistry(!cachedEntry);
+      void loadRegistry(true);
     });
-  }, [cachedEntry, loadRegistry, user]);
+  }, [cachedEntry, loadRegistry, registryId, userId]);
 
   useEffect(() => {
     if (!cachedEntry) {

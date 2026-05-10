@@ -20,7 +20,6 @@ import { FeaturedCategoryTabs } from "../components/featured/FeaturedCategoryTab
 import { RegistryCreateModal } from "../components/registry/RegistryCreateModal";
 import { useAuth } from "../contexts/AuthContext";
 import { useStoreCart } from "../contexts/StoreCartContext";
-import { useFeaturedProducts } from "../hooks/usePaginatedProducts";
 import { type StoreProduct } from "../../lib/commerce";
 import { type HomepageDeal } from "../../lib/content";
 import {
@@ -34,13 +33,15 @@ type AuthTab = "login" | "signup";
 interface HomePageProps {
   initialDeals?: HomepageDeal[];
   initialProductCategories?: string[];
-  initialFeaturedProducts?: StoreProduct[];
+  initialProducts?: StoreProduct[];
+  initialProductTotalCount?: number;
 }
 
 export function HomePage({
   initialDeals,
   initialProductCategories,
-  initialFeaturedProducts,
+  initialProducts,
+  initialProductTotalCount,
 }: HomePageProps) {
   const router = useRouter();
   const { isAdmin, signOut, user } = useAuth();
@@ -59,11 +60,6 @@ export function HomePage({
   const [productDetailOpen, setProductDetailOpen] = useState(false);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [registryCreateOpen, setRegistryCreateOpen] = useState(false);
-  const featuredProducts = useFeaturedProducts({
-    onlyInStock: false,
-    limit: 8,
-    initialProducts: initialFeaturedProducts,
-  });
 
   useEffect(() => {
     const reopenContext = readProductDetailReturnContext();
@@ -210,14 +206,14 @@ export function HomePage({
 
         <FeaturedCategoryTabs
           categories={initialProductCategories}
+          initialProducts={initialProducts}
+          initialTotalCount={initialProductTotalCount}
           sectionId="products"
-          products={featuredProducts}
           onAddToCart={handleAddToCart}
-          onSearch={() => router.push("/products?focusSearch=1")}
           onViewAll={() => router.push("/products")}
           onViewProduct={handleViewProduct}
           sectionTitle="Products"
-          sectionSubtitle="Browse our baby essentials by category, including an easy all-products view."
+          sectionSubtitle="Browse all baby essentials by category, search within the section, and move through the catalog without leaving the homepage."
         />
 
         <section id="about">

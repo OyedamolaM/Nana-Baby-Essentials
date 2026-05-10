@@ -78,7 +78,7 @@ export function RegistryCartModal({
     >
       <SheetContent
         side="right"
-        className="flex h-full w-full flex-col overflow-hidden px-0 sm:max-w-xl"
+        className="flex h-full flex-col overflow-hidden px-0 sm:max-w-xl"
       >
         <SheetHeader className="border-b px-5 pb-4 pt-6 sm:px-6">
           <SheetTitle>Registry Cart</SheetTitle>

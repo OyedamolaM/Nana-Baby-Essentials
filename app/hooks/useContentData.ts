@@ -14,11 +14,11 @@ import {
 } from "../../lib/commerce";
 import { hasSupabaseEnv, supabase } from "../lib/supabase";
 
-type ProductJoinRow = {
-  products: ProductRecord | ProductRecord[] | null;
-};
-
-type DealRow = HomeDealRecord & ProductJoinRow;
+function buildProductLookup(records: ProductRecord[] | null | undefined) {
+  return Object.fromEntries(
+    (records ?? []).map((product) => [Number(product.id), product]),
+  ) as Record<number, ProductRecord>;
+}
 
 function isDealActive(deal: HomeDealRecord) {
   const now = Date.now();
@@ -56,15 +56,13 @@ function buildFallbackDeals() {
 }
 
 function mapHomepageDeals(
-  data: DealRow[],
-  fallbackProductsById?: Record<number, ProductRecord>,
+  data: HomeDealRecord[],
+  productsById?: Record<number, ProductRecord>,
 ) {
   return data
     .filter((deal) => isDealActive(deal))
     .flatMap((deal) => {
-      const productRecord = (Array.isArray(deal.products)
-        ? deal.products[0]
-        : deal.products) ?? fallbackProductsById?.[Number(deal.product_id)] ?? null;
+      const productRecord = productsById?.[Number(deal.product_id)] ?? null;
       if (!productRecord) {
         return [];
       }
@@ -104,7 +102,7 @@ export function useHomepageDeals(initialDeals?: HomepageDeal[]) {
     const loadDeals = async () => {
       const { data, error } = await supabase
         .from("homepage_deals")
-        .select("*, products(*)")
+        .select("*")
         .eq("is_active", true)
         .order("sort_order", { ascending: true });
 
@@ -115,28 +113,26 @@ export function useHomepageDeals(initialDeals?: HomepageDeal[]) {
         return;
       }
 
-      const dealRows = data as DealRow[];
-      const missingProductIds = dealRows
-        .filter((deal) => !deal.products)
-        .map((deal) => Number(deal.product_id))
-        .filter((productId) => Number.isFinite(productId));
-      let fallbackProductsById: Record<number, ProductRecord> | undefined;
+      const dealRows = data as HomeDealRecord[];
+      const productIds = Array.from(
+        new Set(
+          dealRows
+            .map((deal) => Number(deal.product_id))
+            .filter((productId) => Number.isFinite(productId)),
+        ),
+      );
+      let productsById: Record<number, ProductRecord> | undefined;
 
-      if (missingProductIds.length > 0) {
+      if (productIds.length > 0) {
         const { data: productRows } = await supabase
           .from("products")
           .select("*")
-          .in("id", missingProductIds);
+          .in("id", productIds);
 
-        fallbackProductsById = Object.fromEntries(
-          ((productRows as ProductRecord[] | null) ?? []).map((product) => [
-            Number(product.id),
-            product,
-          ]),
-        ) as Record<number, ProductRecord>;
+        productsById = buildProductLookup((productRows as ProductRecord[] | null) ?? []);
       }
 
-      const mappedDeals = mapHomepageDeals(dealRows, fallbackProductsById);
+      const mappedDeals = mapHomepageDeals(dealRows, productsById);
 
       setDeals((currentDeals) => {
         if (mappedDeals.length > 0) {

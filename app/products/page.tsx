@@ -22,7 +22,7 @@ export default async function ProductsRoute({ searchParams }: ProductsRouteProps
   const [{ products, totalCount }, initialCategories] = await Promise.all([
     getPublicProductCatalogPage({
       page: 1,
-      pageSize: 16,
+      pageSize: 20,
       onlyInStock: false,
       selectedCategory: "All",
       searchQuery: "",

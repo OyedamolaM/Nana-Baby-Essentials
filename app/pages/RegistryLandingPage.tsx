@@ -133,6 +133,11 @@ export function RegistryLandingPage({
 }: RegistryLandingPageProps) {
   const router = useRouter();
   const { isAdmin, signOut, user } = useAuth();
+  const userId = user?.id ?? null;
+  const cachedRegistryLandingEntry = useMemo(
+    () => (userId ? readRegistryLandingCache(userId) : undefined),
+    [userId],
+  );
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [authDefaultTab, setAuthDefaultTab] = useState<AuthTab>("signup");
   const [registryCartOpen, setRegistryCartOpen] = useState(false);
@@ -140,7 +145,9 @@ export function RegistryLandingPage({
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [productDetailOpen, setProductDetailOpen] = useState(false);
   const [registryCartItems, setRegistryCartItems] = useState<RegistryCartItem[]>([]);
-  const [myRegistries, setMyRegistries] = useState<RegistryRecord[]>([]);
+  const [myRegistries, setMyRegistries] = useState<RegistryRecord[]>(
+    cachedRegistryLandingEntry?.registries ?? [],
+  );
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const {
     loading: productsLoading,
@@ -153,8 +160,8 @@ export function RegistryLandingPage({
     setSelectedCategory,
     totalPages,
   } = usePaginatedProducts({
-    onlyInStock: true,
-    pageSize: 16,
+    onlyInStock: false,
+    pageSize: 20,
     initialProducts,
     initialTotalCount,
   });
@@ -200,28 +207,30 @@ export function RegistryLandingPage({
     let cancelled = false;
 
     const run = async () => {
-      if (!user || !hasSupabaseEnv) {
+      if (!userId || !hasSupabaseEnv) {
         if (!cancelled) {
           setMyRegistries([]);
         }
         return;
       }
 
-      const cachedEntry = readRegistryLandingCache(user.id);
-      if (cachedEntry && !cancelled) {
-        setMyRegistries(cachedEntry.registries);
+      if (cachedRegistryLandingEntry) {
+        if (!cancelled) {
+          setMyRegistries(cachedRegistryLandingEntry.registries);
+        }
+        return;
       }
 
       const { data } = await supabase
         .from("registries")
         .select("*")
-        .eq("user_id", user.id)
+        .eq("user_id", userId)
         .order("created_at", { ascending: false });
 
       if (!cancelled) {
         const nextRegistries = (data as RegistryRecord[] | null) ?? [];
         setMyRegistries(nextRegistries);
-        persistRegistryLandingCache(user.id, {
+        persistRegistryLandingCache(userId, {
           registries: nextRegistries,
         });
       }
@@ -232,7 +241,7 @@ export function RegistryLandingPage({
     return () => {
       cancelled = true;
     };
-  }, [user]);
+  }, [cachedRegistryLandingEntry, userId]);
 
   const activeRegistries = useMemo(() => {
     return myRegistries.filter((registry) => registry.status !== "closed");
@@ -250,7 +259,6 @@ export function RegistryLandingPage({
 
     const nextItems = addRegistryCartItem(product, quantity);
     setRegistryCartItems(nextItems);
-    setRegistryCartOpen(true);
     toast.success(`${product.name} added to your registry cart.`);
   };
 
@@ -585,18 +593,6 @@ export function RegistryLandingPage({
                   registry is ready.
                 </p>
               </div>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => {
-                  searchInputRef.current?.focus();
-                  searchInputRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
-                }}
-                className="text-[14px] md:px-8 md:text-lg"
-              >
-                <Search className="h-4 w-4" />
-                Search Products
-              </Button>
             </div>
 
             <div className="mx-auto mb-8 max-w-2xl">
