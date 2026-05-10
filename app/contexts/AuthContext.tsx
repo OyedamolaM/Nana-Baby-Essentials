@@ -29,6 +29,7 @@ interface AuthContextType {
     password: string,
     fullName: string,
     phone: string,
+    legalAcceptedAt?: string,
   ) => Promise<{ error: Error | null }>;
   signIn: (
     email: string,
@@ -54,6 +55,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isAdmin, setIsAdmin] = useState(false);
   const [isAccountDisabled, setIsAccountDisabled] = useState(false);
   const latestProfileRef = useRef<UserProfileRecord | null>(null);
+  const currentUserIdRef = useRef<string | null>(null);
 
   const applyProfile = useCallback((nextProfile: UserProfileRecord | null) => {
     latestProfileRef.current = nextProfile;
@@ -227,6 +229,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     supabase.auth.getSession().then(async ({ data: { session } }) => {
       setSession(session);
       setUser(session?.user ?? null);
+      currentUserIdRef.current = session?.user?.id ?? null;
       if (session?.user) {
         await syncUserProfile(session.user, session);
       }
@@ -236,13 +239,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Listen for auth changes
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      if (session?.user) {
-        void syncUserProfile(session.user, session);
-      } else {
+    } = supabase.auth.onAuthStateChange((event, nextSession) => {
+      setSession(nextSession);
+
+      if (!nextSession?.user) {
+        currentUserIdRef.current = null;
+        setUser(null);
         applyProfile(null);
+        return;
+      }
+
+      const previousUserId = currentUserIdRef.current;
+      const nextUserId = nextSession.user.id;
+      const isSameUser = previousUserId === nextUserId;
+
+      currentUserIdRef.current = nextUserId;
+
+      if (event === "USER_UPDATED" || !isSameUser) {
+        setUser(nextSession.user);
+      } else {
+        setUser((currentUser) => currentUser ?? nextSession.user);
+      }
+
+      if (event === "SIGNED_IN" && !isSameUser) {
+        void syncUserProfile(nextSession.user, nextSession);
+      }
+
+      if (event === "USER_UPDATED") {
+        void syncUserProfile(nextSession.user, nextSession);
       }
     });
 
@@ -254,6 +278,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     password: string,
     fullName: string,
     phone: string,
+    legalAcceptedAt?: string,
   ) => {
     if (!hasSupabaseEnv) {
       return { error: new Error("Supabase environment variables are not configured.") };
@@ -286,6 +311,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         data: {
           full_name: normalizedFullName,
           phone: normalizedPhone,
+          privacy_policy_accepted_at: legalAcceptedAt ?? null,
+          terms_of_service_accepted_at: legalAcceptedAt ?? null,
         },
       },
     });

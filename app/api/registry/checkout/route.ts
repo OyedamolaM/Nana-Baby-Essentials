@@ -324,7 +324,7 @@ async function handleInitiateCheckout(
     );
   }
 
-  let extraCashAmount = paymentAmount;
+  let selectedItemsTotal = 0;
   if (selectedItems.length > 0) {
     const selectedItemIds = selectedItems.map((item) => item.registry_item_id);
     const { data: registryItemRows, error: registryItemError } = await adminClient
@@ -352,8 +352,6 @@ async function handleInitiateCheckout(
         unit_price_snapshot?: number | null;
       }> | null) ?? []).map((registryItem) => [registryItem.id, registryItem]),
     );
-
-    let selectedItemsTotal = 0;
 
     for (const selectedItem of selectedItems) {
       const registryItem = selectedRegistryItems.get(selectedItem.registry_item_id);
@@ -387,19 +385,17 @@ async function handleInitiateCheckout(
 
     selectedItemsTotal = roundCurrencyAmount(selectedItemsTotal);
 
-    if (paymentAmount < selectedItemsTotal) {
+    if (paymentAmount > selectedItemsTotal) {
       return jsonError(
-        "Selected product gifts must be paid in full. Increase the amount to cover the selected items, or remove items and make a cash gift instead.",
+        "The custom amount cannot be more than the selected item balance.",
         400,
       );
     }
-
-    extraCashAmount = roundCurrencyAmount(paymentAmount - selectedItemsTotal);
   }
 
   const reference = createPaystackReference();
   const { data, error } = await adminClient.rpc("create_registry_checkout", {
-    p_cash_amount: extraCashAmount,
+    p_cash_amount: paymentAmount,
     p_buyer_email: buyerEmail,
     p_buyer_message: buyerMessage || null,
     p_buyer_name: buyerName,
@@ -411,6 +407,13 @@ async function handleInitiateCheckout(
 
   if (error) {
     if (shouldFallbackRegistryCheckoutRpc(error, "create_registry_checkout")) {
+      if (selectedItems.length > 0 && paymentAmount < selectedItemsTotal) {
+        return jsonError(
+          "Registry partial item payments require the latest registry checkout migration to be applied.",
+          400,
+        );
+      }
+
       const contributionType =
         selectedItems.length > 0 ? (paymentAmount > 0 ? "mixed" : "items") : "cash";
 

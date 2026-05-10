@@ -127,6 +127,7 @@ export function PublicRegistryPageClient({
   );
   const skipInitialLoadRef = useRef(Boolean(initialRegistry || cachedEntry?.registry));
   const [giftQuantities, setGiftQuantities] = useState<Record<string, number>>({});
+  const [selectionOrder, setSelectionOrder] = useState<string[]>([]);
   const [paymentAmountInput, setPaymentAmountInput] = useState("");
   const [giftModalOpen, setGiftModalOpen] = useState(false);
   const [paymentMode, setPaymentMode] = useState<"auto" | "custom">("auto");
@@ -187,19 +188,33 @@ export function PublicRegistryPageClient({
   }, [registry, registryItems, shareCode, shippingAddress]);
 
   const selectedItems = useMemo<RegistryGiftSelection[]>(() => {
-    return registryItems
-      .filter((item) => {
-        return (
-          getRemainingRegistryQuantity(item) > 0 &&
-          getRegistryItemRemainingAmount(item) > 0
-        );
+    const selectableItems = new Map(
+      registryItems
+        .filter((item) => {
+          return (
+            getRemainingRegistryQuantity(item) > 0 &&
+            getRegistryItemRemainingAmount(item) > 0
+          );
+        })
+        .map((item) => [item.id, item]),
+    );
+
+    return selectionOrder
+      .map((itemId) => {
+        const item = selectableItems.get(itemId);
+        if (!item) {
+          return null;
+        }
+
+        return {
+          item,
+          quantity: giftQuantities[item.id] ?? 0,
+        };
       })
-      .map((item) => ({
-        item,
-        quantity: giftQuantities[item.id] ?? 0,
-      }))
-      .filter((selection) => selection.quantity > 0);
-  }, [giftQuantities, registryItems]);
+      .filter((selection): selection is RegistryGiftSelection => {
+        return Boolean(selection && selection.quantity > 0);
+      });
+  }, [giftQuantities, registryItems, selectionOrder]);
 
   const giftableRegistryItems = useMemo(() => {
     return registryItems.filter((item) => {
@@ -228,7 +243,7 @@ export function PublicRegistryPageClient({
       return 0;
     }
 
-    return Math.round(parsedValue);
+    return Math.round(parsedValue * 100) / 100;
   }, [paymentMode, paymentAmountInput, autoAmount]);
 
   const requestedCount = registryItems.reduce(
@@ -247,18 +262,31 @@ export function PublicRegistryPageClient({
     (sum, item) => sum + getRegistryItemRemainingAmount(item),
     0,
   );
-  const paymentFallsShortOfSelection =
-    selectedItems.length > 0 && paymentAmount < selectedItemsTargetAmount;
+  const paymentExceedsSelectionBalance =
+    selectedItems.length > 0 && paymentAmount > selectedItemsTargetAmount;
   const registryIsClosed = registry?.status === "closed";
 
   const handleQuantityChange = (item: RegistryItem, nextQuantity: number) => {
     const remaining = getRemainingRegistryQuantity(item);
     const clampedQuantity = Math.max(0, Math.min(remaining, nextQuantity));
+    const currentQuantity = giftQuantities[item.id] ?? 0;
 
     setGiftQuantities((current) => ({
       ...current,
       [item.id]: clampedQuantity,
     }));
+
+    setSelectionOrder((current) => {
+      if (clampedQuantity <= 0) {
+        return current.filter((itemId) => itemId !== item.id);
+      }
+
+      if (currentQuantity <= 0 && !current.includes(item.id)) {
+        return [...current, item.id];
+      }
+
+      return current;
+    });
   };
 
   const handleShareRegistry = async () => {
@@ -584,7 +612,7 @@ export function PublicRegistryPageClient({
                                   <div className="text-right sm:text-left">
                                     <p className="text-xs font-semibold text-gray-900 md:text-sm">
                                       {formatNairaAmount(
-                                        toNairaAmount(item.unitPriceSnapshot) * selectedQuantity,
+                                        getRegistryItemSelectionAmount(item, selectedQuantity),
                                       )}
                                     </p>
                                     <p className="text-[10px] text-gray-500 md:text-xs">
@@ -619,7 +647,7 @@ export function PublicRegistryPageClient({
                             {paymentMode === "auto"
                               ? "This amount is automatically calculated from the items you select."
                               : selectedItems.length > 0
-                                ? "Enter an amount that covers the selected items. Anything extra will be added as a cash gift."
+                                ? "Enter how much you want to pay toward the selected items. You can pay part of the selected total, but not more than it."
                                 : "Enter the amount you want to gift to this registry."}
                           </p>
                         </div>
@@ -652,6 +680,11 @@ export function PublicRegistryPageClient({
                           <Input
                             type="number"
                             min="0"
+                            max={
+                              paymentMode === "custom" && selectedItems.length > 0
+                                ? selectedItemsTargetAmount
+                                : undefined
+                            }
                             step="500"
                             disabled={paymentMode === "auto"}
                             placeholder={
@@ -675,7 +708,7 @@ export function PublicRegistryPageClient({
                               {paymentMode === "custom" ? (
                                 <>
                                   <p className="text-sm text-amber-600">
-                                    Enter at least the total value of the selected items. Anything above that becomes an extra cash gift.
+                                    You can pay any amount up to the selected total. Your payment will be applied across the selected items in the order you chose them.
                                   </p>
 
                                   <Button
@@ -689,15 +722,15 @@ export function PublicRegistryPageClient({
                                 </>
                               ) : null}
 
-                              {paymentFallsShortOfSelection ? (
+                              {paymentExceedsSelectionBalance ? (
                                 <p className="text-sm text-red-600">
-                                  The amount must cover the selected items you chose.
+                                  The custom amount cannot be more than the selected item balance.
                                 </p>
                               ) : null}
                             </div>
                           ) : (
                             <p className="text-xs text-gray-400">
-                              Select one or more items to enable checkout.
+                              Enter a custom amount for a general cash gift, or select items to fund specific products.
                             </p>
                           )}
                         </div>
@@ -707,9 +740,8 @@ export function PublicRegistryPageClient({
                             type="button"
                             onClick={() => setGiftModalOpen(true)}
                             disabled={
-                              selectedItems.length === 0 ||
                               paymentAmount <= 0 ||
-                              paymentFallsShortOfSelection
+                              paymentExceedsSelectionBalance
                             }
                             className="w-full bg-black text-white hover:bg-black/90"
                           >
@@ -736,6 +768,7 @@ export function PublicRegistryPageClient({
           paymentAmount={paymentAmount}
           onCheckoutComplete={() => {
             setGiftQuantities({});
+            setSelectionOrder([]);
             setPaymentAmountInput("");
             void reloadRegistryItems();
           }}

@@ -1,10 +1,12 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import { Lock, Mail, Phone, User as UserIcon } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "../../contexts/AuthContext";
 import { Button } from "../ui/button";
+import { Checkbox } from "../ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -37,6 +39,10 @@ export function AuthModal({
   const [signupPassword, setSignupPassword] = useState("");
   const [signupFullName, setSignupFullName] = useState("");
   const [signupPhone, setSignupPhone] = useState("");
+  const [acceptTerms, setAcceptTerms] = useState(false);
+  const [acceptPrivacy, setAcceptPrivacy] = useState(false);
+
+  const signupConsentSatisfied = acceptTerms && acceptPrivacy;
 
   const handleLogin = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -56,13 +62,21 @@ export function AuthModal({
 
   const handleSignup = async (event: React.FormEvent) => {
     event.preventDefault();
+
+    if (!signupConsentSatisfied) {
+      toast.error("Please accept the Terms of Service and Privacy Policy to create an account.");
+      return;
+    }
+
     setLoading(true);
+    const acceptedAt = new Date().toISOString();
 
     const { error } = await signUp(
       signupEmail,
       signupPassword,
       signupFullName,
       signupPhone,
+      acceptedAt,
     );
 
     if (error) {
@@ -75,7 +89,12 @@ export function AuthModal({
     setLoading(false);
   };
 
-  const handleGoogleSignIn = async () => {
+  const handleGoogleSignIn = async (mode: "login" | "signup") => {
+    if (mode === "signup" && !signupConsentSatisfied) {
+      toast.error("Please accept the Terms of Service and Privacy Policy to continue with Google.");
+      return;
+    }
+
     setLoading(true);
     const { error } = await signInWithGoogle();
 
@@ -113,7 +132,7 @@ export function AuthModal({
           </DialogDescription>
         </DialogHeader>
 
-        <Tabs key={defaultTab} defaultValue={defaultTab} className="w-full">
+        <Tabs key={`${open}-${defaultTab}`} defaultValue={defaultTab} className="w-full">
           <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="login">Login</TabsTrigger>
             <TabsTrigger value="signup">Sign Up</TabsTrigger>
@@ -184,7 +203,7 @@ export function AuthModal({
                 type="button"
                 variant="outline"
                 className="w-full"
-                onClick={handleGoogleSignIn}
+                onClick={() => handleGoogleSignIn("login")}
                 disabled={loading}
               >
                 <svg className="mr-2 h-4 w-4" viewBox="0 0 24 24">
@@ -278,7 +297,63 @@ export function AuthModal({
                 <p className="text-xs text-gray-500">Minimum 6 characters</p>
               </div>
 
-              <Button type="submit" className="w-full" disabled={loading}>
+              <div className="space-y-3 rounded-xl border border-rose-100 bg-rose-50/60 p-4">
+                <div className="flex items-start gap-3">
+                  <Checkbox
+                    id="accept-terms"
+                    checked={acceptTerms}
+                    onCheckedChange={(checked) => setAcceptTerms(Boolean(checked))}
+                    className="mt-1"
+                  />
+                  <div className="space-y-1">
+                    <Label htmlFor="accept-terms" className="text-sm font-medium text-gray-900">
+                      I agree to the{" "}
+                      <Link
+                        href="/terms-of-service"
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-pink-600 hover:text-pink-700"
+                      >
+                        Terms of Service
+                      </Link>
+                      .
+                    </Label>
+                    <p className="text-xs text-gray-500">
+                      This covers account use, orders, registry activity, delivery options, and
+                      payment-related rules.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-start gap-3">
+                  <Checkbox
+                    id="accept-privacy"
+                    checked={acceptPrivacy}
+                    onCheckedChange={(checked) => setAcceptPrivacy(Boolean(checked))}
+                    className="mt-1"
+                  />
+                  <div className="space-y-1">
+                    <Label htmlFor="accept-privacy" className="text-sm font-medium text-gray-900">
+                      I have read the{" "}
+                      <Link
+                        href="/privacy-policy"
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-pink-600 hover:text-pink-700"
+                      >
+                        Privacy Policy
+                      </Link>
+                      {" "}and consent to Nana&apos;s Baby Essentials using my information as described there.
+                    </Label>
+                    <p className="text-xs text-gray-500">
+                      This includes account setup, Google sign-in, order processing, registry
+                      features, support, and payment verification.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <Button type="submit" className="w-full" disabled={loading || !signupConsentSatisfied}>
                 {loading ? "Creating account..." : "Create Account"}
               </Button>
 
@@ -297,8 +372,8 @@ export function AuthModal({
                 type="button"
                 variant="outline"
                 className="w-full"
-                onClick={handleGoogleSignIn}
-                disabled={loading}
+                onClick={() => handleGoogleSignIn("signup")}
+                disabled={loading || !signupConsentSatisfied}
               >
                 <svg className="mr-2 h-4 w-4" viewBox="0 0 24 24">
                   <path
@@ -320,6 +395,9 @@ export function AuthModal({
                 </svg>
                 Google
               </Button>
+              <p className="text-center text-xs text-gray-500">
+                To continue with Google from the signup tab, both legal checkboxes must be selected.
+              </p>
             </form>
           </TabsContent>
         </Tabs>

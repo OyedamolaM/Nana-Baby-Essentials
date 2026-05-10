@@ -4,7 +4,6 @@ import { requireAdminRoute } from "@/lib/authServer";
 import { createSupabaseServiceRoleClient, hasSupabaseServiceRoleEnv } from "@/lib/supabaseServer";
 
 type UpdateShippingTierPayload = {
-  code?: string;
   description?: string | null;
   eta?: string | null;
   fee?: number;
@@ -37,11 +36,16 @@ export async function PATCH(request: Request, context: RouteContext<"/api/admin/
   }
 
   const updatePayload: Record<string, unknown> = {};
-  if (payload?.code?.trim()) {
-    updatePayload.code = payload.code.trim().toLowerCase();
-  }
-  if (payload?.label?.trim()) {
-    updatePayload.label = payload.label.trim();
+  if (payload?.label !== undefined) {
+    const nextLabel = payload.label.trim();
+    if (!nextLabel) {
+      return NextResponse.json(
+        { message: "Enter a customer-facing shipping tier label." },
+        { status: 400 },
+      );
+    }
+
+    updatePayload.label = nextLabel;
   }
   if (payload?.fee !== undefined) {
     updatePayload.fee = Math.max(0, Math.round(Number(payload.fee)));
@@ -66,10 +70,21 @@ export async function PATCH(request: Request, context: RouteContext<"/api/admin/
     .select("*")
     .single();
 
-  if (error || !tier) {
+  if (error?.code === "23505") {
     return NextResponse.json(
-      { message: error?.message || "Could not update the shipping tier." },
+      {
+        message:
+          "A shipping tier like this already exists. Try changing the customer label slightly.",
+      },
       { status: 400 },
+    );
+  }
+
+  if (error || !tier) {
+    console.error("Failed to update shipping tier.", error);
+    return NextResponse.json(
+      { message: "Could not update the shipping tier." },
+      { status: 500 },
     );
   }
 

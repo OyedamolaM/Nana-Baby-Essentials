@@ -16,6 +16,7 @@ interface BabyRegistryHighlightProps {
 
 export function BabyRegistryHighlight({ onCreateRegistry }: BabyRegistryHighlightProps) {
   const { user } = useAuth();
+  const userId = user?.id ?? null;
   const [registries, setRegistries] = useState<RegistryRecord[]>([]);
   const [loadingRegistries, setLoadingRegistries] = useState(false);
 
@@ -23,7 +24,7 @@ export function BabyRegistryHighlight({ onCreateRegistry }: BabyRegistryHighligh
     let cancelled = false;
 
     const loadRegistries = async () => {
-      if (!user || !hasSupabaseEnv) {
+      if (!userId || !hasSupabaseEnv) {
         if (!cancelled) {
           setRegistries([]);
           setLoadingRegistries(false);
@@ -36,7 +37,7 @@ export function BabyRegistryHighlight({ onCreateRegistry }: BabyRegistryHighligh
       const { data } = await supabase
         .from("registries")
         .select("*")
-        .eq("user_id", user.id)
+        .eq("user_id", userId)
         .order("created_at", { ascending: false });
 
       if (!cancelled) {
@@ -50,7 +51,7 @@ export function BabyRegistryHighlight({ onCreateRegistry }: BabyRegistryHighligh
     return () => {
       cancelled = true;
     };
-  }, [user]);
+  }, [userId]);
 
   const hasExistingRegistry = registries.length > 0;
   const features = [

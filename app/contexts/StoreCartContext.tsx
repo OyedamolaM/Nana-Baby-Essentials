@@ -319,6 +319,7 @@ async function persistRemoteCart(
 
 export function StoreCartProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
+  const userId = user?.id ?? null;
   const [items, setItems] = useState<StoreCartItem[]>([]);
   const [hydrated, setHydrated] = useState(false);
   const [remoteCartSupported, setRemoteCartSupported] = useState(hasSupabaseEnv);
@@ -350,38 +351,38 @@ export function StoreCartProvider({ children }: { children: ReactNode }) {
   }, [hydrated, items]);
 
   const bootstrapRemoteCart = useCallback(async () => {
-    if (!user || !hasSupabaseEnv || !remoteCartSupported) {
+    if (!userId || !hasSupabaseEnv || !remoteCartSupported) {
       setRemoteReady(false);
       cartIdRef.current = null;
-      bootstrappedUserIdRef.current = user?.id ?? null;
+      bootstrappedUserIdRef.current = userId;
       return;
     }
 
     try {
       syncInProgressRef.current = true;
       const localSnapshot = readLocalStoreCartSnapshot();
-      const { cartId, items: remoteItems } = await loadRemoteCart(user.id);
+      const { cartId, items: remoteItems } = await loadRemoteCart(userId);
       const mergedItems = localSnapshot.hasSnapshot
         ? localSnapshot.items
         : mergeCartItems(remoteItems, []);
-      cartIdRef.current = await persistRemoteCart(user.id, cartId, mergedItems);
+      cartIdRef.current = await persistRemoteCart(userId, cartId, mergedItems);
       setItems(mergedItems);
       setRemoteReady(true);
     } catch (error) {
       void error;
       disableRemoteCartSync();
     } finally {
-      bootstrappedUserIdRef.current = user.id;
+      bootstrappedUserIdRef.current = userId;
       syncInProgressRef.current = false;
     }
-  }, [disableRemoteCartSync, remoteCartSupported, user]);
+  }, [disableRemoteCartSync, remoteCartSupported, userId]);
 
   useEffect(() => {
     if (!hydrated) {
       return;
     }
 
-    if (!user) {
+    if (!userId) {
       cartIdRef.current = null;
       bootstrappedUserIdRef.current = null;
       queueMicrotask(() => {
@@ -390,15 +391,15 @@ export function StoreCartProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    if (bootstrappedUserIdRef.current !== user.id) {
+    if (bootstrappedUserIdRef.current !== userId) {
       void bootstrapRemoteCart();
     }
-  }, [bootstrapRemoteCart, hydrated, user]);
+  }, [bootstrapRemoteCart, hydrated, userId]);
 
   useEffect(() => {
     if (
       !hydrated ||
-      !user ||
+      !userId ||
       !hasSupabaseEnv ||
       !remoteCartSupported ||
       !remoteReady ||
@@ -410,7 +411,7 @@ export function StoreCartProvider({ children }: { children: ReactNode }) {
     const timeoutId = window.setTimeout(() => {
       syncInProgressRef.current = true;
 
-      void persistRemoteCart(user.id, cartIdRef.current, items)
+      void persistRemoteCart(userId, cartIdRef.current, items)
         .then((cartId) => {
           cartIdRef.current = cartId;
         })
@@ -426,7 +427,7 @@ export function StoreCartProvider({ children }: { children: ReactNode }) {
     return () => {
       window.clearTimeout(timeoutId);
     };
-  }, [disableRemoteCartSync, hydrated, items, remoteCartSupported, remoteReady, user]);
+  }, [disableRemoteCartSync, hydrated, items, remoteCartSupported, remoteReady, userId]);
 
   const addItem = useCallback((product: StoreProduct, quantity = 1) => {
     setItems((currentItems) => {

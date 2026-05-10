@@ -434,7 +434,6 @@ export function AdminDashboard() {
 
   const [showShippingTierModal, setShowShippingTierModal] = useState(false);
   const [editingShippingTier, setEditingShippingTier] = useState<ShippingTier | null>(null);
-  const [shippingTierCode, setShippingTierCode] = useState("");
   const [shippingTierLabel, setShippingTierLabel] = useState("");
   const [shippingTierFee, setShippingTierFee] = useState("");
   const [shippingTierEta, setShippingTierEta] = useState("");
@@ -975,7 +974,6 @@ export function AdminDashboard() {
 
   const resetShippingTierForm = () => {
     setEditingShippingTier(null);
-    setShippingTierCode("");
     setShippingTierLabel("");
     setShippingTierFee("");
     setShippingTierEta("");
@@ -986,7 +984,6 @@ export function AdminDashboard() {
 
   const handleEditShippingTier = (tier: ShippingTier) => {
     setEditingShippingTier(tier);
-    setShippingTierCode(tier.code);
     setShippingTierLabel(tier.label);
     setShippingTierFee(String(Number(tier.fee ?? 0)));
     setShippingTierEta(tier.eta ?? "");
@@ -1019,7 +1016,6 @@ export function AdminDashboard() {
             Authorization: `Bearer ${accessToken}`,
           },
           body: JSON.stringify({
-            code: shippingTierCode,
             label: shippingTierLabel,
             fee: Number(shippingTierFee || 0),
             eta: shippingTierEta,
@@ -2144,7 +2140,7 @@ export function AdminDashboard() {
               <div>
                 <CardTitle>Shipping Tiers</CardTitle>
                 <p className="mt-1 text-sm text-gray-500">
-                  Sort order controls which tier appears first at checkout. Shipping tiers can be edited or deleted here anytime.
+                  Create the delivery options customers can choose at checkout. Put Lagos options first by giving them lower display order numbers.
                 </p>
               </div>
               <Button
@@ -2161,11 +2157,10 @@ export function AdminDashboard() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Label</TableHead>
-                    <TableHead>Code</TableHead>
+                    <TableHead>Shipping Option</TableHead>
                     <TableHead>Fee</TableHead>
                     <TableHead>ETA</TableHead>
-                    <TableHead>Order</TableHead>
+                    <TableHead>Display Order</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Actions</TableHead>
                   </TableRow>
@@ -2179,7 +2174,6 @@ export function AdminDashboard() {
                           {tier.description || "No description"}
                         </div>
                       </TableCell>
-                      <TableCell>{tier.code}</TableCell>
                       <TableCell>{formatNairaAmount(Number(tier.fee ?? 0))}</TableCell>
                       <TableCell>{tier.eta || "N/A"}</TableCell>
                       <TableCell>{Number(tier.sort_order ?? 0)}</TableCell>
@@ -2367,32 +2361,38 @@ export function AdminDashboard() {
             </DialogTitle>
           </DialogHeader>
           <form onSubmit={handleSaveShippingTier} className="space-y-4">
+            <p className="text-sm text-gray-500">
+              Customers only choose from the shipping options you create here. The internal code is generated automatically for you.
+            </p>
+
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <div className="space-y-2">
-                <Label htmlFor="shipping-tier-code">Code</Label>
-                <Input
-                  id="shipping-tier-code"
-                  value={shippingTierCode}
-                  onChange={(event) => setShippingTierCode(event.target.value)}
-                  placeholder="lagos"
-                  required
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="shipping-tier-label">Label</Label>
+                <Label htmlFor="shipping-tier-label">Customer Label</Label>
                 <Input
                   id="shipping-tier-label"
                   value={shippingTierLabel}
                   onChange={(event) => setShippingTierLabel(event.target.value)}
-                  placeholder="Lagos"
+                  placeholder="Lagos Standard Delivery"
                   required
+                />
+                <p className="text-xs text-gray-500">
+                  Example: Lagos Same Day, Lagos Standard, Abuja Express, or Other States Delivery.
+                </p>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="shipping-tier-eta">Estimated Delivery Time</Label>
+                <Input
+                  id="shipping-tier-eta"
+                  value={shippingTierEta}
+                  onChange={(event) => setShippingTierEta(event.target.value)}
+                  placeholder="2-3 days"
                 />
               </div>
             </div>
 
             <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
               <div className="space-y-2">
-                <Label htmlFor="shipping-tier-fee">Fee (NGN amount)</Label>
+                <Label htmlFor="shipping-tier-fee">Delivery Fee (NGN)</Label>
                 <Input
                   id="shipping-tier-fee"
                   type="number"
@@ -2403,16 +2403,7 @@ export function AdminDashboard() {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="shipping-tier-eta">ETA</Label>
-                <Input
-                  id="shipping-tier-eta"
-                  value={shippingTierEta}
-                  onChange={(event) => setShippingTierEta(event.target.value)}
-                  placeholder="2-3 days"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="shipping-tier-sort-order">Sort Order</Label>
+                <Label htmlFor="shipping-tier-sort-order">Display Order</Label>
                 <Input
                   id="shipping-tier-sort-order"
                   type="number"
@@ -2421,18 +2412,30 @@ export function AdminDashboard() {
                   onChange={(event) => setShippingTierSortOrder(event.target.value)}
                 />
                 <p className="text-xs text-gray-500">
-                  Lower numbers appear earlier in checkout and admin lists.
+                  Lower numbers appear first. Use this to keep Lagos options above other delivery choices.
                 </p>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="shipping-tier-status">Availability</Label>
+                <div
+                  id="shipping-tier-status"
+                  className="rounded-md border border-dashed border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-600"
+                >
+                  {shippingTierIsActive
+                    ? "Visible to customers at checkout"
+                    : "Hidden from customers until reactivated"}
+                </div>
               </div>
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="shipping-tier-description">Description</Label>
+              <Label htmlFor="shipping-tier-description">Checkout Description</Label>
               <Textarea
                 id="shipping-tier-description"
                 value={shippingTierDescription}
                 onChange={(event) => setShippingTierDescription(event.target.value)}
                 rows={3}
+                placeholder="Fast delivery within Lagos."
               />
             </div>
 
@@ -2442,7 +2445,7 @@ export function AdminDashboard() {
                 checked={shippingTierIsActive}
                 onChange={(event) => setShippingTierIsActive(event.target.checked)}
               />
-              Shipping tier is active
+              Show this shipping option to customers
             </label>
 
             <Button type="submit" className="w-full" disabled={savingShippingTier}>
@@ -2600,7 +2603,7 @@ export function AdminDashboard() {
       </Dialog>
 
       <Dialog open={showDealModal} onOpenChange={setShowDealModal}>
-        <DialogContent className="max-w-3xl">
+        <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editingDeal ? "Edit Deal" : "Add Deal"}</DialogTitle>
           </DialogHeader>

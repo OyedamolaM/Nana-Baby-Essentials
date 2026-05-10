@@ -3395,7 +3395,7 @@ create or replace function public.create_registry_checkout(
   p_buyer_phone text default null,
   p_buyer_message text default null,
   p_selected_items jsonb default '[]'::jsonb,
-  p_payment_amount numeric default 0,
+  p_cash_amount numeric default 0,
   p_paystack_reference text default null
 )
 returns jsonb
@@ -3418,6 +3418,7 @@ declare
   v_checkout_type text := 'cash';
   v_single_item_id uuid := null;
   v_normalized_reference text := null;
+  v_owner_shipping_address jsonb;
 begin
   if not exists (
     select 1
@@ -3425,6 +3426,17 @@ begin
     where id = p_registry_id
   ) then
     raise exception 'Registry not found.';
+  end if;
+
+  select profile.shipping_address
+  into v_owner_shipping_address
+  from public.registries registry
+  join public.user_profiles profile
+    on profile.id = registry.user_id
+  where registry.id = p_registry_id;
+
+  if coalesce(jsonb_typeof(v_owner_shipping_address), 'null') <> 'object' then
+    raise exception 'This registry cannot accept gifts until the owner saves a shipping address.';
   end if;
 
   if coalesce(btrim(p_buyer_name), '') = '' then
@@ -3439,7 +3451,7 @@ begin
     raise exception 'Selected items payload must be an array.';
   end if;
 
-  v_payment_amount := round(coalesce(p_payment_amount, 0)::numeric, 2);
+  v_payment_amount := round(coalesce(p_cash_amount, 0)::numeric, 2);
   v_normalized_reference := nullif(btrim(coalesce(p_paystack_reference, '')), '');
 
   if v_payment_amount < 0 then
@@ -3617,7 +3629,8 @@ begin
       total_amount,
       contribution_type,
       status,
-      paystack_reference
+      paystack_reference,
+      shipping_address
     )
     values (
       p_registry_id,
@@ -3628,7 +3641,8 @@ begin
       v_payment_amount,
       'items',
       'awaiting_payment',
-      v_normalized_reference
+      v_normalized_reference,
+      v_owner_shipping_address
     )
     returning id into v_order_id;
 

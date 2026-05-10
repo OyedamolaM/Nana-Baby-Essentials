@@ -116,7 +116,7 @@ export function AdminDateTimeField({
   return (
     <div className={cn("space-y-2", className)}>
       <Label htmlFor={id}>{label}</Label>
-      <div className="space-y-3">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
         <Popover>
           <PopoverTrigger asChild>
             <Button
@@ -124,13 +124,11 @@ export function AdminDateTimeField({
               type="button"
               variant="outline"
               className={cn(
-                "w-full justify-between text-left font-normal",
+                "w-full justify-between text-left font-normal sm:flex-1",
                 !displayDate && "text-muted-foreground",
               )}
             >
-              <span>
-                {displayDate ? `${displayDate} ${timeValue}` : placeholder}
-              </span>
+              <span>{displayDate || placeholder}</span>
               <CalendarDays className="h-4 w-4" />
             </Button>
           </PopoverTrigger>
@@ -160,13 +158,13 @@ export function AdminDateTimeField({
           </PopoverContent>
         </Popover>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 sm:w-auto">
           <Clock3 className="h-4 w-4 text-gray-500" />
           <Input
             type="time"
             value={timeValue}
             onChange={(event) => handleTimeChange(event.target.value)}
-            className="max-w-[220px]"
+            className="w-full sm:w-[170px]"
           />
         </div>
       </div>
