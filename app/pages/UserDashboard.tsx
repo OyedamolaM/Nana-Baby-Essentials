@@ -51,9 +51,12 @@ type OrderItem = {
 };
 
 type UserOrder = {
+  customer_pickup_code?: string | null;
   id: string;
   created_at: string;
   status: string;
+  rider_pickup_code?: string | null;
+  shipping_tier?: string | null;
   total: number;
   items: OrderItem[];
 };
@@ -746,6 +749,9 @@ export function UserDashboard({
                 <p className="text-sm text-gray-500">
                   {new Date(order.created_at).toLocaleDateString()}
                 </p>
+                {order.shipping_tier ? (
+                  <p className="text-xs text-gray-500">{order.shipping_tier}</p>
+                ) : null}
               </div>
               <span
                 className={`rounded-full px-3 py-1 text-sm ${
@@ -759,6 +765,19 @@ export function UserDashboard({
                 {order.status}
               </span>
             </div>
+            {order.customer_pickup_code || order.rider_pickup_code ? (
+              <>
+                <Separator className="my-2" />
+                <div className="rounded-lg bg-blue-50 p-3 text-sm text-blue-900">
+                  {order.customer_pickup_code ? (
+                    <p>Customer pickup code: {order.customer_pickup_code}</p>
+                  ) : null}
+                  {order.rider_pickup_code ? (
+                    <p>Rider pickup code: {order.rider_pickup_code}</p>
+                  ) : null}
+                </div>
+              </>
+            ) : null}
             <Separator className="my-2" />
             <div className="space-y-1">
               {order.items?.map((item, index) => (

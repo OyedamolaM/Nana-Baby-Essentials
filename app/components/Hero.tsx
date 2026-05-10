@@ -6,10 +6,16 @@ import { DEFAULT_HERO_IMAGE, type HomepageImageAsset } from "../../lib/siteConte
 interface HeroProps {
   image?: HomepageImageAsset;
   onCreateRegistry: () => void;
+  onGetSwoopPackage: () => void;
   onShopNow: () => void;
 }
 
-export function Hero({ image = DEFAULT_HERO_IMAGE, onCreateRegistry, onShopNow }: HeroProps) {
+export function Hero({
+  image = DEFAULT_HERO_IMAGE,
+  onCreateRegistry,
+  onGetSwoopPackage,
+  onShopNow,
+}: HeroProps) {
   return (
     <section className="relative overflow-hidden bg-gradient-to-br from-pink-100 via-purple-50 to-blue-100 py-20 lg:py-32">
       <div className="container mx-auto px-4">
@@ -31,6 +37,14 @@ export function Hero({ image = DEFAULT_HERO_IMAGE, onCreateRegistry, onShopNow }
                 onClick={onShopNow}
               >
                 Shop Now
+              </Button>
+              <Button
+                size="lg"
+                variant="secondary"
+                className="px-6 text-[14px] md:px-8 md:text-lg"
+                onClick={onGetSwoopPackage}
+              >
+                Get Swoop Package
               </Button>
               <Button
                 size="lg"

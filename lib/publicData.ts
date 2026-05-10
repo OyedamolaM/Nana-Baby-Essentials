@@ -45,6 +45,13 @@ import {
   type HomepageSiteContent,
   type SiteContentSettingRecord,
 } from "./siteContent";
+import {
+  isSpecialPackage,
+  mapSpecialPackageRecord,
+  type SpecialPackage,
+  type SpecialPackageRecord,
+} from "./specialPackages";
+import { type StoreLocationRecord } from "./storeLocations";
 
 function buildProductLookup(records: ProductRecord[] | null | undefined) {
   return Object.fromEntries(
@@ -65,6 +72,14 @@ type RegistrySnapshot = {
   items: RegistryItem[];
   registry: RegistryRecord | null;
   shippingAddress: ShippingAddress | null;
+};
+
+type SpecialPackageSnapshot = {
+  packages: SpecialPackage[];
+};
+
+type StoreLocationSnapshot = {
+  locations: StoreLocationRecord[];
 };
 
 function filterSeedProducts(
@@ -280,6 +295,7 @@ const getFeaturedProductsCached = unstable_cache(
     let query = client
       .from("products")
       .select("*")
+      .eq("product_kind", "standard")
       .eq("is_featured", true)
       .order("featured_sort_order", { ascending: true })
       .order("created_at", { ascending: false })
@@ -340,6 +356,7 @@ const getProductCatalogPageCached = unstable_cache(
     let query = client
       .from("products")
       .select("*", { count: "exact" })
+      .eq("product_kind", "standard")
       .order("created_at", { ascending: false });
 
     if (onlyInStock) {
@@ -426,7 +443,11 @@ const getProductCategoriesCached = unstable_cache(
         .select("*")
         .order("sort_order", { ascending: true })
         .order("created_at", { ascending: false }),
-      client.from("products").select("category").order("created_at", { ascending: false }),
+      client
+        .from("products")
+        .select("category")
+        .eq("product_kind", "standard")
+        .order("created_at", { ascending: false }),
     ]);
 
     const categoryRecords =
@@ -490,6 +511,7 @@ const getHomepageDealsCached = unstable_cache(
       const { data: productRows } = await client
         .from("products")
         .select("*")
+        .eq("product_kind", "standard")
         .in("id", productIds);
 
       productsById = buildProductLookup((productRows as ProductRecord[] | null) ?? []);
@@ -599,6 +621,7 @@ const getProductBySlugCached = unstable_cache(
     const { data } = await client
       .from("products")
       .select("*")
+      .eq("product_kind", "standard")
       .eq("slug", slug)
       .maybeSingle();
 
@@ -609,6 +632,7 @@ const getProductBySlugCached = unstable_cache(
     const { data: fallbackRows } = await client
       .from("products")
       .select("*")
+      .eq("product_kind", "standard")
       .order("created_at", { ascending: false });
 
     const fallbackMatch = ((fallbackRows as ProductRecord[] | null) ?? []).find((record) => {
@@ -619,6 +643,80 @@ const getProductBySlugCached = unstable_cache(
   },
   ["public-product-by-slug"],
   { revalidate: 300, tags: ["products"] },
+);
+
+const getSpecialPackagesCached = unstable_cache(
+  async () => {
+    if (!hasSupabaseServerEnv) {
+      return {
+        packages: [],
+      } satisfies SpecialPackageSnapshot;
+    }
+
+    const client = createSupabaseServerClient();
+    if (!client) {
+      return {
+        packages: [],
+      } satisfies SpecialPackageSnapshot;
+    }
+
+    const { data, error } = await client
+      .from("special_packages")
+      .select("*, products(*)")
+      .eq("is_active", true)
+      .order("package_type", { ascending: false })
+      .order("sort_order", { ascending: true });
+
+    if (error?.code === "42P01" || error || !data) {
+      return {
+        packages: [],
+      } satisfies SpecialPackageSnapshot;
+    }
+
+    return {
+      packages: ((data as SpecialPackageRecord[] | null) ?? [])
+        .map((record) => mapSpecialPackageRecord(record))
+        .filter(isSpecialPackage),
+    } satisfies SpecialPackageSnapshot;
+  },
+  ["public-special-packages"],
+  { revalidate: 300, tags: ["packages"] },
+);
+
+const getStoreLocationsCached = unstable_cache(
+  async () => {
+    if (!hasSupabaseServerEnv) {
+      return {
+        locations: [],
+      } satisfies StoreLocationSnapshot;
+    }
+
+    const client = createSupabaseServerClient();
+    if (!client) {
+      return {
+        locations: [],
+      } satisfies StoreLocationSnapshot;
+    }
+
+    const { data, error } = await client
+      .from("store_locations")
+      .select("*")
+      .eq("is_active", true)
+      .order("sort_order", { ascending: true })
+      .order("created_at", { ascending: false });
+
+    if (error?.code === "42P01" || error || !data) {
+      return {
+        locations: [],
+      } satisfies StoreLocationSnapshot;
+    }
+
+    return {
+      locations: (data as StoreLocationRecord[] | null) ?? [],
+    } satisfies StoreLocationSnapshot;
+  },
+  ["public-store-locations"],
+  { revalidate: 300, tags: ["locations"] },
 );
 
 const getBlogPostBySlugCached = unstable_cache(
@@ -779,6 +877,21 @@ export async function getPublishedBlogPosts() {
 export async function getPublishedBlogPostBySlug(slug: string) {
   const post = await getBlogPostBySlugCached(slug);
   return post ?? FALLBACK_BLOG_POSTS.find((entry) => entry.slug === slug) ?? null;
+}
+
+export async function getSpecialPackages(): Promise<SpecialPackage[]> {
+  const snapshot = await getSpecialPackagesCached();
+  return snapshot.packages;
+}
+
+export async function getStoreLocations() {
+  const snapshot = await getStoreLocationsCached();
+  return snapshot.locations;
+}
+
+export async function getStoreLocationBySlug(slug: string) {
+  const snapshot = await getStoreLocationsCached();
+  return snapshot.locations.find((location) => location.slug === slug) ?? null;
 }
 
 export async function getPublicRegistryByShareCode(shareCode: string) {

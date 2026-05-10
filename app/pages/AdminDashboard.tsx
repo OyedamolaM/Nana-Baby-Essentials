@@ -63,6 +63,16 @@ import {
   type SiteContentSettingRecord,
 } from "../../lib/siteContent";
 import {
+  buildSpecialPackageTypeLabel,
+  SPECIAL_PACKAGE_TYPES,
+  type SpecialPackageRecord,
+  type SpecialPackageType,
+} from "../../lib/specialPackages";
+import {
+  splitLocationOpeningHours,
+  type StoreLocationRecord,
+} from "../../lib/storeLocations";
+import {
   AdminCampaignManager,
   type CampaignContactRecord,
 } from "../components/admin/AdminCampaignManager";
@@ -165,6 +175,7 @@ type ShippingTier = {
   fee: number;
   eta?: string | null;
   description?: string | null;
+  fulfillment_type?: "delivery" | "pickup" | null;
   is_active: boolean;
   sort_order: number;
   created_at?: string;
@@ -185,6 +196,7 @@ type AdminDashboardCacheEntry = {
   orders: AdminOrderRecord[];
   productCategories: ProductCategoryRecord[];
   products: ProductRecord[];
+  specialPackages: SpecialPackageRecord[];
   registries: RegistryRecord[];
   registryItemsByRegistry: Record<string, RegistryItem[]>;
   registryOrderItemsByOrder: Record<string, RegistryOrderItemRecord[]>;
@@ -193,6 +205,7 @@ type AdminDashboardCacheEntry = {
   registrySummaries: Record<string, RegistrySummary>;
   shippingTiers: ShippingTier[];
   siteContentSettings: SiteContentSettingRecord[];
+  storeLocations: StoreLocationRecord[];
 };
 
 const ADMIN_DASHBOARD_CACHE_STORAGE_PREFIX = "nbe:admin-dashboard:";
@@ -358,13 +371,10 @@ export function AdminDashboard() {
   const [orders, setOrders] = useState<AdminOrderRecord[]>(cachedAdminEntry?.orders ?? []);
   const [customers, setCustomers] = useState<Customer[]>(cachedAdminEntry?.customers ?? []);
   const [products, setProducts] = useState<ProductRecord[]>(cachedAdminEntry?.products ?? []);
-  const [registries, setRegistries] = useState<RegistryRecord[]>(cachedAdminEntry?.registries ?? []);
-  const [registryOrders, setRegistryOrders] = useState<RegistryOrderRecord[]>(
-    cachedAdminEntry?.registryOrders ?? [],
+  const [specialPackages, setSpecialPackages] = useState<SpecialPackageRecord[]>(
+    cachedAdminEntry?.specialPackages ?? [],
   );
-  const [registryOrderItemsByOrder, setRegistryOrderItemsByOrder] = useState<
-    Record<string, RegistryOrderItemRecord[]>
-  >(cachedAdminEntry?.registryOrderItemsByOrder ?? {});
+  const [registries, setRegistries] = useState<RegistryRecord[]>(cachedAdminEntry?.registries ?? []);
   const [registryItemsByRegistry, setRegistryItemsByRegistry] = useState<
     Record<string, RegistryItem[]>
   >(cachedAdminEntry?.registryItemsByRegistry ?? {});
@@ -393,6 +403,9 @@ export function AdminDashboard() {
   );
   const [siteContentSettings, setSiteContentSettings] = useState<SiteContentSettingRecord[]>(
     cachedAdminEntry?.siteContentSettings ?? [],
+  );
+  const [storeLocations, setStoreLocations] = useState<StoreLocationRecord[]>(
+    cachedAdminEntry?.storeLocations ?? [],
   );
   const [homepageReviews, setHomepageReviews] = useState<HomepageReviewRecord[]>(
     cachedAdminEntry?.homepageReviews ?? [],
@@ -429,6 +442,12 @@ export function AdminDashboard() {
     )
       ? cachedAdminEntry.siteContentSettings
       : [];
+    const cachedSpecialPackages = Array.isArray(cachedAdminEntry.specialPackages)
+      ? cachedAdminEntry.specialPackages
+      : [];
+    const cachedStoreLocations = Array.isArray(cachedAdminEntry.storeLocations)
+      ? cachedAdminEntry.storeLocations
+      : [];
     const cachedHomepageReviews = Array.isArray(cachedAdminEntry.homepageReviews)
       ? cachedAdminEntry.homepageReviews
       : [];
@@ -440,9 +459,8 @@ export function AdminDashboard() {
       setOrders(cachedAdminEntry.orders);
       setCustomers(cachedAdminEntry.customers);
       setProducts(cachedAdminEntry.products);
+      setSpecialPackages(cachedSpecialPackages);
       setRegistries(cachedAdminEntry.registries);
-      setRegistryOrders(cachedAdminEntry.registryOrders);
-      setRegistryOrderItemsByOrder(cachedAdminEntry.registryOrderItemsByOrder);
       setRegistryItemsByRegistry(cachedAdminEntry.registryItemsByRegistry);
       setRegistrySummaries(cachedAdminEntry.registrySummaries);
       setRegistryPaymentActivities(cachedAdminEntry.registryPaymentActivities);
@@ -454,6 +472,7 @@ export function AdminDashboard() {
       setProductCategories(cachedAdminEntry.productCategories);
       setShippingTiers(cachedAdminEntry.shippingTiers);
       setSiteContentSettings(cachedSiteContentSettings);
+      setStoreLocations(cachedStoreLocations);
       setHomepageReviews(cachedHomepageReviews);
       setHeroImageDraft(cachedHomepageSiteContent.heroImage);
       setHeroImageFile(null);
@@ -514,9 +533,41 @@ export function AdminDashboard() {
   const [shippingTierFee, setShippingTierFee] = useState("");
   const [shippingTierEta, setShippingTierEta] = useState("");
   const [shippingTierDescription, setShippingTierDescription] = useState("");
+  const [shippingTierFulfillmentType, setShippingTierFulfillmentType] = useState<
+    "delivery" | "pickup"
+  >("delivery");
   const [shippingTierSortOrder, setShippingTierSortOrder] = useState("0");
   const [shippingTierIsActive, setShippingTierIsActive] = useState(true);
   const [savingShippingTier, setSavingShippingTier] = useState(false);
+
+  const [showPackageModal, setShowPackageModal] = useState(false);
+  const [editingPackage, setEditingPackage] = useState<SpecialPackageRecord | null>(null);
+  const [packageType, setPackageType] = useState<SpecialPackageType>("swoop_package");
+  const [packageTitle, setPackageTitle] = useState("");
+  const [packageSubtitle, setPackageSubtitle] = useState("");
+  const [packageBadgeText, setPackageBadgeText] = useState("");
+  const [packageDetails, setPackageDetails] = useState("");
+  const [packageVideoUrl, setPackageVideoUrl] = useState("");
+  const [packagePrice, setPackagePrice] = useState("");
+  const [packageImage, setPackageImage] = useState("");
+  const [packageImageFile, setPackageImageFile] = useState<File | null>(null);
+  const [packageSortOrder, setPackageSortOrder] = useState("0");
+  const [packageIsActive, setPackageIsActive] = useState(true);
+  const [savingPackage, setSavingPackage] = useState(false);
+
+  const [showLocationModal, setShowLocationModal] = useState(false);
+  const [editingLocation, setEditingLocation] = useState<StoreLocationRecord | null>(null);
+  const [locationName, setLocationName] = useState("");
+  const [locationAddress, setLocationAddress] = useState("");
+  const [locationDescription, setLocationDescription] = useState("");
+  const [locationPhone, setLocationPhone] = useState("");
+  const [locationEmail, setLocationEmail] = useState("");
+  const [locationOpeningHours, setLocationOpeningHours] = useState("");
+  const [locationHeroImage, setLocationHeroImage] = useState("");
+  const [locationHeroImageFile, setLocationHeroImageFile] = useState<File | null>(null);
+  const [locationSortOrder, setLocationSortOrder] = useState("0");
+  const [locationIsActive, setLocationIsActive] = useState(true);
+  const [savingLocation, setSavingLocation] = useState(false);
 
   const [showBlogModal, setShowBlogModal] = useState(false);
   const [editingBlog, setEditingBlog] = useState<BlogPostRecord | null>(null);
@@ -557,8 +608,10 @@ export function AdminDashboard() {
       campaignContactsResult,
       productCategoriesResult,
       productCategoryAssignmentsResult,
+      specialPackagesResult,
       shippingTiersResult,
       siteContentSettingsResult,
+      storeLocationsResult,
       homepageReviewsResult,
     ] = await Promise.all([
       supabase.from("orders").select("*").order("created_at", { ascending: false }),
@@ -566,7 +619,11 @@ export function AdminDashboard() {
         .from("user_profiles")
         .select("*")
         .or("is_admin.eq.false,is_admin.is.null"),
-      supabase.from("products").select("*").order("created_at", { ascending: false }),
+      supabase
+        .from("products")
+        .select("*")
+        .eq("product_kind", "standard")
+        .order("created_at", { ascending: false }),
       supabase.from("registries").select("*").order("created_at", { ascending: false }),
       supabase
         .from("registry_items")
@@ -609,6 +666,11 @@ export function AdminDashboard() {
         .select("product_id, category_id, product_categories(label, sort_order, is_active)")
         .order("created_at", { ascending: false }),
       supabase
+        .from("special_packages")
+        .select("*, products(*)")
+        .order("package_type", { ascending: false })
+        .order("sort_order", { ascending: true }),
+      supabase
         .from("shipping_tiers")
         .select("*")
         .order("sort_order", { ascending: true }),
@@ -616,6 +678,11 @@ export function AdminDashboard() {
         .from("site_content_settings")
         .select("*")
         .in("key", ["hero_image", "about_images"]),
+      supabase
+        .from("store_locations")
+        .select("*")
+        .order("sort_order", { ascending: true })
+        .order("created_at", { ascending: false }),
       supabase
         .from("homepage_reviews")
         .select("*")
@@ -644,6 +711,9 @@ export function AdminDashboard() {
       ),
     }));
     setProducts(nextProducts);
+    setSpecialPackages(
+      ((specialPackagesResult.error ? [] : specialPackagesResult.data) ?? []) as SpecialPackageRecord[],
+    );
     setRegistries(
       ((registriesResult.error ? [] : registriesResult.data) ?? []) as RegistryRecord[],
     );
@@ -680,6 +750,9 @@ export function AdminDashboard() {
         : ((siteContentSettingsResult.error ? [] : siteContentSettingsResult.data) ?? []) as SiteContentSettingRecord[];
     const nextHomepageSiteContent = buildHomepageSiteContent(nextSiteContentSettings);
     setSiteContentSettings(nextSiteContentSettings);
+    setStoreLocations(
+      ((storeLocationsResult.error ? [] : storeLocationsResult.data) ?? []) as StoreLocationRecord[],
+    );
     setHomepageReviews(
       homepageReviewsResult.error?.code === "42P01"
         ? []
@@ -714,7 +787,6 @@ export function AdminDashboard() {
 
     const registryOrders =
       ((registryOrdersResult.error ? [] : registryOrdersResult.data) ?? []) as RegistryOrderRecord[];
-    setRegistryOrders(registryOrders);
     const registryContributions =
       ((registryContributionsResult.error
         ? []
@@ -742,7 +814,6 @@ export function AdminDashboard() {
       accumulator[item.registry_order_id] = existing;
       return accumulator;
     }, {});
-    setRegistryOrderItemsByOrder(registryOrderItemsMap);
 
     const registryPaymentsMap = (((registriesResult.error ? [] : registriesResult.data) ?? []) as
       RegistryRecord[]).reduce<Record<string, RegistryPaymentActivity[]>>(
@@ -786,6 +857,8 @@ export function AdminDashboard() {
           ? []
           : (((productCategoriesResult.error ? [] : productCategoriesResult.data) ?? []) as ProductCategoryRecord[]),
       products: nextProducts,
+      specialPackages:
+        ((specialPackagesResult.error ? [] : specialPackagesResult.data) ?? []) as SpecialPackageRecord[],
       registries: ((registriesResult.error ? [] : registriesResult.data) ?? []) as RegistryRecord[],
       registryItemsByRegistry: registryItemsById,
       registryOrderItemsByOrder: registryOrderItemsMap,
@@ -798,6 +871,8 @@ export function AdminDashboard() {
         siteContentSettingsResult.error?.code === "42P01"
           ? []
           : (((siteContentSettingsResult.error ? [] : siteContentSettingsResult.data) ?? []) as SiteContentSettingRecord[]),
+      storeLocations:
+        ((storeLocationsResult.error ? [] : storeLocationsResult.data) ?? []) as StoreLocationRecord[],
       homepageReviews:
         homepageReviewsResult.error?.code === "42P01"
           ? []
@@ -1317,6 +1392,7 @@ export function AdminDashboard() {
     setShippingTierFee("");
     setShippingTierEta("");
     setShippingTierDescription("");
+    setShippingTierFulfillmentType("delivery");
     setShippingTierSortOrder("0");
     setShippingTierIsActive(true);
   };
@@ -1327,6 +1403,7 @@ export function AdminDashboard() {
     setShippingTierFee(String(Number(tier.fee ?? 0)));
     setShippingTierEta(tier.eta ?? "");
     setShippingTierDescription(tier.description ?? "");
+    setShippingTierFulfillmentType(tier.fulfillment_type === "pickup" ? "pickup" : "delivery");
     setShippingTierSortOrder(String(tier.sort_order ?? 0));
     setShippingTierIsActive(Boolean(tier.is_active));
     setShowShippingTierModal(true);
@@ -1359,6 +1436,7 @@ export function AdminDashboard() {
             fee: Number(shippingTierFee || 0),
             eta: shippingTierEta,
             description: shippingTierDescription,
+            fulfillmentType: shippingTierFulfillmentType,
             sortOrder: Number(shippingTierSortOrder || 0),
             isActive: shippingTierIsActive,
           }),
@@ -1420,6 +1498,325 @@ export function AdminDashboard() {
       console.error("Failed to delete shipping tier.", error);
       toast.error("Could not delete the shipping tier.");
     }
+  };
+
+  const buildNextSpecialPackageSlug = (title: string) => {
+    const baseSlug = createSlug(title) || "special-package";
+    const existingSlugs = new Set(
+      specialPackages
+        .filter((entry) => entry.id !== editingPackage?.id)
+        .map((entry) => entry.slug),
+    );
+
+    if (!existingSlugs.has(baseSlug)) {
+      return baseSlug;
+    }
+
+    let suffix = 2;
+    while (existingSlugs.has(`${baseSlug}-${suffix}`)) {
+      suffix += 1;
+    }
+
+    return `${baseSlug}-${suffix}`;
+  };
+
+  const resetPackageForm = () => {
+    setEditingPackage(null);
+    setPackageType("swoop_package");
+    setPackageTitle("");
+    setPackageSubtitle("");
+    setPackageBadgeText("");
+    setPackageDetails("");
+    setPackageVideoUrl("");
+    setPackagePrice("");
+    setPackageImage("");
+    setPackageImageFile(null);
+    setPackageSortOrder("0");
+    setPackageIsActive(true);
+  };
+
+  const handleEditPackage = (pkg: SpecialPackageRecord) => {
+    const packageProduct = Array.isArray(pkg.products)
+      ? (pkg.products[0] ?? null)
+      : (pkg.products ?? null);
+    setEditingPackage(pkg);
+    setPackageType(pkg.package_type);
+    setPackageTitle(pkg.title);
+    setPackageSubtitle(pkg.subtitle ?? "");
+    setPackageBadgeText(pkg.badge_text ?? "");
+    setPackageDetails(pkg.details ?? "");
+    setPackageVideoUrl(pkg.external_video_url ?? "");
+    setPackagePrice(
+      packageProduct && Number.isFinite(Number(packageProduct.selling_price ?? packageProduct.price))
+        ? String(toNairaAmount(Number(packageProduct.selling_price ?? packageProduct.price ?? 0)))
+        : "",
+    );
+    setPackageImage(pkg.override_image ?? "");
+    setPackageImageFile(null);
+    setPackageSortOrder(String(pkg.sort_order ?? 0));
+    setPackageIsActive(Boolean(pkg.is_active));
+    setShowPackageModal(true);
+  };
+
+  const handleSavePackage = async (event: React.FormEvent) => {
+    event.preventDefault();
+
+    const accessToken = await getAdminAccessToken();
+    if (!accessToken) {
+      toast.error("Sign in again to manage packages.");
+      return;
+    }
+
+    const nextPrice = Number(packagePrice) / 1000;
+    if (!Number.isFinite(nextPrice) || nextPrice <= 0) {
+      toast.error("Enter a valid package price.");
+      return;
+    }
+
+    const nextStoredPackageImage =
+      typeof packageImage === "string" && packageImage.trim().length > 0
+        ? packageImage.trim()
+        : null;
+    let nextPackageImage = nextStoredPackageImage;
+
+    if (!packageImageFile && !nextPackageImage) {
+      toast.error("Upload a package image file that is 500KB or smaller.");
+      return;
+    }
+
+    setSavingPackage(true);
+
+    try {
+      if (packageImageFile) {
+        nextPackageImage = await uploadAdminContentImage(accessToken, packageImageFile);
+      }
+
+      const nextSlug = buildNextSpecialPackageSlug(packageTitle);
+      const nextProductCategory =
+        packageType === "swoop_package" ? "Swoop Packages" : "Gift Bundles";
+
+      let productId = editingPackage?.product_id ?? null;
+      let productSlug = `special-package-${nextSlug}`;
+      if (!editingPackage) {
+        productSlug = `${productSlug}-${Date.now()}`;
+      }
+
+      const productPayload = {
+        name: packageTitle,
+        slug: productSlug,
+        price: nextPrice,
+        selling_price: nextPrice,
+        cost_price: nextPrice,
+        category: nextProductCategory,
+        image: nextPackageImage,
+        description: packageSubtitle.trim() || packageDetails.trim() || packageTitle,
+        in_stock: packageIsActive,
+        is_featured: false,
+        featured_sort_order: 0,
+        product_kind: "special_package",
+      };
+
+      if (productId) {
+        const { error: productUpdateError } = await supabase
+          .from("products")
+          .update(productPayload)
+          .eq("id", productId);
+
+        if (productUpdateError) {
+          toast.error("Could not update the package product.");
+          return;
+        }
+      } else {
+        const { data: productRow, error: productInsertError } = await supabase
+          .from("products")
+          .insert(productPayload)
+          .select("id")
+          .single();
+
+        if (productInsertError || !productRow) {
+          toast.error("Could not create the package product.");
+          return;
+        }
+
+        productId = Number(productRow.id);
+      }
+
+      const packagePayload = {
+        product_id: productId,
+        package_type: packageType,
+        title: packageTitle,
+        slug: nextSlug,
+        subtitle: packageSubtitle.trim() || null,
+        details: packageDetails.trim(),
+        badge_text: packageBadgeText.trim() || null,
+        override_image: nextPackageImage,
+        external_video_url: packageVideoUrl.trim() || null,
+        is_active: packageIsActive,
+        sort_order: Number(packageSortOrder || 0),
+        updated_at: new Date().toISOString(),
+      };
+
+      const { error } = editingPackage
+        ? await supabase.from("special_packages").update(packagePayload).eq("id", editingPackage.id)
+        : await supabase.from("special_packages").insert(packagePayload);
+
+      if (error) {
+        toast.error("Failed to save the package.");
+        return;
+      }
+
+      toast.success(editingPackage ? "Package updated." : "Package created.");
+      setShowPackageModal(false);
+      resetPackageForm();
+      await revalidatePublicTags(["packages"]);
+      void loadAdminData();
+    } catch (error) {
+      console.error("Failed to save package.", error);
+      toast.error("Could not save the package.");
+    } finally {
+      setSavingPackage(false);
+    }
+  };
+
+  const handleDeletePackage = async (pkg: SpecialPackageRecord) => {
+    if (!window.confirm("Delete this package?")) {
+      return;
+    }
+
+    const { error } = await supabase.from("special_packages").delete().eq("id", pkg.id);
+    if (error) {
+      toast.error("Failed to delete the package.");
+      return;
+    }
+
+    await supabase.from("products").delete().eq("id", pkg.product_id);
+
+    toast.success("Package deleted.");
+    await revalidatePublicTags(["packages"]);
+    void loadAdminData();
+  };
+
+  const buildNextLocationSlug = (name: string) => {
+    const baseSlug = createSlug(name) || "location";
+    const existingSlugs = new Set(
+      storeLocations
+        .filter((entry) => entry.id !== editingLocation?.id)
+        .map((entry) => entry.slug),
+    );
+
+    if (!existingSlugs.has(baseSlug)) {
+      return baseSlug;
+    }
+
+    let suffix = 2;
+    while (existingSlugs.has(`${baseSlug}-${suffix}`)) {
+      suffix += 1;
+    }
+
+    return `${baseSlug}-${suffix}`;
+  };
+
+  const resetLocationForm = () => {
+    setEditingLocation(null);
+    setLocationName("");
+    setLocationAddress("");
+    setLocationDescription("");
+    setLocationPhone("");
+    setLocationEmail("");
+    setLocationOpeningHours("");
+    setLocationHeroImage("");
+    setLocationHeroImageFile(null);
+    setLocationSortOrder("0");
+    setLocationIsActive(true);
+  };
+
+  const handleEditLocation = (location: StoreLocationRecord) => {
+    setEditingLocation(location);
+    setLocationName(location.name);
+    setLocationAddress(location.address);
+    setLocationDescription(location.description ?? "");
+    setLocationPhone(location.contact_phone ?? "");
+    setLocationEmail(location.contact_email ?? "");
+    setLocationOpeningHours(location.opening_hours ?? "");
+    setLocationHeroImage(location.hero_image ?? "");
+    setLocationHeroImageFile(null);
+    setLocationSortOrder(String(location.sort_order ?? 0));
+    setLocationIsActive(Boolean(location.is_active));
+    setShowLocationModal(true);
+  };
+
+  const handleSaveLocation = async (event: React.FormEvent) => {
+    event.preventDefault();
+
+    const accessToken = await getAdminAccessToken();
+    if (!accessToken) {
+      toast.error("Sign in again to manage locations.");
+      return;
+    }
+
+    if (!locationName.trim()) {
+      toast.error("Enter the location name.");
+      return;
+    }
+
+    let nextHeroImage = locationHeroImage.trim() || null;
+    setSavingLocation(true);
+
+    try {
+      if (locationHeroImageFile) {
+        nextHeroImage = await uploadAdminContentImage(accessToken, locationHeroImageFile);
+      }
+
+      const payload = {
+        name: locationName.trim(),
+        slug: buildNextLocationSlug(locationName),
+        address: locationAddress.trim(),
+        description: locationDescription.trim() || null,
+        contact_phone: locationPhone.trim() || null,
+        contact_email: locationEmail.trim() || null,
+        opening_hours: locationOpeningHours.trim() || null,
+        hero_image: nextHeroImage,
+        is_active: locationIsActive,
+        sort_order: Number(locationSortOrder || 0),
+        updated_at: new Date().toISOString(),
+      };
+
+      const { error } = editingLocation
+        ? await supabase.from("store_locations").update(payload).eq("id", editingLocation.id)
+        : await supabase.from("store_locations").insert(payload);
+
+      if (error) {
+        toast.error("Failed to save the location.");
+        return;
+      }
+
+      toast.success(editingLocation ? "Location updated." : "Location created.");
+      setShowLocationModal(false);
+      resetLocationForm();
+      await revalidatePublicTags(["locations"]);
+      void loadAdminData();
+    } catch (error) {
+      console.error("Failed to save location.", error);
+      toast.error("Could not save the location.");
+    } finally {
+      setSavingLocation(false);
+    }
+  };
+
+  const handleDeleteLocation = async (locationId: string) => {
+    if (!window.confirm("Delete this location?")) {
+      return;
+    }
+
+    const { error } = await supabase.from("store_locations").delete().eq("id", locationId);
+    if (error) {
+      toast.error("Failed to delete the location.");
+      return;
+    }
+
+    toast.success("Location deleted.");
+    await revalidatePublicTags(["locations"]);
+    void loadAdminData();
   };
 
   const resetProductForm = () => {
@@ -1553,6 +1950,7 @@ export function AdminDashboard() {
       in_stock: productInStock,
       is_featured: productIsFeatured,
       featured_sort_order: Number(productFeaturedSortOrder || 0),
+      product_kind: "standard",
     };
 
     const { data: savedProduct, error } = editingProduct
@@ -2018,6 +2416,7 @@ export function AdminDashboard() {
             <TabsTrigger value="products" className="h-10 px-4 py-3 whitespace-nowrap">Products</TabsTrigger>
             <TabsTrigger value="categories" className="h-10 px-4 py-3 whitespace-nowrap">Categories</TabsTrigger>
             <TabsTrigger value="deals" className="h-10 px-4 py-3 whitespace-nowrap">Deals</TabsTrigger>
+            <TabsTrigger value="packages" className="h-10 px-4 py-3 whitespace-nowrap">Packages</TabsTrigger>
             <TabsTrigger value="content" className="h-10 px-4 py-3 whitespace-nowrap">Content</TabsTrigger>
             <TabsTrigger value="reviews" className="h-10 px-4 py-3 whitespace-nowrap">Reviews</TabsTrigger>
             <TabsTrigger value="shipping" className="h-10 px-4 py-3 whitespace-nowrap">Shipping Tiers</TabsTrigger>
@@ -2442,6 +2841,92 @@ export function AdminDashboard() {
           </Card>
         </TabsContent>
 
+        <TabsContent value="packages">
+          <Card>
+            <CardHeader className="space-y-4">
+              <div className="space-y-1">
+                <CardTitle>Special Packages</CardTitle>
+                <p className="text-sm text-gray-500">
+                  Manage the gift bundles and swoop packages shown above deals on the homepage and registry page.
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  onClick={() => {
+                    resetPackageForm();
+                    setShowPackageModal(true);
+                  }}
+                >
+                  <Package className="mr-2 h-4 w-4" />
+                  Add Package
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {specialPackages.length === 0 ? (
+                <p className="text-sm text-gray-500">No packages yet.</p>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Package</TableHead>
+                      <TableHead>Type</TableHead>
+                      <TableHead>Price</TableHead>
+                      <TableHead>Order</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {specialPackages.map((pkg) => {
+                      const packageProduct = Array.isArray(pkg.products)
+                        ? (pkg.products[0] ?? null)
+                        : (pkg.products ?? null);
+
+                      return (
+                        <TableRow key={pkg.id}>
+                          <TableCell>
+                            <div className="font-medium">{pkg.title}</div>
+                            <div className="text-xs text-gray-500">
+                              {pkg.subtitle || "No short description"}
+                            </div>
+                          </TableCell>
+                          <TableCell>{buildSpecialPackageTypeLabel(pkg.package_type)}</TableCell>
+                          <TableCell>
+                            {packageProduct
+                              ? formatNaira(getProductSellingPrice(packageProduct))
+                              : "N/A"}
+                          </TableCell>
+                          <TableCell>{Number(pkg.sort_order ?? 0)}</TableCell>
+                          <TableCell>{pkg.is_active ? "Active" : "Inactive"}</TableCell>
+                          <TableCell>
+                            <div className="flex gap-2">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleEditPackage(pkg)}
+                              >
+                                <Edit className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                variant="destructive"
+                                size="sm"
+                                onClick={() => void handleDeletePackage(pkg)}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
         <TabsContent value="content">
           <div className="space-y-6">
             <Card>
@@ -2578,6 +3063,87 @@ export function AdminDashboard() {
                 </form>
               </CardContent>
             </Card>
+
+            <Card>
+              <CardHeader className="space-y-4">
+                <div className="space-y-1">
+                  <CardTitle>Store Locations</CardTitle>
+                  <p className="text-sm text-gray-500">
+                    Add the locations shown in the header dropdown and control each location page image, contact details, and opening hours.
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    onClick={() => {
+                      resetLocationForm();
+                      setShowLocationModal(true);
+                    }}
+                  >
+                    <MapPin className="mr-2 h-4 w-4" />
+                    Add Location
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent>
+                {storeLocations.length === 0 ? (
+                  <p className="text-sm text-gray-500">No locations added yet.</p>
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Location</TableHead>
+                        <TableHead>Contact</TableHead>
+                        <TableHead>Hours</TableHead>
+                        <TableHead>Order</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {storeLocations.map((location) => (
+                        <TableRow key={location.id}>
+                          <TableCell>
+                            <div className="font-medium">{location.name}</div>
+                            <div className="text-xs text-gray-500">
+                              /locations/{location.slug}
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="text-sm">{location.contact_phone || "No phone"}</div>
+                            <div className="text-xs text-gray-500">
+                              {location.contact_email || "No email"}
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            {splitLocationOpeningHours(location.opening_hours).slice(0, 2).join(", ") || "No hours yet"}
+                          </TableCell>
+                          <TableCell>{Number(location.sort_order ?? 0)}</TableCell>
+                          <TableCell>{location.is_active ? "Active" : "Inactive"}</TableCell>
+                          <TableCell>
+                            <div className="flex gap-2">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleEditLocation(location)}
+                              >
+                                <Edit className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                variant="destructive"
+                                size="sm"
+                                onClick={() => void handleDeleteLocation(location.id)}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )}
+              </CardContent>
+            </Card>
           </div>
         </TabsContent>
 
@@ -2673,7 +3239,7 @@ export function AdminDashboard() {
               <div className="space-y-1">
                 <CardTitle>Shipping Tiers</CardTitle>
                 <p className="text-sm text-gray-500">
-                  Create the delivery options customers can choose at checkout. Put Lagos options first by giving them lower display order numbers.
+                  Create the delivery and pickup options customers can choose at checkout. Put Lagos options first by giving them lower display order numbers.
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
@@ -2706,7 +3272,8 @@ export function AdminDashboard() {
                       <TableCell>
                         <div className="font-medium">{tier.label}</div>
                         <div className="text-xs text-gray-500">
-                          {tier.description || "No description"}
+                          {(tier.fulfillment_type === "pickup" ? "Pickup" : "Delivery") +
+                            (tier.description ? ` • ${tier.description}` : "")}
                         </div>
                       </TableCell>
                       <TableCell>{formatNairaAmount(Number(tier.fee ?? 0))}</TableCell>
@@ -2894,7 +3461,7 @@ export function AdminDashboard() {
       </Dialog>
 
       <Dialog open={showShippingTierModal} onOpenChange={setShowShippingTierModal}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
               {editingShippingTier ? "Edit Shipping Tier" : "Add Shipping Tier"}
@@ -2932,7 +3499,24 @@ export function AdminDashboard() {
 
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <div className="space-y-2">
-                <Label htmlFor="shipping-tier-fee">Delivery Fee (NGN)</Label>
+                <Label htmlFor="shipping-tier-fulfillment">Fulfillment Type</Label>
+                <Select
+                  value={shippingTierFulfillmentType}
+                  onValueChange={(value) =>
+                    setShippingTierFulfillmentType(value as "delivery" | "pickup")
+                  }
+                >
+                  <SelectTrigger id="shipping-tier-fulfillment">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="delivery">Delivery</SelectItem>
+                    <SelectItem value="pickup">Pickup</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="shipping-tier-fee">Fee (NGN)</Label>
                 <Input
                   id="shipping-tier-fee"
                   type="number"
@@ -2952,7 +3536,7 @@ export function AdminDashboard() {
                   onChange={(event) => setShippingTierSortOrder(event.target.value)}
                 />
                 <p className="text-xs text-gray-500">
-                  Lower numbers appear first. Use this to keep Lagos options above other delivery choices.
+                  Lower numbers appear first. Use this to keep Lagos options or pickup choices where you want them.
                 </p>
               </div>
             </div>
@@ -2983,6 +3567,281 @@ export function AdminDashboard() {
                 : editingShippingTier
                   ? "Update Shipping Tier"
                   : "Create Shipping Tier"}
+            </Button>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showPackageModal} onOpenChange={setShowPackageModal}>
+        <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>
+              {editingPackage ? "Edit Special Package" : "Add Special Package"}
+            </DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleSavePackage} className="space-y-4">
+            <p className="text-sm text-gray-500">
+              Packages appear in the `Special Packages` section above the deal carousel and can be added directly to cart or registry.
+            </p>
+
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="package-type">Package Type</Label>
+                <Select
+                  value={packageType}
+                  onValueChange={(value) => setPackageType(value as SpecialPackageType)}
+                >
+                  <SelectTrigger id="package-type">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {SPECIAL_PACKAGE_TYPES.map((value) => (
+                      <SelectItem key={value} value={value}>
+                        {buildSpecialPackageTypeLabel(value)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="package-price">Price (NGN)</Label>
+                <Input
+                  id="package-price"
+                  type="number"
+                  min="0"
+                  value={packagePrice}
+                  onChange={(event) => setPackagePrice(event.target.value)}
+                  required
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="package-title">Package Title</Label>
+                <Input
+                  id="package-title"
+                  value={packageTitle}
+                  onChange={(event) => setPackageTitle(event.target.value)}
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="package-badge">Badge Text</Label>
+                <Input
+                  id="package-badge"
+                  value={packageBadgeText}
+                  onChange={(event) => setPackageBadgeText(event.target.value)}
+                  placeholder="Best for newborn setup"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="package-subtitle">Short Description</Label>
+              <Textarea
+                id="package-subtitle"
+                value={packageSubtitle}
+                onChange={(event) => setPackageSubtitle(event.target.value)}
+                rows={3}
+                placeholder="A ready-to-checkout package for new parents."
+                required
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="package-details">Details / Included Items</Label>
+              <Textarea
+                id="package-details"
+                value={packageDetails}
+                onChange={(event) => setPackageDetails(event.target.value)}
+                rows={6}
+                placeholder={"Use one line per included item or package detail.\nCot set\nBath essentials\nNewborn clothing pack"}
+                required
+              />
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="package-video-url">External Video Link</Label>
+                <Input
+                  id="package-video-url"
+                  value={packageVideoUrl}
+                  onChange={(event) => setPackageVideoUrl(event.target.value)}
+                  placeholder="https://..."
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="package-sort-order">Display Order</Label>
+                <Input
+                  id="package-sort-order"
+                  type="number"
+                  min="0"
+                  value={packageSortOrder}
+                  onChange={(event) => setPackageSortOrder(event.target.value)}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="package-image">Package Image Upload</Label>
+              <Input
+                id="package-image"
+                type="file"
+                accept="image/*"
+                onChange={(event) => setPackageImageFile(event.target.files?.[0] ?? null)}
+              />
+              <p className="text-xs text-gray-500">
+                Upload an image file up to 500KB. The package image is also used for checkout and registry views.
+              </p>
+              {packageImage ? (
+                <div className="overflow-hidden rounded-2xl border">
+                  <img src={packageImage} alt={packageTitle || "Package preview"} className="h-56 w-full object-cover" />
+                </div>
+              ) : null}
+            </div>
+
+            <label className="flex items-center gap-2 text-sm text-gray-700">
+              <input
+                type="checkbox"
+                checked={packageIsActive}
+                onChange={(event) => setPackageIsActive(event.target.checked)}
+              />
+              Show this package to customers
+            </label>
+
+            <Button type="submit" className="w-full" disabled={savingPackage}>
+              {savingPackage
+                ? "Saving..."
+                : editingPackage
+                  ? "Update Package"
+                  : "Create Package"}
+            </Button>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showLocationModal} onOpenChange={setShowLocationModal}>
+        <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>
+              {editingLocation ? "Edit Store Location" : "Add Store Location"}
+            </DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleSaveLocation} className="space-y-4">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="location-name">Location Name</Label>
+                <Input
+                  id="location-name"
+                  value={locationName}
+                  onChange={(event) => setLocationName(event.target.value)}
+                  placeholder="Lekki Store"
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="location-sort-order">Display Order</Label>
+                <Input
+                  id="location-sort-order"
+                  type="number"
+                  min="0"
+                  value={locationSortOrder}
+                  onChange={(event) => setLocationSortOrder(event.target.value)}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="location-address">Address</Label>
+              <Textarea
+                id="location-address"
+                value={locationAddress}
+                onChange={(event) => setLocationAddress(event.target.value)}
+                rows={3}
+                required
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="location-description">Description</Label>
+              <Textarea
+                id="location-description"
+                value={locationDescription}
+                onChange={(event) => setLocationDescription(event.target.value)}
+                rows={4}
+                placeholder="Share what customers can expect at this location."
+              />
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="location-phone">Contact Phone</Label>
+                <Input
+                  id="location-phone"
+                  value={locationPhone}
+                  onChange={(event) => setLocationPhone(event.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="location-email">Contact Email</Label>
+                <Input
+                  id="location-email"
+                  type="email"
+                  value={locationEmail}
+                  onChange={(event) => setLocationEmail(event.target.value)}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="location-hours">Opening Hours</Label>
+              <Textarea
+                id="location-hours"
+                value={locationOpeningHours}
+                onChange={(event) => setLocationOpeningHours(event.target.value)}
+                rows={5}
+                placeholder={"Monday - Friday: 9:00 AM - 6:00 PM\nSaturday: 10:00 AM - 5:00 PM"}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="location-image">Location Image Upload</Label>
+              <Input
+                id="location-image"
+                type="file"
+                accept="image/*"
+                onChange={(event) => setLocationHeroImageFile(event.target.files?.[0] ?? null)}
+              />
+              <p className="text-xs text-gray-500">
+                Upload an image file up to 500KB for the location page hero.
+              </p>
+              {locationHeroImage ? (
+                <div className="overflow-hidden rounded-2xl border">
+                  <img
+                    src={locationHeroImage}
+                    alt={locationName || "Location preview"}
+                    className="h-56 w-full object-cover"
+                  />
+                </div>
+              ) : null}
+            </div>
+
+            <label className="flex items-center gap-2 text-sm text-gray-700">
+              <input
+                type="checkbox"
+                checked={locationIsActive}
+                onChange={(event) => setLocationIsActive(event.target.checked)}
+              />
+              Show this location to customers
+            </label>
+
+            <Button type="submit" className="w-full" disabled={savingLocation}>
+              {savingLocation
+                ? "Saving..."
+                : editingLocation
+                  ? "Update Location"
+                  : "Create Location"}
             </Button>
           </form>
         </DialogContent>

@@ -16,6 +16,11 @@ type RegistryRow = {
   updated_at?: string | null;
 };
 
+type StoreLocationRow = {
+  slug: string;
+  updated_at?: string | null;
+};
+
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const now = new Date();
   const urls: MetadataRoute.Sitemap = [
@@ -86,13 +91,21 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     return urls;
   }
 
-  const [{ data: products }, { data: posts }, { data: registries }] = await Promise.all([
-    client.from("products").select("slug, created_at, updated_at"),
+  const [{ data: products }, { data: posts }, { data: registries }, { data: locations }] =
+    await Promise.all([
+    client
+      .from("products")
+      .select("slug, created_at, updated_at")
+      .eq("product_kind", "standard"),
     client
       .from("blog_posts")
       .select("slug, published_at, updated_at")
       .eq("is_published", true),
     client.from("registries").select("share_code, updated_at"),
+    client
+      .from("store_locations")
+      .select("slug, updated_at")
+      .eq("is_active", true),
   ]);
 
   urls.push(
@@ -125,6 +138,15 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       lastModified: registry.updated_at ? new Date(registry.updated_at) : now,
       changeFrequency: "weekly" as const,
       priority: 0.5,
+    })),
+  );
+
+  urls.push(
+    ...((locations as StoreLocationRow[] | null) ?? []).map((location) => ({
+      url: buildAbsoluteUrl(`/locations/${location.slug}`),
+      lastModified: location.updated_at ? new Date(location.updated_at) : now,
+      changeFrequency: "monthly" as const,
+      priority: 0.6,
     })),
   );
 

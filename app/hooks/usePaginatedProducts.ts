@@ -334,6 +334,7 @@ export function usePaginatedProducts({
     let query = supabase
       .from("products")
       .select("*", { count: "exact" })
+      .eq("product_kind", "standard")
       .order("created_at", { ascending: false });
 
     if (onlyInStock) {
@@ -503,6 +504,7 @@ export function useFeaturedProducts({
       let query = supabase
         .from("products")
         .select("*")
+        .eq("product_kind", "standard")
         .eq("is_featured", true)
         .order("featured_sort_order", { ascending: true })
         .order("created_at", { ascending: false })

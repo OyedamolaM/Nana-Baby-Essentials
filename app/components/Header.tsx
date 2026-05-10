@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { LayoutDashboard, LogOut, Menu, Shield, ShoppingCart, User } from "lucide-react";
+import { LayoutDashboard, LogOut, MapPin, Menu, Shield, ShoppingCart, User } from "lucide-react";
+import { type StoreLocationRecord } from "../../lib/storeLocations";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import {
@@ -19,6 +20,7 @@ interface HeaderProps {
   cartItemCount: number;
   isAuthenticated: boolean;
   isAdmin: boolean;
+  locations?: StoreLocationRecord[];
   onCartClick: () => void;
   onNavigate: (section: NavSection) => void;
   onSignIn: () => void;
@@ -39,6 +41,7 @@ export function Header({
   cartItemCount,
   isAuthenticated,
   isAdmin,
+  locations = [],
   onCartClick,
   onNavigate,
   onSignIn,
@@ -65,7 +68,11 @@ export function Header({
             className="flex items-center gap-2 text-left z-10"
             onClick={() => handleNavigate("home")}
           >
-            <img src="/logo.jpg" className="h-7 w-7 sm:h-8 sm:w-8 text-pink-500 shrink-0" />
+            <img
+              src="/logo.jpg"
+              alt="Nana's Baby Essentials logo"
+              className="h-7 w-7 shrink-0 text-pink-500 sm:h-8 sm:w-8"
+            />
 
             <div className="flex flex-col leading-tight">
               <p className="text-sm font-semibold leading-tight text-gray-900 sm:text-lg">
@@ -103,6 +110,27 @@ export function Header({
             >
               Blog
             </Link>
+
+            {locations.length > 0 ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    type="button"
+                    className="inline-flex items-center gap-1 text-sm font-medium transition-colors hover:text-pink-600"
+                  >
+                    <MapPin className="h-4 w-4" />
+                    Locations
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="center">
+                  {locations.map((location) => (
+                    <DropdownMenuItem key={location.id} asChild>
+                      <Link href={`/locations/${location.slug}`}>{location.name}</Link>
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : null}
           </nav>
 
           {/* RIGHT: Actions */}
@@ -223,6 +251,25 @@ export function Header({
               <Link href="/blog" onClick={() => setMobileMenuOpen(false)}>
                 Blog
               </Link>
+
+              {locations.length > 0 ? (
+                <div className="border-t pt-3">
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-[0.14em] text-gray-500">
+                    Locations
+                  </p>
+                  <div className="flex flex-col gap-3">
+                    {locations.map((location) => (
+                      <Link
+                        key={location.id}
+                        href={`/locations/${location.slug}`}
+                        onClick={() => setMobileMenuOpen(false)}
+                      >
+                        {location.name}
+                      </Link>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
             </nav>
           </div>
         )}

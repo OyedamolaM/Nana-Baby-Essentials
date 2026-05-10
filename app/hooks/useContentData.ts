@@ -127,6 +127,7 @@ export function useHomepageDeals(initialDeals?: HomepageDeal[]) {
         const { data: productRows } = await supabase
           .from("products")
           .select("*")
+          .eq("product_kind", "standard")
           .in("id", productIds);
 
         productsById = buildProductLookup((productRows as ProductRecord[] | null) ?? []);

@@ -45,6 +45,7 @@ type ShippingTierOption = {
   description?: string | null;
   eta?: string | null;
   fee: number;
+  fulfillmentType: "delivery" | "pickup";
   label: string;
   value: string;
 };
@@ -133,7 +134,7 @@ export function CheckoutModal({
 
       const { data, error } = await supabase
         .from("shipping_tiers")
-        .select("code, label, fee, eta, description")
+        .select("code, label, fee, eta, description, fulfillment_type")
         .eq("is_active", true)
         .order("sort_order", { ascending: true });
 
@@ -155,6 +156,7 @@ export function CheckoutModal({
         fee: Number(tier.fee ?? 0),
         eta: tier.eta,
         description: tier.description,
+        fulfillmentType: tier.fulfillment_type === "pickup" ? "pickup" : "delivery",
       })) satisfies ShippingTierOption[];
 
       if (!cancelled) {
@@ -202,6 +204,7 @@ export function CheckoutModal({
   const shippingFee = selectedTier?.fee ?? 0;
   const totalAmount = subtotalAmount + shippingFee;
   const preventModalClose = loading || paystackActive;
+  const isPickupOrder = selectedTier?.fulfillmentType === "pickup";
 
   const handleCheckout = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -527,7 +530,9 @@ export function CheckoutModal({
           </div>
 
           <div className="space-y-4">
-            <h3 className="font-semibold">Shipping Address</h3>
+            <h3 className="font-semibold">
+              {isPickupOrder ? "Pickup Contact Details" : "Shipping Address"}
+            </h3>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="shipping-name">Full Name</Label>
@@ -555,36 +560,44 @@ export function CheckoutModal({
               </div>
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="shipping-address">Street Address</Label>
-              <Input
-                id="shipping-address"
-                value={shippingAddress}
-                onChange={(event) => setShippingAddress(event.target.value)}
-                required
-              />
-            </div>
+            {!isPickupOrder ? (
+              <>
+                <div className="space-y-2">
+                  <Label htmlFor="shipping-address">Street Address</Label>
+                  <Input
+                    id="shipping-address"
+                    value={shippingAddress}
+                    onChange={(event) => setShippingAddress(event.target.value)}
+                    required
+                  />
+                </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="shipping-city">City</Label>
-                <Input
-                  id="shipping-city"
-                  value={shippingCity}
-                  onChange={(event) => setShippingCity(event.target.value)}
-                  required
-                />
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="shipping-city">City</Label>
+                    <Input
+                      id="shipping-city"
+                      value={shippingCity}
+                      onChange={(event) => setShippingCity(event.target.value)}
+                      required
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="shipping-state">State</Label>
+                    <Input
+                      id="shipping-state"
+                      value={shippingState}
+                      onChange={(event) => setShippingState(event.target.value)}
+                      required
+                    />
+                  </div>
+                </div>
+              </>
+            ) : (
+              <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">
+                Pickup orders do not require a delivery address. Customer and rider pickup codes will be attached to the order automatically.
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="shipping-state">State</Label>
-                <Input
-                  id="shipping-state"
-                  value={shippingState}
-                  onChange={(event) => setShippingState(event.target.value)}
-                  required
-                />
-              </div>
-            </div>
+            )}
           </div>
 
           <Button

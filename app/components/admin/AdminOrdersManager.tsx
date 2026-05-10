@@ -53,9 +53,11 @@ export type AdminOrderRecord = {
   customer_email?: string | null;
   customer_name?: string | null;
   customer_phone?: string | null;
+  customer_pickup_code?: string | null;
   id: string;
   items?: AdminOrderItem[] | null;
   payment_reference?: string | null;
+  rider_pickup_code?: string | null;
   shipping_address?: Partial<ShippingAddress> | null;
   shipping_tier?: string | null;
   status: string;
@@ -74,6 +76,7 @@ type CustomerRecord = {
 type ShippingTierRecord = {
   code: string;
   fee: number;
+  fulfillment_type?: "delivery" | "pickup" | null;
   is_active: boolean;
   label: string;
 };
@@ -190,6 +193,10 @@ export function AdminOrdersManager({
   const totalAmount = useMemo(() => {
     return normalizedItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
   }, [normalizedItems]);
+  const selectedShippingTierRecord = useMemo(() => {
+    return shippingTiers.find((tier) => tier.code === shippingTier) ?? null;
+  }, [shippingTier, shippingTiers]);
+  const isPickupOrder = selectedShippingTierRecord?.fulfillment_type === "pickup";
   const paidOrders = useMemo(() => {
     return orders.filter((order) => order.status === "paid");
   }, [orders]);
@@ -314,14 +321,8 @@ export function AdminOrdersManager({
       return;
     }
 
-    if (
-      !shippingName.trim() ||
-      !shippingPhone.trim() ||
-      !shippingAddress.trim() ||
-      !shippingCity.trim() ||
-      !shippingState.trim()
-    ) {
-      toast.error("Complete the shipping address before saving.");
+    if (!shippingName.trim() || !shippingPhone.trim()) {
+      toast.error("Complete the recipient contact details before saving.");
       return;
     }
 
@@ -482,6 +483,11 @@ export function AdminOrdersManager({
                       <TableBody>
                         {group.rows.map((order) => {
                           const savedAddress = normalizeShippingAddress(order.shipping_address);
+                          const selectedTier = shippingTiers.find(
+                            (tier) => tier.code === order.shipping_tier,
+                          );
+                          const isPickupTier =
+                            selectedTier?.fulfillment_type === "pickup";
                           return (
                             <TableRow key={order.id}>
                               <TableCell>
@@ -489,6 +495,16 @@ export function AdminOrdersManager({
                                 <div className="text-xs text-gray-500">
                                   {order.shipping_tier || "No shipping tier"}
                                 </div>
+                                {order.customer_pickup_code || order.rider_pickup_code ? (
+                                  <div className="mt-1 space-y-1 text-xs text-gray-500">
+                                    {order.customer_pickup_code ? (
+                                      <div>Customer pickup code: {order.customer_pickup_code}</div>
+                                    ) : null}
+                                    {order.rider_pickup_code ? (
+                                      <div>Rider pickup code: {order.rider_pickup_code}</div>
+                                    ) : null}
+                                  </div>
+                                ) : null}
                               </TableCell>
                               <TableCell>
                                 <div className="font-medium">
@@ -504,7 +520,9 @@ export function AdminOrdersManager({
                               <TableCell className="text-sm text-gray-600">
                                 {savedAddress.address
                                   ? `${savedAddress.address}, ${savedAddress.city}, ${savedAddress.state}`
-                                  : "N/A"}
+                                  : isPickupTier
+                                    ? "Pickup"
+                                    : "N/A"}
                               </TableCell>
                               <TableCell>{formatNairaAmount(Number(order.total ?? 0))}</TableCell>
                               <TableCell>{order.status}</TableCell>
@@ -774,7 +792,9 @@ export function AdminOrdersManager({
             </div>
 
             <div className="space-y-4">
-              <h3 className="text-sm font-semibold text-gray-900">Shipping Address</h3>
+              <h3 className="text-sm font-semibold text-gray-900">
+                {isPickupOrder ? "Pickup Contact Details" : "Shipping Address"}
+              </h3>
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-2">
                   <Label htmlFor="shipping-name">Recipient Name</Label>
@@ -796,36 +816,44 @@ export function AdminOrdersManager({
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="shipping-address">Street Address</Label>
-                <Input
-                  id="shipping-address"
-                  value={shippingAddress}
-                  onChange={(event) => setShippingAddress(event.target.value)}
-                  required
-                />
-              </div>
+              {!isPickupOrder ? (
+                <>
+                  <div className="space-y-2">
+                    <Label htmlFor="shipping-address">Street Address</Label>
+                    <Input
+                      id="shipping-address"
+                      value={shippingAddress}
+                      onChange={(event) => setShippingAddress(event.target.value)}
+                      required
+                    />
+                  </div>
 
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="shipping-city">City</Label>
-                  <Input
-                    id="shipping-city"
-                    value={shippingCity}
-                    onChange={(event) => setShippingCity(event.target.value)}
-                    required
-                  />
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label htmlFor="shipping-city">City</Label>
+                      <Input
+                        id="shipping-city"
+                        value={shippingCity}
+                        onChange={(event) => setShippingCity(event.target.value)}
+                        required
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="shipping-state">State</Label>
+                      <Input
+                        id="shipping-state"
+                        value={shippingState}
+                        onChange={(event) => setShippingState(event.target.value)}
+                        required
+                      />
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
+                  This is a pickup order. Rider and customer pickup codes will be generated automatically after the order is saved.
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="shipping-state">State</Label>
-                  <Input
-                    id="shipping-state"
-                    value={shippingState}
-                    onChange={(event) => setShippingState(event.target.value)}
-                    required
-                  />
-                </div>
-              </div>
+              )}
             </div>
 
             <Button type="submit" className="w-full" disabled={savingOrder}>

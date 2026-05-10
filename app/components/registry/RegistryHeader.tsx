@@ -6,11 +6,13 @@ import {
   Gift,
   LayoutDashboard,
   LogOut,
+  MapPin,
   Menu,
   Shield,
   User,
 } from "lucide-react";
 
+import { type StoreLocationRecord } from "../../../lib/storeLocations";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import {
@@ -25,6 +27,7 @@ interface RegistryHeaderProps {
   cartItemCount: number;
   isAdmin: boolean;
   isAuthenticated: boolean;
+  locations?: StoreLocationRecord[];
   onCartClick: () => void;
   onOpenAdmin: () => void;
   onOpenDashboard: () => void;
@@ -44,6 +47,7 @@ export function RegistryHeader({
   cartItemCount,
   isAdmin,
   isAuthenticated,
+  locations = [],
   onCartClick,
   onOpenAdmin,
   onOpenDashboard,
@@ -66,7 +70,11 @@ export function RegistryHeader({
             className="z-10 flex items-center gap-2 text-left"
             onClick={closeMobileMenu}
           >
-            <img src="/logo.jpg"className="h-7 w-7 shrink-0 text-pink-500 sm:h-8 sm:w-8" />
+            <img
+              src="/logo.jpg"
+              alt="Nana's Baby Registry logo"
+              className="h-7 w-7 shrink-0 text-pink-500 sm:h-8 sm:w-8"
+            />
 
             <div className="flex flex-col leading-tight">
               <p className="text-sm font-semibold leading-tight text-gray-900 sm:text-lg">
@@ -88,6 +96,27 @@ export function RegistryHeader({
                 {link.label}
               </Link>
             ))}
+
+            {locations.length > 0 ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    type="button"
+                    className="inline-flex items-center gap-1 text-sm font-medium transition-colors hover:text-pink-600"
+                  >
+                    <MapPin className="h-4 w-4" />
+                    Locations
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="center">
+                  {locations.map((location) => (
+                    <DropdownMenuItem key={location.id} asChild>
+                      <Link href={`/locations/${location.slug}`}>{location.name}</Link>
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : null}
           </nav>
 
           <div className="z-10 flex shrink-0 items-center gap-2">
@@ -187,6 +216,25 @@ export function RegistryHeader({
                   {link.label}
                 </Link>
               ))}
+
+              {locations.length > 0 ? (
+                <div className="border-t pt-3">
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-[0.14em] text-gray-500">
+                    Locations
+                  </p>
+                  <div className="flex flex-col gap-3">
+                    {locations.map((location) => (
+                      <Link
+                        key={location.id}
+                        href={`/locations/${location.slug}`}
+                        onClick={closeMobileMenu}
+                      >
+                        {location.name}
+                      </Link>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
             </nav>
           </div>
         ) : null}

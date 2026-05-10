@@ -7,6 +7,7 @@ type UpdateShippingTierPayload = {
   description?: string | null;
   eta?: string | null;
   fee?: number;
+  fulfillmentType?: "delivery" | "pickup";
   isActive?: boolean;
   label?: string;
   sortOrder?: number;
@@ -55,6 +56,9 @@ export async function PATCH(request: Request, context: RouteContext<"/api/admin/
   }
   if (payload?.description !== undefined) {
     updatePayload.description = payload.description?.trim() || null;
+  }
+  if (payload?.fulfillmentType !== undefined) {
+    updatePayload.fulfillment_type = payload.fulfillmentType === "pickup" ? "pickup" : "delivery";
   }
   if (payload?.sortOrder !== undefined) {
     updatePayload.sort_order = Math.max(0, Math.round(Number(payload.sortOrder)));

@@ -8,6 +8,7 @@ type CreateShippingTierPayload = {
   description?: string;
   eta?: string;
   fee?: number;
+  fulfillmentType?: "delivery" | "pickup";
   isActive?: boolean;
   label?: string;
   sortOrder?: number;
@@ -95,6 +96,7 @@ export async function POST(request: Request) {
       fee: Math.max(0, Math.round(Number(payload?.fee ?? 0))),
       eta: payload?.eta?.trim() || null,
       description: payload?.description?.trim() || null,
+      fulfillment_type: payload?.fulfillmentType === "pickup" ? "pickup" : "delivery",
       sort_order: Math.max(0, Math.round(Number(payload?.sortOrder ?? 0))),
       is_active: payload?.isActive ?? true,
     })

@@ -10,10 +10,15 @@ import { AuthModal } from "./auth/AuthModal";
 import { CheckoutModal } from "./checkout/CheckoutModal";
 import { useAuth } from "../contexts/AuthContext";
 import { useStoreCart } from "../contexts/StoreCartContext";
+import { type StoreLocationRecord } from "../../lib/storeLocations";
 
 type AuthTab = "login" | "signup";
 
-export function SiteHeaderShell() {
+export function SiteHeaderShell({
+  locations = [],
+}: {
+  locations?: StoreLocationRecord[];
+}) {
   const router = useRouter();
   const { isAdmin, signOut, user } = useAuth();
   const {
@@ -98,6 +103,7 @@ export function SiteHeaderShell() {
         cartItemCount={distinctItemCount}
         isAuthenticated={Boolean(user)}
         isAdmin={isAdmin}
+        locations={locations}
         onCartClick={() => setCartOpen(true)}
         onNavigate={handleNavigate}
         onSignIn={() => openAuth("login")}

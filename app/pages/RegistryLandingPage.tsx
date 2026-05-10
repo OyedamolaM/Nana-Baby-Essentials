@@ -7,6 +7,7 @@ import { Download, Gift, Search, Share2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { CATEGORIES, type StoreProduct } from "../../lib/commerce";
+import { type HomepageDeal } from "../../lib/content";
 import {
   addRegistryCartItem,
   clearRegistryCart,
@@ -22,10 +23,12 @@ import {
   type RegistryRecord,
 } from "../../lib/registry";
 import { CategoryFilter } from "../components/CategoryFilter";
+import { DealOfTheWeek } from "../components/DealOfTheWeek";
 import { Footer } from "../components/Footer";
 import { type Product } from "../components/ProductCard";
 import { ProductCard } from "../components/ProductCard";
 import { ProductDetailModal } from "../components/ProductDetailModal";
+import { SpecialPackagesSection } from "../components/SpecialPackagesSection";
 import { AuthModal } from "../components/auth/AuthModal";
 import { RegistryCartModal } from "../components/registry/RegistryCartModal";
 import { RegistryCreateModal } from "../components/registry/RegistryCreateModal";
@@ -50,6 +53,8 @@ import {
   getCurrentProductReturnPath,
   readProductDetailReturnContext,
 } from "../../lib/productDetailReturn";
+import { type SpecialPackage } from "../../lib/specialPackages";
+import { type StoreLocationRecord } from "../../lib/storeLocations";
 
 type AuthTab = "login" | "signup";
 
@@ -121,14 +126,20 @@ function buildPagination(currentPage: number, totalPages: number) {
 interface RegistryLandingPageProps {
   catalogOnly?: boolean;
   initialCategories?: string[];
+  initialDeals?: HomepageDeal[];
   initialProducts?: StoreProduct[];
+  initialSpecialPackages?: SpecialPackage[];
+  initialStoreLocations?: StoreLocationRecord[];
   initialTotalCount?: number;
 }
 
 export function RegistryLandingPage({
   catalogOnly = false,
   initialCategories,
+  initialDeals,
   initialProducts,
+  initialSpecialPackages = [],
+  initialStoreLocations = [],
   initialTotalCount,
 }: RegistryLandingPageProps) {
   const router = useRouter();
@@ -249,6 +260,12 @@ export function RegistryLandingPage({
 
   const latestRegistry = activeRegistries[0] ?? myRegistries[0] ?? null;
   const registryCartCount = registryCartItems.length;
+  const giftBundles = initialSpecialPackages.filter(
+    (entry) => entry.packageType === "gift_bundle",
+  );
+  const swoopPackages = initialSpecialPackages.filter(
+    (entry) => entry.packageType === "swoop_package",
+  );
 
   const handleAddToRegistry = (product: Product, quantity = 1) => {
     if (!user) {
@@ -428,6 +445,7 @@ export function RegistryLandingPage({
         cartItemCount={registryCartCount}
         isAuthenticated={Boolean(user)}
         isAdmin={isAdmin}
+        locations={initialStoreLocations}
         onCartClick={() => setRegistryCartOpen(true)}
         onOpenAdmin={handleOpenAdmin}
         onOpenDashboard={handleOpenDashboard}
@@ -579,6 +597,23 @@ export function RegistryLandingPage({
               )}
             </div>
           </section>
+        ) : null}
+
+        {!catalogOnly ? (
+          <SpecialPackagesSection
+            actionLabel="Add to Registry"
+            giftBundles={giftBundles}
+            onAction={(pkg, quantity = 1) => handleAddToRegistry(pkg.product, quantity)}
+            swoopPackages={swoopPackages}
+          />
+        ) : null}
+
+        {!catalogOnly ? (
+          <DealOfTheWeek
+            initialDeals={initialDeals}
+            onAddToCart={(product) => handleAddToRegistry(product)}
+            onViewDetails={handleViewProduct}
+          />
         ) : null}
 
         <section className="bg-white py-20">

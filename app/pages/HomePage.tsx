@@ -14,6 +14,7 @@ import { Hero } from "../components/Hero";
 import { type Product } from "../components/ProductCard";
 import { ProductDetailModal } from "../components/ProductDetailModal";
 import { ReviewsSection } from "../components/ReviewsSection";
+import { SpecialPackagesSection } from "../components/SpecialPackagesSection";
 import { ShoppingCartDrawer } from "../components/ShoppingCartDrawer";
 import { AuthModal } from "../components/auth/AuthModal";
 import { CheckoutModal } from "../components/checkout/CheckoutModal";
@@ -23,6 +24,8 @@ import { useAuth } from "../contexts/AuthContext";
 import { useStoreCart } from "../contexts/StoreCartContext";
 import { type StoreProduct } from "../../lib/commerce";
 import { type HomepageDeal } from "../../lib/content";
+import { type SpecialPackage } from "../../lib/specialPackages";
+import { type StoreLocationRecord } from "../../lib/storeLocations";
 import {
   type HomepageReview,
   type HomepageSiteContent,
@@ -42,6 +45,8 @@ interface HomePageProps {
   initialProductCategories?: string[];
   initialProducts?: StoreProduct[];
   initialProductTotalCount?: number;
+  initialSpecialPackages?: SpecialPackage[];
+  initialStoreLocations?: StoreLocationRecord[];
 }
 
 export function HomePage({
@@ -51,6 +56,8 @@ export function HomePage({
   initialProductCategories,
   initialProducts,
   initialProductTotalCount,
+  initialSpecialPackages = [],
+  initialStoreLocations = [],
 }: HomePageProps) {
   const router = useRouter();
   const { isAdmin, signOut, user } = useAuth();
@@ -183,12 +190,20 @@ export function HomePage({
     scrollToSection("products");
   };
 
+  const giftBundles = initialSpecialPackages.filter(
+    (entry) => entry.packageType === "gift_bundle",
+  );
+  const swoopPackages = initialSpecialPackages.filter(
+    (entry) => entry.packageType === "swoop_package",
+  );
+
   return (
     <div className="min-h-screen bg-white">
       <Header
         cartItemCount={distinctItemCount}
         isAuthenticated={Boolean(user)}
         isAdmin={isAdmin}
+        locations={initialStoreLocations}
         onCartClick={() => setCartOpen(true)}
         onNavigate={handleNavigate}
         onSignIn={() => openAuth("login")}
@@ -203,6 +218,7 @@ export function HomePage({
           <Hero
             image={initialHomepageSiteContent?.heroImage}
             onCreateRegistry={handleCreateRegistry}
+            onGetSwoopPackage={() => scrollToSection("special-packages")}
             onShopNow={handleShopNow}
           />
         </section>
@@ -210,6 +226,13 @@ export function HomePage({
         <section id="registry">
           <BabyRegistryHighlight onCreateRegistry={handleCreateRegistry} />
         </section>
+
+        <SpecialPackagesSection
+          actionLabel="Add to Cart"
+          giftBundles={giftBundles}
+          onAction={(pkg, quantity = 1) => handleAddToCart(pkg.product, quantity)}
+          swoopPackages={swoopPackages}
+        />
 
         <DealOfTheWeek
           initialDeals={initialDeals}

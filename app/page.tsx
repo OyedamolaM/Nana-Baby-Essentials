@@ -5,6 +5,8 @@ import {
   getHomepageSiteContent,
   getPublicProductCatalogPage,
   getPublicProductCategories,
+  getSpecialPackages,
+  getStoreLocations,
 } from "../lib/publicData";
 import { buildPageMetadata } from "../lib/site";
 
@@ -22,6 +24,8 @@ export default async function Page() {
     initialProductCategories,
     initialHomepageSiteContent,
     initialHomepageReviews,
+    initialSpecialPackages,
+    initialStoreLocations,
   ] = await Promise.all([
     getPublicProductCatalogPage({
       page: 1,
@@ -34,6 +38,8 @@ export default async function Page() {
     getPublicProductCategories(),
     getHomepageSiteContent(),
     getHomepageReviews(),
+    getSpecialPackages(),
+    getStoreLocations(),
   ]);
 
   return (
@@ -44,6 +50,8 @@ export default async function Page() {
       initialProductCategories={initialProductCategories}
       initialProducts={initialProductPage.products}
       initialProductTotalCount={initialProductPage.totalCount}
+      initialSpecialPackages={initialSpecialPackages}
+      initialStoreLocations={initialStoreLocations}
     />
   );
 }
