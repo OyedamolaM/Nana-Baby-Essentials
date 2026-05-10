@@ -58,6 +58,7 @@ import { AdminOrdersManager, type AdminOrderRecord } from "../components/admin/A
 import { AdminProductCategoriesManager } from "../components/admin/AdminProductCategoriesManager";
 import { AdminRegistryAccountsManager } from "../components/admin/AdminRegistryAccountsManager";
 import { AdminRegistryOrdersManager } from "../components/admin/AdminRegistryOrdersManager";
+import { AdminDateTimeField } from "../components/admin/AdminDateTimeField";
 import { useAuth } from "../contexts/AuthContext";
 import { hasSupabaseEnv, supabase } from "../lib/supabase";
 import { Button } from "../components/ui/button";
@@ -2693,25 +2694,26 @@ export function AdminDashboard() {
               ) : null}
             </div>
 
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-              <div className="space-y-2">
-                <Label htmlFor="deal-starts">Starts At</Label>
-                <Input
-                  id="deal-starts"
-                  type="datetime-local"
-                  value={dealStartsAt}
-                  onChange={(event) => setDealStartsAt(event.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="deal-ends">Ends At</Label>
-                <Input
-                  id="deal-ends"
-                  type="datetime-local"
-                  value={dealEndsAt}
-                  onChange={(event) => setDealEndsAt(event.target.value)}
-                />
-              </div>
+            <div className="space-y-4">
+              <AdminDateTimeField
+                id="deal-starts"
+                label="Starts At"
+                value={dealStartsAt}
+                onChange={setDealStartsAt}
+                defaultTime="09:00"
+                description="Choose the start date in DD/MM/YYYY format and keep the exact time you want the deal to begin."
+              />
+              <AdminDateTimeField
+                id="deal-ends"
+                label="Ends At"
+                value={dealEndsAt}
+                onChange={setDealEndsAt}
+                defaultTime="23:59"
+                description="Choose the end date in DD/MM/YYYY format and keep the exact time you want the deal to stop."
+              />
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="deal-sort-order">Sort Order</Label>
                 <Input
@@ -2833,15 +2835,14 @@ export function AdminDashboard() {
             </div>
 
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="blog-published-at">Publish Date</Label>
-                <Input
-                  id="blog-published-at"
-                  type="datetime-local"
-                  value={blogPublishedAt}
-                  onChange={(event) => setBlogPublishedAt(event.target.value)}
-                />
-              </div>
+              <AdminDateTimeField
+                id="blog-published-at"
+                label="Publish Date"
+                value={blogPublishedAt}
+                onChange={setBlogPublishedAt}
+                defaultTime="09:00"
+                description="Blog publish dates use DD/MM/YYYY format and keep the time you select."
+              />
               <label className="flex items-center gap-2 self-end text-sm text-gray-700">
                 <input
                   type="checkbox"
