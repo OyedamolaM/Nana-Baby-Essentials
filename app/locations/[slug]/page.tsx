@@ -12,6 +12,8 @@ type LocationPageProps = {
   }>;
 };
 
+export const dynamicParams = true;
+
 export async function generateStaticParams() {
   const locations = await getStoreLocations();
   return locations.map((location) => ({

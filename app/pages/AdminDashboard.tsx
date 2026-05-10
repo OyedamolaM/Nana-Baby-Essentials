@@ -1500,26 +1500,6 @@ export function AdminDashboard() {
     }
   };
 
-  const buildNextSpecialPackageSlug = (title: string) => {
-    const baseSlug = createSlug(title) || "special-package";
-    const existingSlugs = new Set(
-      specialPackages
-        .filter((entry) => entry.id !== editingPackage?.id)
-        .map((entry) => entry.slug),
-    );
-
-    if (!existingSlugs.has(baseSlug)) {
-      return baseSlug;
-    }
-
-    let suffix = 2;
-    while (existingSlugs.has(`${baseSlug}-${suffix}`)) {
-      suffix += 1;
-    }
-
-    return `${baseSlug}-${suffix}`;
-  };
-
   const resetPackageForm = () => {
     setEditingPackage(null);
     setPackageType("swoop_package");
@@ -1591,85 +1571,42 @@ export function AdminDashboard() {
         nextPackageImage = await uploadAdminContentImage(accessToken, packageImageFile);
       }
 
-      const nextSlug = buildNextSpecialPackageSlug(packageTitle);
-      const nextProductCategory =
-        packageType === "swoop_package" ? "Swoop Packages" : "Gift Bundles";
+      const response = await fetch(
+        editingPackage ? `/api/admin/packages/${editingPackage.id}` : "/api/admin/packages",
+        {
+          method: editingPackage ? "PATCH" : "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${accessToken}`,
+          },
+          body: JSON.stringify({
+            badgeText: packageBadgeText,
+            details: packageDetails,
+            externalVideoUrl: packageVideoUrl,
+            image: nextPackageImage,
+            isActive: packageIsActive,
+            packageType,
+            price: nextPrice,
+            sortOrder: Number(packageSortOrder || 0),
+            subtitle: packageSubtitle,
+            title: packageTitle,
+          }),
+        },
+      );
 
-      let productId = editingPackage?.product_id ?? null;
-      let productSlug = `special-package-${nextSlug}`;
-      if (!editingPackage) {
-        productSlug = `${productSlug}-${Date.now()}`;
-      }
+      const result = (await response.json().catch(() => null)) as
+        | { message?: string }
+        | null;
 
-      const productPayload = {
-        name: packageTitle,
-        slug: productSlug,
-        price: nextPrice,
-        selling_price: nextPrice,
-        cost_price: nextPrice,
-        category: nextProductCategory,
-        image: nextPackageImage,
-        description: packageSubtitle.trim() || packageDetails.trim() || packageTitle,
-        in_stock: packageIsActive,
-        is_featured: false,
-        featured_sort_order: 0,
-        product_kind: "special_package",
-      };
-
-      if (productId) {
-        const { error: productUpdateError } = await supabase
-          .from("products")
-          .update(productPayload)
-          .eq("id", productId);
-
-        if (productUpdateError) {
-          toast.error("Could not update the package product.");
-          return;
-        }
-      } else {
-        const { data: productRow, error: productInsertError } = await supabase
-          .from("products")
-          .insert(productPayload)
-          .select("id")
-          .single();
-
-        if (productInsertError || !productRow) {
-          toast.error("Could not create the package product.");
-          return;
-        }
-
-        productId = Number(productRow.id);
-      }
-
-      const packagePayload = {
-        product_id: productId,
-        package_type: packageType,
-        title: packageTitle,
-        slug: nextSlug,
-        subtitle: packageSubtitle.trim() || null,
-        details: packageDetails.trim(),
-        badge_text: packageBadgeText.trim() || null,
-        override_image: nextPackageImage,
-        external_video_url: packageVideoUrl.trim() || null,
-        is_active: packageIsActive,
-        sort_order: Number(packageSortOrder || 0),
-        updated_at: new Date().toISOString(),
-      };
-
-      const { error } = editingPackage
-        ? await supabase.from("special_packages").update(packagePayload).eq("id", editingPackage.id)
-        : await supabase.from("special_packages").insert(packagePayload);
-
-      if (error) {
-        toast.error("Failed to save the package.");
+      if (!response.ok) {
+        toast.error(result?.message ?? "Could not save the package.");
         return;
       }
 
-      toast.success(editingPackage ? "Package updated." : "Package created.");
+      toast.success(result?.message ?? (editingPackage ? "Package updated." : "Package created."));
       setShowPackageModal(false);
       resetPackageForm();
-      await revalidatePublicTags(["packages"]);
-      void loadAdminData();
+      await loadAdminData();
     } catch (error) {
       console.error("Failed to save package.", error);
       toast.error("Could not save the package.");
@@ -1683,37 +1620,35 @@ export function AdminDashboard() {
       return;
     }
 
-    const { error } = await supabase.from("special_packages").delete().eq("id", pkg.id);
-    if (error) {
-      toast.error("Failed to delete the package.");
+    const accessToken = await getAdminAccessToken();
+    if (!accessToken) {
+      toast.error("Sign in again to manage packages.");
       return;
     }
 
-    await supabase.from("products").delete().eq("id", pkg.product_id);
+    try {
+      const response = await fetch(`/api/admin/packages/${pkg.id}`, {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      });
 
-    toast.success("Package deleted.");
-    await revalidatePublicTags(["packages"]);
-    void loadAdminData();
-  };
+      const result = (await response.json().catch(() => null)) as
+        | { message?: string }
+        | null;
 
-  const buildNextLocationSlug = (name: string) => {
-    const baseSlug = createSlug(name) || "location";
-    const existingSlugs = new Set(
-      storeLocations
-        .filter((entry) => entry.id !== editingLocation?.id)
-        .map((entry) => entry.slug),
-    );
+      if (!response.ok) {
+        toast.error(result?.message ?? "Could not delete the package.");
+        return;
+      }
 
-    if (!existingSlugs.has(baseSlug)) {
-      return baseSlug;
+      toast.success(result?.message ?? "Package deleted.");
+      await loadAdminData();
+    } catch (error) {
+      console.error("Failed to delete package.", error);
+      toast.error("Could not delete the package.");
     }
-
-    let suffix = 2;
-    while (existingSlugs.has(`${baseSlug}-${suffix}`)) {
-      suffix += 1;
-    }
-
-    return `${baseSlug}-${suffix}`;
   };
 
   const resetLocationForm = () => {
@@ -1767,34 +1702,41 @@ export function AdminDashboard() {
         nextHeroImage = await uploadAdminContentImage(accessToken, locationHeroImageFile);
       }
 
-      const payload = {
-        name: locationName.trim(),
-        slug: buildNextLocationSlug(locationName),
-        address: locationAddress.trim(),
-        description: locationDescription.trim() || null,
-        contact_phone: locationPhone.trim() || null,
-        contact_email: locationEmail.trim() || null,
-        opening_hours: locationOpeningHours.trim() || null,
-        hero_image: nextHeroImage,
-        is_active: locationIsActive,
-        sort_order: Number(locationSortOrder || 0),
-        updated_at: new Date().toISOString(),
-      };
+      const response = await fetch(
+        editingLocation ? `/api/admin/locations/${editingLocation.id}` : "/api/admin/locations",
+        {
+          method: editingLocation ? "PATCH" : "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${accessToken}`,
+          },
+          body: JSON.stringify({
+            address: locationAddress,
+            contactEmail: locationEmail,
+            contactPhone: locationPhone,
+            description: locationDescription,
+            heroImage: nextHeroImage,
+            isActive: locationIsActive,
+            name: locationName,
+            openingHours: locationOpeningHours,
+            sortOrder: Number(locationSortOrder || 0),
+          }),
+        },
+      );
 
-      const { error } = editingLocation
-        ? await supabase.from("store_locations").update(payload).eq("id", editingLocation.id)
-        : await supabase.from("store_locations").insert(payload);
+      const result = (await response.json().catch(() => null)) as
+        | { message?: string }
+        | null;
 
-      if (error) {
-        toast.error("Failed to save the location.");
+      if (!response.ok) {
+        toast.error(result?.message ?? "Could not save the location.");
         return;
       }
 
-      toast.success(editingLocation ? "Location updated." : "Location created.");
+      toast.success(result?.message ?? (editingLocation ? "Location updated." : "Location created."));
       setShowLocationModal(false);
       resetLocationForm();
-      await revalidatePublicTags(["locations"]);
-      void loadAdminData();
+      await loadAdminData();
     } catch (error) {
       console.error("Failed to save location.", error);
       toast.error("Could not save the location.");
@@ -1808,15 +1750,35 @@ export function AdminDashboard() {
       return;
     }
 
-    const { error } = await supabase.from("store_locations").delete().eq("id", locationId);
-    if (error) {
-      toast.error("Failed to delete the location.");
+    const accessToken = await getAdminAccessToken();
+    if (!accessToken) {
+      toast.error("Sign in again to manage locations.");
       return;
     }
 
-    toast.success("Location deleted.");
-    await revalidatePublicTags(["locations"]);
-    void loadAdminData();
+    try {
+      const response = await fetch(`/api/admin/locations/${locationId}`, {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      });
+
+      const result = (await response.json().catch(() => null)) as
+        | { message?: string }
+        | null;
+
+      if (!response.ok) {
+        toast.error(result?.message ?? "Could not delete the location.");
+        return;
+      }
+
+      toast.success(result?.message ?? "Location deleted.");
+      await loadAdminData();
+    } catch (error) {
+      console.error("Failed to delete location.", error);
+      toast.error("Could not delete the location.");
+    }
   };
 
   const resetProductForm = () => {
