@@ -466,8 +466,12 @@ export function RegistryLandingPage({
           <section className="bg-gradient-to-br from-pink-50 via-white to-blue-50 py-16 md:py-20">
             <div className="container mx-auto px-4">
               <div className="mx-auto max-w-4xl text-center">
-                <h1 className="text-3xl font-bold leading-tight text-gray-900 md:text-5xl">
-                  Create a Baby Registry That Loved Ones Can Shop From Anywhere
+                <h1 className="text-3xl font-medium leading-tight tracking-tight text-neutral-900 md:text-5xl">
+                  Create a{" "}
+                  <span className="font-serif font-medium italic text-[#b65287]">
+                    Baby Registry
+                  </span>{" "}
+                  That Loved Ones Can Shop From Anywhere
                 </h1>
                 <p className="mx-auto mt-4 max-w-3xl text-base leading-relaxed text-gray-600 md:mt-6 md:text-lg">
                   Start your registry, then add the baby products you really want and share one
@@ -494,7 +498,9 @@ export function RegistryLandingPage({
               <div className="grid gap-6 md:grid-cols-2">
                 <Card className="border-pink-200 bg-pink-50/70">
                   <CardContent className="p-6">
-                    <h2 className="text-2xl font-bold text-gray-900">Registry Rewards</h2>
+                    <h2 className="text-2xl font-medium tracking-tight text-neutral-900">
+                      Registry Rewards
+                    </h2>
                     <p className="mt-3 text-gray-600">
                       Reach N500,000 in registry orders and receive lactation cookies.
                       Reach N1,000,000 and unlock 5% cashback on your registry.
@@ -503,7 +509,9 @@ export function RegistryLandingPage({
                 </Card>
                 <Card className="border-blue-200 bg-blue-50/70">
                   <CardContent className="p-6">
-                    <h2 className="text-2xl font-bold text-gray-900">Checklist Included</h2>
+                    <h2 className="text-2xl font-medium tracking-tight text-neutral-900">
+                      Checklist Included
+                    </h2>
                     <p className="mt-3 text-gray-600">
                       Every registry gets a downloadable checklist on its detail page so
                       you can track essentials at a glance.
@@ -519,13 +527,13 @@ export function RegistryLandingPage({
           <section className="bg-gray-50 py-14">
             <div className="container mx-auto px-4">
               <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-                <div>
-                  <h2 className="text-3xl font-bold text-gray-900">Your Registry Space</h2>
-                  <p className="mt-2 text-gray-600">
+                <div className="text-center md:text-left">
+                  <h2 className="section-title">Your Registry Space</h2>
+                  <p className="section-copy mt-2 md:max-w-2xl">
                     Create a new registry any time, and open existing ones from their own page.
                   </p>
                 </div>
-                <div className="flex flex-wrap gap-2">
+                <div className="flex flex-wrap justify-center gap-2 md:justify-start">
                   {latestRegistry ? (
                     <Button asChild variant="outline" className="w-full px-3 text-xs sm:w-auto sm:px-4 sm:text-sm">
                       <Link href="/dashboard/registries">
@@ -546,10 +554,16 @@ export function RegistryLandingPage({
                       <CardContent className="space-y-4 p-6">
                         <div className="flex items-start justify-between gap-4">
                           <div>
-                            <p className="text-sm font-semibold uppercase tracking-[0.18em] text-pink-500">
+                            <p
+                              className={
+                                registry.status === "closed"
+                                  ? "text-sm font-medium text-gray-500"
+                                  : "brand-script-label"
+                              }
+                            >
                               {registry.status === "closed" ? "Closed Registry" : "Existing Registry"}
                             </p>
-                            <h3 className="mt-2 text-2xl font-bold text-gray-900">
+                            <h3 className="mt-2 text-2xl font-medium tracking-tight text-neutral-900">
                               {registry.name}
                             </h3>
                           </div>
@@ -629,10 +643,10 @@ export function RegistryLandingPage({
           <div className="container mx-auto px-4">
             <div className="mb-10 flex flex-col gap-4 text-center md:flex-row md:items-end md:justify-between md:text-left">
               <div>
-                <h2 className="text-4xl font-bold text-gray-900">
+                <h2 className="section-title">
                   {catalogOnly ? "Registry Product Catalog" : "Registry Products"}
                 </h2>
-                <p className="mt-3 text-gray-600">
+                <p className="section-copy mt-3 md:max-w-3xl">
                   Browse by category, add items to your registry cart, and save them once your
                   registry is ready.
                 </p>
@@ -745,6 +759,7 @@ export function RegistryLandingPage({
             <ReviewsSection
               reviews={initialRegistryReviews}
               eyebrow="Registry Reviews"
+              highlightText="Parents Love"
               title="Why Parents Love Building Their Registry Here"
               description="Feedback from parents and gift contributors who have used the Nana's Baby Essentials registry experience."
             />

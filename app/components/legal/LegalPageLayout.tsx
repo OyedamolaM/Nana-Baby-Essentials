@@ -31,10 +31,10 @@ export function LegalPageLayout({
               <span>{title}</span>
             </div>
             <div className="max-w-3xl space-y-4">
-              <h1 className="text-3xl font-semibold tracking-tight text-gray-950 sm:text-4xl">
+              <h1 className="section-title text-gray-950">
                 {title}
               </h1>
-              <p className="text-base leading-7 text-gray-600 sm:text-lg">
+              <p className="section-copy-lg">
                 {description}
               </p>
               <p className="text-sm font-medium text-gray-500">

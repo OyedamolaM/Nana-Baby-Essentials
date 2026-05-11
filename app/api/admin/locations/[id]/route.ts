@@ -18,6 +18,7 @@ type UpdateLocationPayload = {
   name?: string;
   openingHours?: string | null;
   sortOrder?: number;
+  whatsappPhone?: string | null;
 };
 
 type ServiceRoleClient = NonNullable<ReturnType<typeof createSupabaseServiceRoleClient>>;
@@ -59,6 +60,7 @@ async function buildUniqueLocationSlug(
 function revalidateLocationPages(slug?: string, previousSlug?: string) {
   revalidateTag("locations", "max");
   revalidatePath("/", "page");
+  revalidatePath("/locations", "page");
   revalidatePath("/registry", "page");
   revalidatePath("/registry/products", "page");
 
@@ -151,6 +153,7 @@ export async function PATCH(
       slug,
       sort_order: Math.max(0, Math.round(Number(payload?.sortOrder ?? 0))),
       updated_at: new Date().toISOString(),
+      whatsapp_phone: payload?.whatsappPhone?.trim() || null,
     })
     .eq("id", id)
     .select("*")
@@ -162,6 +165,13 @@ export async function PATCH(
         message:
           "A location like this already exists. Try changing the location name slightly.",
       },
+      { status: 400 },
+    );
+  }
+
+  if (error?.code === "42703") {
+    return NextResponse.json(
+      { message: "Run the latest store locations migration before editing locations." },
       { status: 400 },
     );
   }

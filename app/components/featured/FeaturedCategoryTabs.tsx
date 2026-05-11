@@ -91,7 +91,7 @@ export function FeaturedCategoryTabs({
         <div className="mb-10 flex flex-col gap-4 text-center md:flex-row md:items-end md:justify-between md:text-left">
           <div>
             <h2 className="section-title">{sectionTitle}</h2>
-            <p className="mt-3 text-base leading-7 text-gray-600">{sectionSubtitle}</p>
+            <p className="section-copy mt-3 md:max-w-3xl">{sectionSubtitle}</p>
           </div>
           {onViewAll ? (
             <div className="hidden items-center gap-2 md:flex">

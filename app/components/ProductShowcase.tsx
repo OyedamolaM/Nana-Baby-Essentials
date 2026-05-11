@@ -24,10 +24,10 @@ export function ProductShowcase({
       <div className="container mx-auto px-4">
         <div className="flex items-center justify-between mb-12">
           <div>
-            <h2 className="text-4xl font-bold text-gray-900 mb-2">
+            <h2 className="section-title mb-2">
               Featured Products
             </h2>
-            <p className="text-xl text-gray-600">
+            <p className="section-copy-lg">
               Hand-picked favorites for your little one
             </p>
           </div>

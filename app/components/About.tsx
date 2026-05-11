@@ -33,21 +33,24 @@ export function About({ images = DEFAULT_ABOUT_IMAGES }: AboutProps) {
   ];
 
   return (
-    <section className="py-20 bg-white">
+    <section className="bg-white py-14 md:py-20">
       <div className="container mx-auto px-4">
         <div className="grid lg:grid-cols-2 gap-12 items-center">
-          <div>
-            <h2 className="text-4xl font-bold text-gray-900 mb-6">
-              Your Trusted Partner in Parenting
+          <div className="text-center md:text-left">
+            <h2 className="section-title mb-6">
+              Your Trusted Partner in{" "}
+              <span className="brand-script">
+                Parenting
+              </span>
             </h2>
-            <p className="text-lg text-gray-600 mb-6 leading-relaxed">
+            <p className="section-copy-lg mx-auto mb-6 md:mx-0">
               At Nana&apos;s Baby Essentials, we understand that every parent wants the best for their little one. That&apos;s why we&apos;ve carefully selected premium baby products that combine safety, comfort, and style.
             </p>
-            <p className="text-lg text-gray-600 mb-8 leading-relaxed">
+            <p className="section-copy-lg mx-auto mb-8 md:mx-0">
               From the first onesie to their favorite teddy bear, we&apos;re here to make your parenting journey easier and more joyful. Our commitment to quality and customer satisfaction has made us Nigeria&apos;s most trusted baby store.
             </p>
 
-            <div className="grid sm:grid-cols-2 gap-6">
+            <div className="grid gap-6 text-left sm:grid-cols-2">
               {values.map((value, index) => (
                 <div key={index} className="flex gap-4">
                   <div className="flex-shrink-0">

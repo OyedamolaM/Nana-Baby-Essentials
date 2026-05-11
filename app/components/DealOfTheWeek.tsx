@@ -92,11 +92,11 @@ export function DealOfTheWeek({
   if (activeDeals.length === 0) return null;
 
   return (
-    <section className="bg-gradient-to-r from-orange-50 to-red-50 py-16">
+    <section className="bg-gradient-to-r from-orange-50 to-red-50 py-12 sm:py-16">
       <div className="w-full px-3 sm:px-4">
         <div className="mb-8 flex items-center justify-center gap-2 text-center">
           <Zap className="h-6 w-6 sm:h-7 sm:w-7 fill-orange-600 text-orange-600" />
-          <h2 className="text-2xl font-bold text-gray-900 sm:text-3xl">
+          <h2 className="text-[28px] font-medium leading-tight tracking-tight text-neutral-900 md:text-[36px]">
             Deals of the Week
           </h2>
           <Zap className="h-6 w-6 sm:h-7 sm:w-7 fill-orange-600 text-orange-600" />
@@ -156,7 +156,7 @@ export function DealOfTheWeek({
                             <Badge variant="secondary" className="mb-2 text-xs">
                               {displayProduct.category}
                             </Badge>
-                            <h3 className="mb-1 text-xl sm:text-3xl font-bold text-gray-900">
+                            <h3 className="mb-1 text-xl font-medium tracking-tight text-neutral-900 sm:text-3xl">
                               {deal.title}
                             </h3>
                             <p className="text-sm text-gray-600">

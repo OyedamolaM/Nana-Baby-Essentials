@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
-import { Baby, Calendar, Menu, Search, User } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Calendar, Menu, Search, User } from "lucide-react";
 import { toast } from "sonner";
 import { usePublishedBlogPosts } from "../hooks/useContentData";
 import { type BlogPostRecord } from "../../lib/content";
@@ -39,7 +39,29 @@ export function BlogPage({ initialPosts }: BlogPageProps) {
   const [newsletterEmail, setNewsletterEmail] = useState("");
   const [newsletterSubmitting, setNewsletterSubmitting] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const headerRef = useRef<HTMLElement | null>(null);
   const { loading, posts } = usePublishedBlogPosts(initialPosts);
+
+  useEffect(() => {
+    if (!mobileMenuOpen) {
+      return;
+    }
+
+    const handlePointerDown = (event: PointerEvent) => {
+      if (
+        headerRef.current &&
+        !headerRef.current.contains(event.target as Node)
+      ) {
+        setMobileMenuOpen(false);
+      }
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown);
+
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+    };
+  }, [mobileMenuOpen]);
 
   const filteredPosts = useMemo(() => {
     return posts.filter((post) => {
@@ -91,14 +113,26 @@ export function BlogPage({ initialPosts }: BlogPageProps) {
 
   return (
     <div className="min-h-screen bg-white">
-      <header className="sticky top-0 z-50 w-full border-b bg-white/95 shadow-sm backdrop-blur">
+      <header
+        ref={headerRef}
+        className="sticky top-0 z-50 w-full border-b bg-white/95 shadow-sm backdrop-blur"
+      >
         <div className="relative container mx-auto px-4">
           <div className="flex h-16 items-center justify-between">
-            <Link href="/" className="flex items-center gap-2">
-              <Baby className="h-8 w-8 text-pink-500" />
-              <p className="text-2xl font-semibold text-gray-900">
-                Nana&apos;s Blog
-              </p>
+            <Link href="/" className="flex items-center gap-2 text-left">
+              <img
+                src="/logo.jpg"
+                alt="Nana's Baby Blog logo"
+                className="h-7 w-7 shrink-0 sm:h-8 sm:w-8"
+              />
+              <div className="flex flex-col leading-tight">
+                <p className="font-serif text-sm font-medium italic leading-tight tracking-tight text-[#7c3a67] sm:text-xl">
+                  Nana&apos;s Baby
+                </p>
+                <p className="font-serif text-xs font-medium italic leading-tight tracking-tight text-[#9a5d84] sm:text-base">
+                  Blog
+                </p>
+              </div>
             </Link>
 
             <nav className="hidden items-center gap-6 md:flex">
@@ -138,21 +172,21 @@ export function BlogPage({ initialPosts }: BlogPageProps) {
               <nav className="flex flex-col gap-3">
                 <Link
                   href="/"
-                  className="text-sm font-medium transition-colors hover:text-pink-600"
+                  className="text-sm font-normal transition-colors hover:text-pink-600"
                   onClick={() => setMobileMenuOpen(false)}
                 >
                   Home
                 </Link>
                 <Link
                   href="/registry"
-                  className="text-sm font-medium transition-colors hover:text-pink-600"
+                  className="text-sm font-normal transition-colors hover:text-pink-600"
                   onClick={() => setMobileMenuOpen(false)}
                 >
                   Baby Registry
                 </Link>
                 <a
                   href="#all-posts"
-                  className="text-sm font-medium transition-colors hover:text-pink-600"
+                  className="text-sm font-normal transition-colors hover:text-pink-600"
                   onClick={() => setMobileMenuOpen(false)}
                 >
                   All Posts
@@ -163,13 +197,16 @@ export function BlogPage({ initialPosts }: BlogPageProps) {
         </div>
       </header>
 
-      <section className="bg-gradient-to-br from-pink-50 via-purple-50 to-blue-50 py-20">
+      <section className="bg-gradient-to-br from-pink-50 via-purple-50 to-blue-50 pt-12 pb-6 sm:pt-18 sm:pb-10">
         <div className="container mx-auto px-4">
           <div className="mx-auto max-w-3xl text-center">
-            <h1 className="mb-6 text-5xl font-bold text-gray-900 md:text-6xl">
-              Parenting Tips & Baby Care
+            <h1 className="mb-6 text-[30px] font-medium leading-tight tracking-tight text-neutral-900 sm:text-5xl lg:text-[48px]">
+              Parenting Tips &{" "}
+              <span className="brand-script">
+                Baby Care
+              </span>
             </h1>
-            <p className="mb-8 text-xl text-gray-600">
+            <p className="mb-8 text-[14px] leading-relaxed text-gray-600 sm:text-base lg:text-lg">
               Expert advice, helpful guides, and everything you need to know
               about caring for your little one.
             </p>
@@ -190,7 +227,7 @@ export function BlogPage({ initialPosts }: BlogPageProps) {
         </div>
       </section>
 
-      <section id="all-posts" className="py-20">
+      <section id="all-posts" className="pt-8 pb-16 sm:pt-10 sm:pb-20">
         <div className="container mx-auto px-4">
           {loading ? (
             <div className="py-16 text-center">
@@ -213,7 +250,7 @@ export function BlogPage({ initialPosts }: BlogPageProps) {
                       {post.category}
                     </Badge>
 
-                    <h3 className="mb-2 line-clamp-2 text-xl font-bold text-gray-900">
+                    <h3 className="mb-2 line-clamp-2 text-xl font-medium tracking-tight text-neutral-900">
                       {post.title}
                     </h3>
 
@@ -251,12 +288,12 @@ export function BlogPage({ initialPosts }: BlogPageProps) {
         </div>
       </section>
 
-      <section className="bg-gradient-to-r from-pink-500 to-purple-600 py-20 text-white">
+      <section className="bg-gradient-to-r from-pink-500 to-purple-600 pt-16 pb-12 text-white sm:py-20">
         <div className="container mx-auto px-4 text-center">
-          <h2 className="mb-4 text-4xl font-bold">
+          <h2 className="mb-4 text-[28px] font-medium leading-tight tracking-tight md:text-[36px]">
             Subscribe to Our Newsletter
           </h2>
-          <p className="mx-auto mb-8 max-w-2xl text-xl">
+          <p className="mx-auto mb-8 max-w-2xl text-[13px] leading-relaxed text-white/90 md:text-lg">
             Get the latest parenting tips, product recommendations, and
             exclusive offers delivered to your inbox.
           </p>

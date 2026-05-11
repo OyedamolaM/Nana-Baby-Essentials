@@ -20,16 +20,16 @@ export function FAQ({
   title?: string;
 }) {
   return (
-    <section className="bg-gray-50 py-20">
+    <section className="bg-gray-50 py-14 md:py-20">
       <div className="container mx-auto px-4">
         <div className="mb-12 text-center">
-          <p className="mb-3 text-sm font-semibold uppercase tracking-[0.24em] text-pink-600">
+          <p className="brand-script-label mb-3">
             {eyebrow}
           </p>
-          <h2 className="mb-4 text-4xl font-bold text-gray-900">
+          <h2 className="section-title mb-4">
             {title}
           </h2>
-          <p className="mx-auto max-w-2xl text-xl text-gray-600">
+          <p className="section-copy-lg mx-auto max-w-2xl">
             {description}
           </p>
         </div>
@@ -42,10 +42,10 @@ export function FAQ({
                 value={`item-${index}`}
                 className="rounded-lg border bg-white px-6"
               >
-                <AccordionTrigger className="text-left hover:no-underline">
-                  <span className="font-semibold text-gray-900">{faq.question}</span>
+                <AccordionTrigger className="text-left hover:no-underline md:text-base">
+                  <span className="font-semibold text-gray-900 md:text-[16px]">{faq.question}</span>
                 </AccordionTrigger>
-                <AccordionContent className="text-gray-600">
+                <AccordionContent className="text-sm text-gray-600 md:text-[14px] md:leading-7">
                   {faq.answer}
                 </AccordionContent>
               </AccordionItem>

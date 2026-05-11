@@ -282,10 +282,10 @@ export function ProductsPage({
         <section className="bg-gradient-to-b from-white to-gray-50 py-16 sm:py-20">
           <div className="container mx-auto px-4">
             <div className="mb-10 text-center">
-              <h1 className="mb-2 text-4xl font-bold text-gray-900 sm:text-5xl">
+              <h1 className="section-title mb-2">
                 {pageHeading}
               </h1>
-              <p className="mx-auto max-w-2xl text-gray-600">
+              <p className="section-copy mx-auto max-w-2xl">
                 {pageDescription}
               </p>
             </div>

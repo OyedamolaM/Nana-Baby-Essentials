@@ -17,19 +17,22 @@ export function Hero({
   onShopNow,
 }: HeroProps) {
   return (
-    <section className="relative overflow-hidden bg-gradient-to-br from-pink-100 via-purple-50 to-blue-100 py-20 lg:py-32">
+    <section className="relative overflow-hidden bg-gradient-to-br from-pink-100 via-purple-50 to-blue-100 py-14 sm:py-20 lg:py-32">
       <div className="container mx-auto px-4">
         <div className="grid items-center gap-12 lg:grid-cols-2">
-          <div className="space-y-6">
-            <h1 className="max-w-2xl text-5xl font-bold leading-tight text-gray-900 lg:text-6xl">
+          <div className="space-y-6 text-center md:text-left">
+            <h1 className="mx-auto max-w-2xl text-[30px] font-medium leading-tight tracking-tight text-neutral-900 md:mx-0 sm:text-5xl lg:text-[48px]">
               Everything Your
-              <span className="text-pink-600"> Little One </span>
+              <span className="brand-script">
+                {" "}
+                Little One{" "}
+              </span>
               Deserves
             </h1>
-            <p className="max-w-2xl text-xl leading-relaxed text-gray-600">
+            <p className="mx-auto max-w-2xl text-[14px] leading-relaxed text-gray-600 md:mx-0 sm:text-base lg:text-lg">
               Premium baby products curated with love and care. From adorable clothing to educational toys, we&apos;ve got everything to make parenting easier and more joyful.
             </p>
-            <div className="flex flex-wrap gap-4">
+            <div className="flex flex-wrap justify-center gap-4 md:justify-start">
               <Button
                 size="lg"
                 variant="outline"
@@ -44,7 +47,7 @@ export function Hero({
                 className="px-6 text-[14px] md:px-8 md:text-lg"
                 onClick={onGetSwoopPackage}
               >
-                Get Swoop Package
+                All in One Packages
               </Button>
               <Button
                 size="lg"
@@ -54,7 +57,7 @@ export function Hero({
                 Create New Registry
               </Button>
             </div>
-            <div className="flex gap-8 pt-4">
+            <div className="flex justify-center gap-8 pt-4 md:justify-start">
               <div>
                 <p className="text-3xl font-bold text-gray-900">500+</p>
                 <p className="text-gray-600">Products</p>

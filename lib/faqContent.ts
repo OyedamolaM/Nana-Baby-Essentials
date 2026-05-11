@@ -42,7 +42,7 @@ export const HOME_FAQS: FaqItem[] = [
   {
     question: "Do you have physical store locations?",
     answer:
-      "Yes. Nana's Baby Essentials has store locations in Lagos, and the Locations menu shows details, contact information, and opening hours for each branch.",
+      "Yes. Nana's Baby Essentials has physical store locations, and the Locations page shows branch details, contact information, directions, and opening hours.",
   },
 ];
 

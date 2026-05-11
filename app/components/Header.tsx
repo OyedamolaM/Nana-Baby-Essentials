@@ -1,8 +1,8 @@
 'use client'
 
 import Link from "next/link";
-import { useState } from "react";
-import { LayoutDashboard, LogOut, MapPin, Menu, Shield, ShoppingCart, User } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { LayoutDashboard, LogOut, Menu, Shield, ShoppingCart, User } from "lucide-react";
 import { type StoreLocationRecord } from "../../lib/storeLocations";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
@@ -51,6 +51,28 @@ export function Header({
   onSignOut,
 }: HeaderProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const headerRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    if (!mobileMenuOpen) {
+      return;
+    }
+
+    const handlePointerDown = (event: PointerEvent) => {
+      if (
+        headerRef.current &&
+        !headerRef.current.contains(event.target as Node)
+      ) {
+        setMobileMenuOpen(false);
+      }
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown);
+
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+    };
+  }, [mobileMenuOpen]);
 
   const handleNavigate = (section: NavSection) => {
     setMobileMenuOpen(false);
@@ -58,7 +80,10 @@ export function Header({
   };
 
   return (
-    <header className="sticky top-0 z-50 w-full border-b bg-white/95 shadow-sm backdrop-blur">
+    <header
+      ref={headerRef}
+      className="sticky top-0 z-50 w-full border-b bg-white/95 shadow-sm backdrop-blur"
+    >
       <div className="relative w-full px-4 lg:px-6">
         <div className="flex min-h-16 items-center justify-between">
 
@@ -75,10 +100,10 @@ export function Header({
             />
 
             <div className="flex flex-col leading-tight">
-              <p className="text-sm font-semibold leading-tight text-gray-900 sm:text-lg">
+              <p className="font-serif text-sm font-medium italic leading-tight tracking-tight text-[#7c3a67] sm:text-xl">
                 Nana&apos;s Baby
               </p>
-              <p className="text-xs leading-tight text-gray-700 sm:text-sm">
+              <p className="font-serif text-xs font-medium italic leading-tight tracking-tight text-[#9a5d84] sm:text-base">
                 Essentials
               </p>
             </div>
@@ -111,26 +136,12 @@ export function Header({
               Blog
             </Link>
 
-            {locations.length > 0 ? (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <button
-                    type="button"
-                    className="inline-flex items-center gap-1 text-sm font-medium transition-colors hover:text-pink-600"
-                  >
-                    <MapPin className="h-4 w-4" />
-                    Locations
-                  </button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="center">
-                  {locations.map((location) => (
-                    <DropdownMenuItem key={location.id} asChild>
-                      <Link href={`/locations/${location.slug}`}>{location.name}</Link>
-                    </DropdownMenuItem>
-                  ))}
-                </DropdownMenuContent>
-              </DropdownMenu>
-            ) : null}
+            <Link
+              href="/locations"
+              className="text-sm font-medium transition-colors hover:text-pink-600"
+            >
+              Locations
+            </Link>
           </nav>
 
           {/* RIGHT: Actions */}
@@ -237,39 +248,36 @@ export function Header({
                 <button
                   key={item.id}
                   type="button"
-                  className="cursor-pointer text-left text-sm font-medium hover:text-pink-600"
+                  className="cursor-pointer text-left text-sm font-normal hover:text-pink-600"
                   onClick={() => handleNavigate(item.id)}
                 >
                   {item.label}
                 </button>
               ))}
 
-              <Link href="/registry" onClick={() => setMobileMenuOpen(false)}>
+              <Link
+                href="/registry"
+                className="text-sm font-normal hover:text-pink-600"
+                onClick={() => setMobileMenuOpen(false)}
+              >
                 Baby Registry
               </Link>
 
-              <Link href="/blog" onClick={() => setMobileMenuOpen(false)}>
+              <Link
+                href="/blog"
+                className="text-sm font-normal hover:text-pink-600"
+                onClick={() => setMobileMenuOpen(false)}
+              >
                 Blog
               </Link>
 
-              {locations.length > 0 ? (
-                <div className="border-t pt-3">
-                  <p className="mb-2 text-xs font-semibold uppercase tracking-[0.14em] text-gray-500">
-                    Locations
-                  </p>
-                  <div className="flex flex-col gap-3">
-                    {locations.map((location) => (
-                      <Link
-                        key={location.id}
-                        href={`/locations/${location.slug}`}
-                        onClick={() => setMobileMenuOpen(false)}
-                      >
-                        {location.name}
-                      </Link>
-                    ))}
-                  </div>
-                </div>
-              ) : null}
+              <Link
+                href="/locations"
+                className="text-sm font-normal hover:text-pink-600"
+                onClick={() => setMobileMenuOpen(false)}
+              >
+                Locations
+              </Link>
             </nav>
           </div>
         )}

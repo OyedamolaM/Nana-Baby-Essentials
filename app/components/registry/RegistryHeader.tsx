@@ -1,12 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Gift,
   LayoutDashboard,
   LogOut,
-  MapPin,
   Menu,
   Shield,
   User,
@@ -56,13 +55,38 @@ export function RegistryHeader({
   onSignUp,
 }: RegistryHeaderProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const headerRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    if (!mobileMenuOpen) {
+      return;
+    }
+
+    const handlePointerDown = (event: PointerEvent) => {
+      if (
+        headerRef.current &&
+        !headerRef.current.contains(event.target as Node)
+      ) {
+        setMobileMenuOpen(false);
+      }
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown);
+
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+    };
+  }, [mobileMenuOpen]);
 
   const closeMobileMenu = () => {
     setMobileMenuOpen(false);
   };
 
   return (
-    <header className="sticky top-0 z-50 w-full border-b bg-white/95 shadow-sm backdrop-blur">
+    <header
+      ref={headerRef}
+      className="sticky top-0 z-50 w-full border-b bg-white/95 shadow-sm backdrop-blur"
+    >
       <div className="relative w-full px-4 lg:px-6">
         <div className="flex min-h-16 items-center justify-between">
           <Link
@@ -77,10 +101,10 @@ export function RegistryHeader({
             />
 
             <div className="flex flex-col leading-tight">
-              <p className="text-sm font-semibold leading-tight text-gray-900 sm:text-lg">
+              <p className="font-serif text-sm font-medium italic leading-tight tracking-tight text-[#7c3a67] sm:text-xl">
                 Nana&apos;s Baby
               </p>
-              <p className="text-xs leading-tight text-gray-700 sm:text-sm">
+              <p className="font-serif text-xs font-medium italic leading-tight tracking-tight text-[#9a5d84] sm:text-base">
                 Registry
               </p>
             </div>
@@ -97,26 +121,12 @@ export function RegistryHeader({
               </Link>
             ))}
 
-            {locations.length > 0 ? (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <button
-                    type="button"
-                    className="inline-flex items-center gap-1 text-sm font-medium transition-colors hover:text-pink-600"
-                  >
-                    <MapPin className="h-4 w-4" />
-                    Locations
-                  </button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="center">
-                  {locations.map((location) => (
-                    <DropdownMenuItem key={location.id} asChild>
-                      <Link href={`/locations/${location.slug}`}>{location.name}</Link>
-                    </DropdownMenuItem>
-                  ))}
-                </DropdownMenuContent>
-              </DropdownMenu>
-            ) : null}
+            <Link
+              href="/locations"
+              className="text-sm font-medium transition-colors hover:text-pink-600"
+            >
+              Locations
+            </Link>
           </nav>
 
           <div className="z-10 flex shrink-0 items-center gap-2">
@@ -212,29 +222,23 @@ export function RegistryHeader({
           <div className="absolute inset-x-0 top-full z-50 border-t bg-white px-4 py-4 shadow-xl lg:hidden">
             <nav className="flex flex-col gap-3">
               {navLinks.map((link) => (
-                <Link key={link.href} href={link.href} onClick={closeMobileMenu}>
+                <Link
+                  key={link.href}
+                  href={link.href}
+                  className="text-sm font-normal hover:text-pink-600"
+                  onClick={closeMobileMenu}
+                >
                   {link.label}
                 </Link>
               ))}
 
-              {locations.length > 0 ? (
-                <div className="border-t pt-3">
-                  <p className="mb-2 text-xs font-semibold uppercase tracking-[0.14em] text-gray-500">
-                    Locations
-                  </p>
-                  <div className="flex flex-col gap-3">
-                    {locations.map((location) => (
-                      <Link
-                        key={location.id}
-                        href={`/locations/${location.slug}`}
-                        onClick={closeMobileMenu}
-                      >
-                        {location.name}
-                      </Link>
-                    ))}
-                  </div>
-                </div>
-              ) : null}
+              <Link
+                href="/locations"
+                className="text-sm font-normal hover:text-pink-600"
+                onClick={closeMobileMenu}
+              >
+                Locations
+              </Link>
             </nav>
           </div>
         ) : null}

@@ -7,6 +7,7 @@ import { type HomepageReview } from "../../lib/siteContent";
 interface ReviewsSectionProps {
   description?: string;
   eyebrow?: string;
+  highlightText?: string;
   reviews?: HomepageReview[];
   title?: string;
 }
@@ -20,9 +21,26 @@ function getReviewerInitials(name: string) {
     .join("");
 }
 
+function renderTitleWithHighlight(title: string, highlightText?: string) {
+  if (!highlightText || !title.includes(highlightText)) {
+    return title;
+  }
+
+  const [before, after] = title.split(highlightText, 2);
+
+  return (
+    <>
+      {before}
+      <span className="brand-script">{highlightText}</span>
+      {after}
+    </>
+  );
+}
+
 export function ReviewsSection({
   description = "Real feedback from customers who have shopped, gifted, and built registries with us.",
   eyebrow = "Parent Reviews",
+  highlightText = "Families Say",
   reviews = [],
   title = "What Families Say About Nana's Baby Essentials",
 }: ReviewsSectionProps) {
@@ -31,16 +49,16 @@ export function ReviewsSection({
   }
 
   return (
-    <section className="bg-rose-50 py-20">
+    <section className="bg-rose-50 py-14 md:py-20">
       <div className="container mx-auto px-4">
         <div className="mx-auto max-w-2xl text-center">
-          <p className="mb-3 text-sm font-semibold uppercase tracking-[0.24em] text-pink-600">
+          <p className="brand-script-label mb-3">
             {eyebrow}
           </p>
-          <h2 className="text-4xl font-bold text-gray-900">
-            {title}
+          <h2 className="section-title">
+            {renderTitleWithHighlight(title, highlightText)}
           </h2>
-          <p className="mt-4 text-lg leading-relaxed text-gray-600">
+          <p className="section-copy-lg mt-4">
             {description}
           </p>
         </div>

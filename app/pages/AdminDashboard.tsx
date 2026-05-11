@@ -578,6 +578,7 @@ export function AdminDashboard() {
   const [locationAddress, setLocationAddress] = useState("");
   const [locationDescription, setLocationDescription] = useState("");
   const [locationPhone, setLocationPhone] = useState("");
+  const [locationWhatsappPhone, setLocationWhatsappPhone] = useState("");
   const [locationEmail, setLocationEmail] = useState("");
   const [locationOpeningHours, setLocationOpeningHours] = useState("");
   const [locationHeroImage, setLocationHeroImage] = useState("");
@@ -1836,6 +1837,7 @@ export function AdminDashboard() {
     setLocationAddress("");
     setLocationDescription("");
     setLocationPhone("");
+    setLocationWhatsappPhone("");
     setLocationEmail("");
     setLocationOpeningHours("");
     setLocationHeroImage("");
@@ -1850,6 +1852,7 @@ export function AdminDashboard() {
     setLocationAddress(location.address);
     setLocationDescription(location.description ?? "");
     setLocationPhone(location.contact_phone ?? "");
+    setLocationWhatsappPhone(location.whatsapp_phone ?? "");
     setLocationEmail(location.contact_email ?? "");
     setLocationOpeningHours(location.opening_hours ?? "");
     setLocationHeroImage(location.hero_image ?? "");
@@ -1899,6 +1902,7 @@ export function AdminDashboard() {
             name: locationName,
             openingHours: locationOpeningHours,
             sortOrder: Number(locationSortOrder || 0),
+            whatsappPhone: locationWhatsappPhone,
           }),
         },
       );
@@ -3210,7 +3214,7 @@ export function AdminDashboard() {
                 <div className="space-y-1">
                   <CardTitle>Store Locations</CardTitle>
                   <p className="text-sm text-gray-500">
-                    Add the locations shown in the header dropdown and control each location page image, contact details, and opening hours.
+                    Add the locations shown on the locations page and control each location image, contact details, WhatsApp, and opening hours.
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-2">
@@ -3246,11 +3250,14 @@ export function AdminDashboard() {
                           <TableCell>
                             <div className="font-medium">{location.name}</div>
                             <div className="text-xs text-gray-500">
-                              /locations/{location.slug}
+                              /locations?location={location.slug}
                             </div>
                           </TableCell>
                           <TableCell>
                             <div className="text-sm">{location.contact_phone || "No phone"}</div>
+                            <div className="text-xs text-gray-500">
+                              {location.whatsapp_phone || "No WhatsApp"}
+                            </div>
                             <div className="text-xs text-gray-500">
                               {location.contact_email || "No email"}
                             </div>
@@ -4001,18 +4008,27 @@ export function AdminDashboard() {
               />
             </div>
 
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="location-phone">Contact Phone</Label>
-                <Input
-                  id="location-phone"
-                  value={locationPhone}
-                  onChange={(event) => setLocationPhone(event.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="location-email">Contact Email</Label>
-                <Input
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                <div className="space-y-2">
+                  <Label htmlFor="location-phone">Contact Phone</Label>
+                  <Input
+                    id="location-phone"
+                    value={locationPhone}
+                    onChange={(event) => setLocationPhone(event.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="location-whatsapp-phone">WhatsApp Phone</Label>
+                  <Input
+                    id="location-whatsapp-phone"
+                    value={locationWhatsappPhone}
+                    onChange={(event) => setLocationWhatsappPhone(event.target.value)}
+                    placeholder="+234 802 474 0159"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="location-email">Contact Email</Label>
+                  <Input
                   id="location-email"
                   type="email"
                   value={locationEmail}

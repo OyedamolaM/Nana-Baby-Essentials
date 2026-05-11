@@ -62,7 +62,7 @@ export default async function StoreLocationsTwoPage() {
             <div>
               <h1 className="text-5xl font-light tracking-tight text-neutral-900 md:text-6xl">
                 Find a{" "}
-                <span className="font-serif italic text-[#b65287]">
+                <span className="font-serif italic">
                   Nana
                 </span>{" "}
                 store

@@ -17,7 +17,6 @@ type RegistryRow = {
 };
 
 type StoreLocationRow = {
-  slug: string;
   updated_at?: string | null;
 };
 
@@ -70,6 +69,12 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
   if (!hasSupabaseServerEnv) {
     urls.push(
+      {
+        url: buildAbsoluteUrl("/locations"),
+        lastModified: now,
+        changeFrequency: "monthly",
+        priority: 0.7,
+      },
       ...SEED_PRODUCTS.map((product) => ({
         url: buildAbsoluteUrl(`/products/${product.slug}`),
         lastModified: now,
@@ -88,6 +93,12 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
   const client = createSupabaseServerClient();
   if (!client) {
+    urls.push({
+      url: buildAbsoluteUrl("/locations"),
+      lastModified: now,
+      changeFrequency: "monthly",
+      priority: 0.7,
+    });
     return urls;
   }
 
@@ -104,7 +115,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     client.from("registries").select("share_code, updated_at"),
     client
       .from("store_locations")
-      .select("slug, updated_at")
+      .select("updated_at")
       .eq("is_active", true),
   ]);
 
@@ -141,14 +152,21 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     })),
   );
 
-  urls.push(
-    ...((locations as StoreLocationRow[] | null) ?? []).map((location) => ({
-      url: buildAbsoluteUrl(`/locations/${location.slug}`),
-      lastModified: location.updated_at ? new Date(location.updated_at) : now,
-      changeFrequency: "monthly" as const,
-      priority: 0.6,
-    })),
-  );
+  const locationRows = (locations as StoreLocationRow[] | null) ?? [];
+  const latestLocationUpdate = locationRows.reduce<Date>((latest, location) => {
+    const updatedAt = location.updated_at
+      ? new Date(location.updated_at)
+      : now;
+
+    return updatedAt > latest ? updatedAt : latest;
+  }, now);
+
+  urls.push({
+    url: buildAbsoluteUrl("/locations"),
+    lastModified: latestLocationUpdate,
+    changeFrequency: "monthly",
+    priority: 0.7,
+  });
 
   return urls;
 }

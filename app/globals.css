@@ -197,7 +197,15 @@
   }
 
   .section-title {
-    @apply text-3xl font-bold tracking-[-0.03em] text-gray-900 md:text-4xl;
+    @apply text-[28px] font-medium leading-tight tracking-tight text-neutral-900 md:text-[36px];
+  }
+
+  .section-copy {
+    @apply text-[13px] leading-relaxed text-gray-600 md:text-base;
+  }
+
+  .section-copy-lg {
+    @apply text-[13px] leading-relaxed text-gray-600 md:text-lg;
   }
 
   .hero-title {
@@ -209,7 +217,20 @@
   }
 
   .brand-mark {
+    font-family: var(--font-brand), Georgia, serif;
     font-weight: 700;
     letter-spacing: -0.03em;
+  }
+
+  .font-brand {
+    font-family: var(--font-brand), Georgia, serif;
+  }
+
+  .brand-script {
+    @apply font-serif font-medium italic text-[#b65287];
+  }
+
+  .brand-script-label {
+    @apply font-serif text-lg font-medium italic text-[#b65287] md:text-xl;
   }
 }

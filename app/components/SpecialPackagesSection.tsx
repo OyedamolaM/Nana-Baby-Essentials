@@ -45,7 +45,9 @@ function PackageCarousel({
     <div className="space-y-4">
       <div className="flex items-center justify-center gap-2 text-center">
         <Sparkles className="h-5 w-5 text-pink-600" />
-        <h3 className="text-2xl font-bold text-gray-900 sm:text-3xl">{title}</h3>
+        <h3 className="text-[28px] font-medium leading-tight tracking-tight text-neutral-900 md:text-[36px]">
+          {title}
+        </h3>
       </div>
 
       <Carousel className="px-1 sm:px-0" opts={{ loop: items.length > 1 }}>
@@ -72,13 +74,13 @@ function PackageCarousel({
 
                   <div className="flex flex-col justify-center space-y-4">
                     <div>
-                      <h4 className="text-2xl font-bold text-gray-900 sm:text-3xl">
+                      <h4 className="text-[24px] font-medium leading-tight tracking-tight text-neutral-900 sm:text-[30px]">
                         {pkg.title}
                       </h4>
                       <p className="mt-2 text-sm leading-relaxed text-gray-600 sm:text-base">
                         {pkg.subtitle}
                       </p>
-                      <p className="mt-4 text-3xl font-bold text-pink-600">
+                      <p className="mt-4 text-2xl font-bold text-pink-600 sm:text-[28px]">
                         {formatNaira(pkg.product.price)}
                       </p>
                     </div>
@@ -159,17 +161,17 @@ export function SpecialPackagesSection({
     <>
       <section
         id={sectionId}
-        className="bg-gradient-to-b from-rose-50 via-white to-orange-50 py-16"
+        className="bg-gradient-to-b from-rose-50 via-white to-orange-50 py-12 sm:py-16"
       >
         <div className="w-full px-3 sm:px-4">
           <div className="mx-auto max-w-4xl text-center">
-            <p className="text-sm font-semibold uppercase tracking-[0.18em] text-pink-600">
+            <p className="brand-script-label">
               Special Packages
             </p>
-            <h2 className="mt-3 text-3xl font-bold text-gray-900 sm:text-4xl">
+            <h2 className="section-title mt-3">
               Curated baby bundles ready for gifting or checkout
             </h2>
-            <p className="mt-3 text-sm leading-relaxed text-gray-600 sm:text-base">
+            <p className="section-copy mt-3">
               Explore complete bundles and larger newborn packages, open the details,
               watch the full video tour where available, and add them directly.
             </p>

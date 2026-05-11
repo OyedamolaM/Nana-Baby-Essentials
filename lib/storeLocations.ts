@@ -12,6 +12,7 @@ export interface StoreLocationRecord {
   slug: string;
   sort_order: number;
   updated_at?: string;
+  whatsapp_phone?: string | null;
 }
 
 export function splitLocationOpeningHours(value?: string | null) {

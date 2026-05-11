@@ -80,10 +80,10 @@ export function BabyRegistryHighlight({ onCreateRegistry }: BabyRegistryHighligh
     <section className="bg-gradient-to-b from-white to-pink-50 py-20">
       <div className="container mx-auto px-4">
         <div className="mb-12 text-center">
-          <h2 className="mb-4 text-4xl font-bold text-gray-900">
+          <h2 className="section-title mb-4">
             Baby Registry Made Simple
           </h2>
-          <p className="mx-auto max-w-2xl text-xl text-gray-600">
+          <p className="section-copy-lg mx-auto max-w-2xl">
             Create and share your baby registry with ease. Let your friends and family celebrate your new arrival with the perfect gifts.
           </p>
         </div>

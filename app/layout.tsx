@@ -1,10 +1,16 @@
 import type { Metadata } from "next";
 import { cookies } from "next/headers";
+import { Playfair_Display } from "next/font/google";
 import "./globals.css";
 import { Providers } from "./providers";
 import { SITE_NAME, SITE_TAGLINE, buildAbsoluteUrl } from "../lib/site";
 
 const COOKIE_CONSENT_KEY = "nbe_cookie_consent";
+const brandFont = Playfair_Display({
+  subsets: ["latin"],
+  variable: "--font-brand",
+  weight: ["400", "500", "600", "700"],
+});
 
 export const metadata: Metadata = {
   metadataBase: new URL(buildAbsoluteUrl("/")),
@@ -39,7 +45,11 @@ export default async function RootLayout({
   );
 
   return (
-    <html lang="en" suppressHydrationWarning className="h-full antialiased">
+    <html
+      lang="en"
+      suppressHydrationWarning
+      className={`h-full antialiased ${brandFont.variable}`}
+    >
       <body className="min-h-full flex flex-col">
         <Providers initialCookieConsent={initialCookieConsent}>{children}</Providers>
       </body>

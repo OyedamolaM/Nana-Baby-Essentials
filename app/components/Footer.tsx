@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Baby, Mail, Phone, MapPin } from "lucide-react";
+import { Mail, Phone, MapPin } from "lucide-react";
 import { FaTiktok, FaWhatsapp } from "react-icons/fa";
 import { Separator } from "./ui/separator";
 import { LucideProps } from "lucide-react";
@@ -39,8 +39,17 @@ export function Footer() {
         <div className="mb-8 grid grid-cols-2 gap-x-8 gap-y-10 md:grid-cols-2 lg:grid-cols-4">
           <div className="col-span-2 lg:col-span-1">
             <div className="flex items-center gap-2 mb-4">
-              <Baby className="h-8 w-8 text-pink-500" />
-              <h3 className="text-xl font-semibold text-white">Nana&apos;s Baby Essentials</h3>
+              <img
+                src="/logo.jpg"
+                alt="Nana's Baby Essentials logo"
+                className="h-7 w-7 shrink-0 sm:h-8 sm:w-8"
+              />
+              <h3 className="text-xl font-semibold tracking-tight text-white">
+                <span className="font-serif font-medium italic text-[#b65287]">
+                  Nana&apos;s
+                </span>{" "}
+                Baby Essentials
+              </h3>
             </div>
             <p className="text-sm mb-4">
               Your trusted partner for premium baby products in Nigeria. Quality, safety, and love in every product.

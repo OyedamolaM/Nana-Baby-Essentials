@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ArrowLeft, Baby, Calendar, User } from "lucide-react";
+import { ArrowLeft, Calendar, User } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -39,7 +39,7 @@ export async function generateMetadata({
 
   if (!post) {
     return {
-      title: "Article Not Found | Nana's Blog",
+      title: "Article Not Found | Nana's Baby Blog",
       description: "This article is no longer available.",
       robots: {
         index: false,
@@ -49,10 +49,10 @@ export async function generateMetadata({
   }
 
   return {
-    title: `${post.title} | Nana's Blog`,
+    title: `${post.title} | Nana's Baby Blog`,
     description: post.excerpt,
     openGraph: {
-      title: `${post.title} | Nana's Blog`,
+      title: `${post.title} | Nana's Baby Blog`,
       description: post.excerpt,
       images: post.cover_image ? [{ url: post.cover_image, alt: post.title }] : undefined,
       type: "article",
@@ -70,11 +70,20 @@ export default async function BlogArticlePage({
     <div className="min-h-screen bg-white">
       <header className="sticky top-0 z-50 w-full border-b bg-white/95 shadow-sm backdrop-blur">
         <div className="container mx-auto flex h-16 items-center justify-between px-4">
-          <Link href="/" className="flex items-center gap-2">
-            <Baby className="h-8 w-8 text-pink-500" />
-            <span className="text-xl font-semibold text-gray-900 md:text-2xl">
-              Nana&apos;s Blog
-            </span>
+          <Link href="/" className="flex items-center gap-2 text-left">
+            <img
+              src="/logo.jpg"
+              alt="Nana's Baby Blog logo"
+              className="h-7 w-7 shrink-0 sm:h-8 sm:w-8"
+            />
+            <div className="flex flex-col leading-tight">
+              <p className="font-serif text-sm font-medium italic leading-tight tracking-tight text-[#7c3a67] sm:text-xl">
+                Nana&apos;s Baby
+              </p>
+              <p className="font-serif text-xs font-medium italic leading-tight tracking-tight text-[#9a5d84] sm:text-base">
+                Blog
+              </p>
+            </div>
           </Link>
           <Button asChild variant="outline">
             <Link href="/blog">Back to Blog</Link>
@@ -86,7 +95,7 @@ export default async function BlogArticlePage({
         <div className="container mx-auto px-4">
           {!post ? (
             <div className="mx-auto max-w-3xl rounded-3xl border bg-white p-10 text-center shadow-sm">
-              <h1 className="text-3xl font-bold text-gray-900">
+              <h1 className="text-3xl font-medium tracking-tight text-neutral-900">
                 Article not found
               </h1>
               <p className="mt-3 text-gray-600">
@@ -111,7 +120,7 @@ export default async function BlogArticlePage({
 
               <div className="p-8 md:p-12">
                 <Badge variant="secondary">{post.category}</Badge>
-                <h1 className="mt-4 text-4xl font-bold leading-tight text-gray-900 md:text-5xl">
+                <h1 className="mt-4 text-4xl font-medium leading-tight tracking-tight text-neutral-900 md:text-5xl">
                   {post.title}
                 </h1>
                 <div className="mt-5 flex flex-wrap items-center gap-4 text-sm text-gray-500">
