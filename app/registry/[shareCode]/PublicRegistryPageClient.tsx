@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  Baby,
   CalendarClock,
   Gift,
   Minus,
@@ -320,12 +319,16 @@ export function PublicRegistryPageClient({
       <header className="sticky top-0 z-50 w-full border-b bg-white/95 shadow-sm backdrop-blur">
         <div className="container mx-auto flex h-14 items-center justify-between px-3 md:h-16 md:px-4">
           <Link href="/" className="flex min-w-0 items-center gap-2">
-            <Baby className="h-7 w-7 flex-shrink-0 text-pink-500 md:h-8 md:w-8" />
+            <img
+              src="/logo.jpg"
+              alt="Nana's Baby Registry logo"
+              className="h-7 w-7 shrink-0 md:h-8 md:w-8"
+            />
             <div className="flex min-w-0 flex-col leading-tight">
-              <span className="truncate text-sm font-semibold text-gray-900 md:text-lg">
+              <span className="truncate font-serif text-sm font-medium italic tracking-tight text-[#7c3a67] md:text-lg">
                 Nana&apos;s Baby
               </span>
-              <span className="truncate text-xs text-gray-700 md:text-sm">
+              <span className="truncate font-serif text-xs font-medium italic tracking-tight text-[#9a5d84] md:text-sm">
                 Registry
               </span>
             </div>
@@ -349,20 +352,24 @@ export function PublicRegistryPageClient({
             {loading ? (
               <Card>
                 <CardContent className="space-y-6 p-4 md:space-y-8 md:p-10">
-                  Loading registry...
+                  <p className="section-copy-lg text-center">
+                    Loading registry...
+                  </p>
                 </CardContent>
               </Card>
             ) : !hasSupabaseEnv ? (
               <Card>
                 <CardContent className="space-y-6 p-4 md:space-y-8 md:p-10">
-                  Connect Supabase to load public registry pages.
+                  <p className="section-copy-lg text-center">
+                    Connect Supabase to load public registry pages.
+                  </p>
                 </CardContent>
               </Card>
             ) : !registry ? (
               <Card>
                 <CardContent className="space-y-6 p-4 md:space-y-8 md:p-10">
-                  <h1 className="text-3xl font-bold text-gray-900">Registry Not Found</h1>
-                  <p className="text-gray-600">
+                  <h1 className="section-title text-gray-900">Registry Not Found</h1>
+                  <p className="section-copy-lg">
                     This registry link may be invalid or no longer available.
                   </p>
                   <Button asChild>
@@ -377,76 +384,81 @@ export function PublicRegistryPageClient({
                     <Badge variant="secondary" className="px-3 py-1 text-xs md:text-sm">
                       Shared Registry
                     </Badge>
-                    <h1 className="text-2xl font-bold text-gray-900 md:text-5xl">
+                    <h1 className="text-[30px] font-medium leading-tight tracking-tight text-neutral-900 md:text-[48px]">
                       {registry.name}
                     </h1>
-                    <p className="text-sm text-gray-600 md:text-lg">
+                    <p className="section-copy-lg">
                       Celebrate this growing family with a thoughtful gift from
                       Nana&apos;s Baby Essentials.
                     </p>
                   </div>
 
                   <div className="grid grid-cols-2 gap-3 md:grid-cols-3 md:gap-4">
-                    <div className="rounded-2xl border border-pink-200/40 bg-pink-100/70 p-4 md:p-5">
-                      <p className="text-xs font-medium uppercase tracking-[0.15em] text-pink-700 md:text-sm">
+                    <button
+                      type="button"
+                      onClick={() => void handleShareRegistry()}
+                      className="rounded-2xl border border-pink-200/40 bg-pink-100/70 p-4 text-center transition hover:border-pink-300 hover:bg-pink-100/90 hover:shadow-sm md:p-5 md:text-left"
+                    >
+                      <p className="flex items-center justify-center gap-2 text-[13px] font-medium tracking-[0.12em] text-pink-700 md:justify-start md:text-[13px]">
+                        <Share2 className="h-4 w-4" />
                         Share Code
                       </p>
-                      <p className="break-all text-base font-semibold text-gray-900 md:text-lg">
+                      <p className="mt-2 break-all text-[16px] font-medium tracking-tight text-neutral-900 md:text-[22px]">
                         {registry.share_code}
                       </p>
-                    </div>
+                    </button>
 
-                    <div className="rounded-2xl border border-blue-200/40 bg-blue-100/70 p-4 md:p-5">
-                      <p className="mb-1 flex items-center gap-2 text-xs font-medium uppercase tracking-[0.15em] text-blue-700 md:text-sm">
+                    <div className="rounded-2xl border border-blue-200/40 bg-blue-100/70 p-4 text-center md:p-5 md:text-left">
+                      <p className="mb-1 flex items-center justify-center gap-2 text-[13px] font-medium tracking-[0.12em] text-blue-700 md:justify-start md:text-[13px]">
                         <CalendarClock className="h-4 w-4" />
                         Due Month
                       </p>
-                      <p className="text-base font-semibold text-gray-900 md:text-lg">
+                      <p className="mt-2 text-[16px] font-medium tracking-tight text-neutral-900 md:text-[22px]">
                         {formatDueMonth(registry.due_month)}
                       </p>
                     </div>
 
-                    <div className="col-span-2 rounded-2xl border border-purple-200/40 bg-purple-100/70 p-4 md:col-span-1 md:p-5">
-                      <p className="mb-1 flex items-center gap-2 text-xs font-medium uppercase tracking-[0.15em] text-purple-700 md:text-sm">
+                    <div className="col-span-2 rounded-2xl border border-purple-200/40 bg-purple-100/70 p-4 text-center md:col-span-1 md:p-5 md:text-left">
+                      <p className="mb-1 flex items-center justify-center gap-2 text-[13px] font-medium tracking-[0.12em] text-purple-700 md:justify-start md:text-[13px]">
                         <Gift className="h-4 w-4" />
                         Baby&apos;s Gender
                       </p>
-                      <p className="text-base font-semibold text-gray-900 md:text-lg">
+                      <p className="mt-2 text-[16px] font-medium tracking-tight text-neutral-900 md:text-[22px]">
                         {formatBabyGender(registry.baby_gender)}
                       </p>
                     </div>
                   </div>
 
                   <div className="grid grid-cols-2 gap-3 md:grid-cols-3 md:gap-4">
-                    <div className="rounded-2xl border border-gray-200 bg-gradient-to-br from-gray-50 to-white p-4 md:p-5">
-                      <p className="text-[10px] font-medium uppercase tracking-[0.18em] text-gray-500 md:text-sm">
-                        Items Requested
+                    <div className="rounded-2xl border border-gray-200 bg-gradient-to-br from-gray-50 to-white p-4 text-center md:p-5 md:text-left">
+                      <p className="text-[12px] font-medium tracking-[0.12em] text-gray-500 md:text-[12px]">
+                        Items Needed
                       </p>
-                      <p className="mt-2 text-xl font-bold text-gray-900 md:text-3xl">
+                      <p className="mt-2 text-[22px] font-medium tracking-tight text-neutral-900 md:text-[28px]">
                         {requestedCount}
                       </p>
                     </div>
-                    <div className="rounded-2xl border border-gray-200 bg-gradient-to-br from-green-50 to-white p-4 md:p-5">
-                      <p className="text-[10px] font-medium uppercase tracking-[0.18em] text-gray-500 md:text-sm">
+                    <div className="rounded-2xl border border-gray-200 bg-gradient-to-br from-green-50 to-white p-4 text-center md:p-5 md:text-left">
+                      <p className="text-[12px] font-medium tracking-[0.12em] text-gray-500 md:text-[12px]">
                         Items Covered
                       </p>
-                      <p className="mt-2 text-xl font-bold text-green-600 md:text-3xl">
+                      <p className="mt-2 text-[22px] font-medium tracking-tight text-green-600 md:text-[28px]">
                         {purchasedCount}
                       </p>
                     </div>
-                    <div className="rounded-2xl border border-gray-200 bg-gradient-to-br from-pink-50 to-white p-4 md:p-5">
-                      <p className="text-[10px] font-medium uppercase tracking-[0.18em] text-gray-500 md:text-sm">
+                    <div className="rounded-2xl border border-gray-200 bg-gradient-to-br from-pink-50 to-white p-4 text-center md:p-5 md:text-left">
+                      <p className="text-[12px] font-medium tracking-[0.12em] text-gray-500 md:text-[12px]">
                         Items Left
                       </p>
-                      <p className="mt-2 text-xl font-bold text-pink-600 md:text-3xl">
+                      <p className="mt-2 text-[22px] font-medium tracking-tight text-pink-600 md:text-[28px]">
                         {remainingCount}
                       </p>
                     </div>
-                    <div className="col-span-2 rounded-2xl border border-gray-200 bg-gradient-to-br from-purple-50 to-white p-4 md:col-span-3 md:justify-self-center md:w-1/2 md:p-5">
-                      <p className="text-[10px] font-medium uppercase tracking-[0.18em] text-gray-500 md:text-center md:text-sm">
+                    <div className="col-span-2 rounded-2xl border border-gray-200 bg-gradient-to-br from-purple-50 to-white p-4 text-center md:col-span-3 md:justify-self-center md:w-1/2 md:p-5">
+                      <p className="text-[12px] font-medium tracking-[0.12em] text-gray-500 md:text-center md:text-[12px]">
                         Amount Left
                       </p>
-                      <p className="mt-2 text-xl font-bold text-purple-600 md:text-center md:text-3xl">
+                      <p className="mt-2 text-[22px] font-medium tracking-tight text-purple-600 md:text-center md:text-[28px]">
                         {formatNairaAmount(remainingAmount)}
                       </p>
                     </div>
@@ -454,10 +466,10 @@ export function PublicRegistryPageClient({
 
                   {registry.additional_info ? (
                     <div className="rounded-2xl border border-gray-200 bg-white p-4 md:p-6">
-                      <p className="mb-2 text-xs font-medium uppercase tracking-[0.18em] text-gray-500 md:mb-3 md:text-sm">
+                      <p className="brand-script-label mb-2 md:mb-3">
                         A Note from the Parent
                       </p>
-                      <p className="text-sm leading-relaxed text-gray-700 md:text-base">
+                      <p className="section-copy">
                         {registry.additional_info}
                       </p>
                     </div>
@@ -469,11 +481,11 @@ export function PublicRegistryPageClient({
                         <Gift className="h-5 w-5 text-pink-600 md:h-6 md:w-6" />
                       </div>
 
-                      <h2 className="text-lg font-bold text-gray-900 md:text-2xl">
+                      <h2 className="text-[24px] font-medium tracking-tight text-neutral-900 md:text-[32px]">
                         {registryIsClosed ? "Registry Closed" : "Choose Items to Gift"}
                       </h2>
                     </div>
-                    <p className="mt-3 w-full max-w-none text-sm text-gray-600 md:mt-4 md:text-base">
+                    <p className="section-copy mt-3 w-full max-w-none md:mt-4">
                       {registryIsClosed
                         ? "This registry has been closed by the customer. You can still view it, but gifting is no longer available."
                         : "You can pay for some of the registry items below, make a custom contribution, or do both together without creating an account."}
@@ -491,10 +503,12 @@ export function PublicRegistryPageClient({
                     <>
                       <div className="space-y-4">
                         {giftableRegistryItems.length === 0 ? (
-                          <div className="rounded-2xl border border-dashed border-gray-300 bg-white p-8 text-center text-gray-500">
+                          <div className="rounded-2xl border border-dashed border-gray-300 bg-white p-8 text-center">
+                            <p className="section-copy-lg text-gray-500">
                             {registryItems.length === 0
                               ? "This registry is live, but no items have been added yet."
                               : "All product gifts in this registry have already been covered."}
+                            </p>
                           </div>
                         ) : (
                           giftableRegistryItems.map((item) => {
@@ -516,60 +530,65 @@ export function PublicRegistryPageClient({
                               ) : null}
                             </div>
 
-                            <div className="space-y-3 md:space-y-4">
+                            <div className="space-y-4 md:space-y-5">
                               <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
                                 <div>
-                                  <h3 className="text-lg font-bold leading-snug text-gray-900 md:text-2xl">
+                                  <h3 className="text-[24px] font-medium leading-snug tracking-tight text-neutral-900 md:text-[30px]">
                                     {item.product?.name ?? "Registry Item"}
                                   </h3>
 
-                                  <p className="mt-1 text-xs leading-relaxed text-gray-600 md:mt-2 md:text-sm">
+                                  <p className="section-copy mt-1 md:mt-2">
                                     {item.product?.description}
                                   </p>
 
                                   {item.note ? (
-                                    <p className="mt-2 rounded-xl bg-pink-50 px-3 py-2 text-xs text-pink-900 md:mt-3 md:text-sm">
-                                      Parent note: {item.note}
-                                    </p>
+                                    <div className="mt-2 rounded-xl bg-pink-50 px-3 py-2 md:mt-3">
+                                      <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-pink-700 md:text-[12px]">
+                                        Parent Note
+                                      </p>
+                                      <p className="mt-1 text-xs leading-relaxed text-pink-900 md:text-sm">
+                                        {item.note}
+                                      </p>
+                                    </div>
                                   ) : null}
                                 </div>
 
                                 <div className="text-left md:text-right">
-                                  <p className="text-sm font-medium text-gray-500 md:text-xl">
+                                  <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-gray-500 md:text-[12px]">
                                     Price
                                   </p>
-                                  <p className="text-lg font-bold text-pink-600 md:text-xl">
+                                  <p className="mt-2 text-[24px] font-medium tracking-tight text-pink-600 md:text-[30px]">
                                     {formatNairaAmount(toNairaAmount(item.unitPriceSnapshot))}
                                   </p>
                                 </div>
                               </div>
 
-                              <div className="grid grid-cols-2 gap-2 text-xs md:grid-cols-5 md:text-sm">
-                                <div className="rounded-xl bg-gray-50 p-2 md:p-3">
-                                  <p className="font-semibold text-gray-900">Requested</p>
-                                  <p className="mt-1 text-gray-600">{item.requestedQuantity}</p>
+                              <div className="grid grid-cols-2 gap-2 md:grid-cols-5">
+                                <div className="rounded-xl bg-gray-50 p-2 text-center md:p-3 md:text-left">
+                                  <p className="text-[12px] font-medium tracking-[0.12em] text-gray-500 md:text-[13px]">Needed</p>
+                                  <p className="mt-2 text-sm font-medium tracking-tight text-neutral-900 md:text-base">{item.requestedQuantity}</p>
                                 </div>
 
-                                <div className="rounded-xl bg-gray-50 p-2 md:p-3">
-                                  <p className="font-semibold text-gray-900">Covered</p>
-                                  <p className="mt-1 text-gray-600">{item.purchasedQuantity}</p>
+                                <div className="rounded-xl bg-gray-50 p-2 text-center md:p-3 md:text-left">
+                                  <p className="text-[12px] font-medium tracking-[0.12em] text-gray-500 md:text-[13px]">Covered</p>
+                                  <p className="mt-2 text-sm font-medium tracking-tight text-neutral-900 md:text-base">{item.purchasedQuantity}</p>
                                 </div>
 
-                                <div className="rounded-xl bg-gray-50 p-2 md:p-3">
-                                  <p className="font-semibold text-gray-900">Left</p>
-                                  <p className="mt-1 text-gray-600">{remaining}</p>
+                                <div className="rounded-xl bg-gray-50 p-2 text-center md:p-3 md:text-left">
+                                  <p className="text-[12px] font-medium tracking-[0.12em] text-gray-500 md:text-[13px]">Left</p>
+                                  <p className="mt-2 text-sm font-medium tracking-tight text-neutral-900 md:text-base">{remaining}</p>
                                 </div>
 
-                                <div className="rounded-xl bg-gray-50 p-2 md:p-3">
-                                  <p className="font-semibold text-gray-900">Funded</p>
-                                  <p className="mt-1 text-gray-600">
+                                <div className="rounded-xl bg-gray-50 p-2 text-center md:p-3 md:text-left">
+                                  <p className="text-[12px] font-medium tracking-[0.12em] text-gray-500 md:text-[13px]">Funded</p>
+                                  <p className="mt-2 text-sm font-medium tracking-tight text-neutral-900 md:text-base">
                                     {formatNairaAmount(getRegistryItemFundedAmount(item))}
                                   </p>
                                 </div>
 
-                                <div className="col-span-2 rounded-xl bg-gray-50 p-2 md:col-span-1 md:p-3">
-                                  <p className="font-semibold text-gray-900">Amount Left</p>
-                                  <p className="mt-1 text-gray-600">
+                                <div className="col-span-2 rounded-xl bg-gray-50 p-2 text-center md:col-span-1 md:p-3 md:text-left">
+                                  <p className="text-[12px] font-medium tracking-[0.12em] text-gray-500 md:text-[13px]">Amount Left</p>
+                                  <p className="mt-2 text-sm font-medium tracking-tight text-neutral-900 md:text-base">
                                     {formatNairaAmount(getRegistryItemRemainingAmount(item))}
                                   </p>
                                 </div>
@@ -591,7 +610,7 @@ export function PublicRegistryPageClient({
                                       <Minus className="h-4 w-4" />
                                     </Button>
 
-                                    <span className="min-w-8 text-center text-sm font-semibold text-gray-900 md:text-base">
+                                    <span className="min-w-8 text-center text-base font-medium tracking-tight text-neutral-900">
                                       {selectedQuantity}
                                     </span>
 
@@ -610,17 +629,17 @@ export function PublicRegistryPageClient({
                                   </div>
 
                                   <div className="text-right sm:text-left">
-                                    <p className="text-xs font-semibold text-gray-900 md:text-sm">
+                                    <p className="text-sm font-medium tracking-tight text-neutral-900 md:text-base">
                                       {formatNairaAmount(
                                         getRegistryItemSelectionAmount(item, selectedQuantity),
                                       )}
                                     </p>
-                                    <p className="text-[10px] text-gray-500 md:text-xs">
+                                    <p className="text-[10px] uppercase tracking-[0.14em] text-gray-500 md:text-[11px]">
                                       Total for selected
                                     </p>
                                   </div>
                                 </div>
-                                <p className="text-xs leading-relaxed text-gray-500 md:text-sm">
+                                <p className="text-[12px] leading-relaxed text-gray-500 md:text-sm">
                                   Select how many remaining units you want your payment to apply to.
                                 </p>
                               </div>
@@ -638,12 +657,12 @@ export function PublicRegistryPageClient({
                               <Wallet className="h-5 w-5 text-blue-600 md:h-6 md:w-6" />
                             </div>
 
-                            <h2 className="text-lg font-bold text-gray-900 md:text-2xl">
+                            <h2 className="text-[24px] font-medium tracking-tight text-neutral-900 md:text-[32px]">
                               {paymentMode === "auto" ? "Suggested Gift Amount" : "Custom Gift Amount"}
                             </h2>
                           </div>
 
-                          <p className="mt-3 w-full max-w-none text-sm text-gray-600 md:mt-4 md:text-base">
+                          <p className="section-copy mt-3 w-full max-w-none md:mt-4">
                             {paymentMode === "auto"
                               ? "This amount is automatically calculated from the items you select."
                               : selectedItems.length > 0
@@ -656,6 +675,7 @@ export function PublicRegistryPageClient({
                           <Button
                             type="button"
                             variant={paymentMode === "auto" ? "default" : "outline"}
+                            className="font-medium tracking-tight"
                             onClick={() => {
                               setPaymentMode("auto");
                               setPaymentAmountInput("");
@@ -667,6 +687,7 @@ export function PublicRegistryPageClient({
                           <Button
                             type="button"
                             variant={paymentMode === "custom" ? "default" : "outline"}
+                            className="font-medium tracking-tight"
                             onClick={() => {
                               setPaymentMode("custom");
                               setPaymentAmountInput(String(autoAmount));
@@ -698,16 +719,16 @@ export function PublicRegistryPageClient({
 
                           {selectedItems.length > 0 ? (
                             <div className="space-y-2">
-                              <p className="text-sm text-gray-600">
+                              <p className="text-sm leading-relaxed text-gray-600 md:text-base">
                                 Total from selected items:{" "}
-                                <span className="font-semibold text-gray-900">
+                                <span className="font-medium tracking-tight text-neutral-900">
                                   {formatNairaAmount(autoAmount)}
                                 </span>
                               </p>
 
                               {paymentMode === "custom" ? (
                                 <>
-                                  <p className="text-sm text-amber-600">
+                                  <p className="text-sm leading-relaxed text-amber-600 md:text-base">
                                     You can pay any amount up to the selected total. Your payment will be applied across the selected items in the order you chose them.
                                   </p>
 
@@ -723,13 +744,13 @@ export function PublicRegistryPageClient({
                               ) : null}
 
                               {paymentExceedsSelectionBalance ? (
-                                <p className="text-sm text-red-600">
+                                <p className="text-sm leading-relaxed text-red-600 md:text-base">
                                   The custom amount cannot be more than the selected item balance.
                                 </p>
                               ) : null}
                             </div>
                           ) : (
-                            <p className="text-xs text-gray-400">
+                            <p className="text-[12px] leading-relaxed text-gray-400 md:text-sm">
                               Enter a custom amount for a general cash gift, or select items to fund specific products.
                             </p>
                           )}

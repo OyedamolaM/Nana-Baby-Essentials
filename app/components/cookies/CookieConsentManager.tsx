@@ -184,10 +184,10 @@ export function CookieConsentBanner() {
     <div className="fixed inset-x-0 bottom-0 z-[80] border-t border-gray-200 bg-white/96 shadow-[0_-18px_45px_rgba(15,23,42,0.08)] backdrop-blur">
       <div className="mx-auto flex w-full max-w-7xl flex-col gap-4 px-4 py-4 sm:px-6 lg:flex-row lg:items-end lg:justify-between lg:px-8">
         <div className="max-w-3xl space-y-2">
-          <p className="text-2xl font-bold tracking-[-0.03em] text-gray-900">
+          <p className="text-[24px] font-medium leading-tight tracking-tight text-neutral-900 md:text-[28px]">
             Cookie Preferences
           </p>
-          <p className="text-sm leading-6 text-gray-600 sm:text-base">
+          <p className="section-copy max-w-3xl">
             We use essential session cookies to keep sign-in, carts, and checkout
             working. Optional analytics cookies help us improve the store experience.
             Choose whether to allow those optional cookies.
