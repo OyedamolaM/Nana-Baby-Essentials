@@ -2,15 +2,21 @@
 import { Button } from "./ui/button";
 
 interface CategoryFilterProps {
+  className?: string;
   categories: string[];
   selectedCategory: string;
   onSelectCategory: (category: string) => void;
 }
 
-export function CategoryFilter({ categories, selectedCategory, onSelectCategory }: CategoryFilterProps) {
+export function CategoryFilter({
+  className = "",
+  categories,
+  selectedCategory,
+  onSelectCategory,
+}: CategoryFilterProps) {
   return (
-    <div className="mb-6 overflow-x-auto pb-2">
-      <div className="flex w-max min-w-full gap-2">
+    <div className={`mb-6 flex justify-start overflow-x-auto pb-2 md:justify-center ${className}`.trim()}>
+      <div className="flex w-max gap-2 px-1">
         {categories.map((category) => (
           <Button
             key={category}

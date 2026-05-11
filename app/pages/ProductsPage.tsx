@@ -61,6 +61,27 @@ interface ProductsPageProps {
   initialView?: "all" | "best-sellers" | "new-arrivals";
 }
 
+function getVisibleRange(page: number, pageSize: number, totalCount: number) {
+  if (totalCount <= 0) {
+    return { start: 0, end: 0 };
+  }
+
+  return {
+    start: (page - 1) * pageSize + 1,
+    end: Math.min(page * pageSize, totalCount),
+  };
+}
+
+function formatVisibleRangeLabel(
+  start: number,
+  end: number,
+  totalCount: number,
+  suffix: string,
+) {
+  const visibleLabel = start === end ? `${start}` : `${start}-${end}`;
+  return `Showing ${visibleLabel} of ${totalCount} products${suffix}`;
+}
+
 export function ProductsPage({
   initialFeaturedOnly = false,
   initialFocusSearch = false,
@@ -91,6 +112,7 @@ export function ProductsPage({
   const {
     loading,
     page,
+    pageSize,
     products,
     searchQuery,
     selectedCategory,
@@ -101,7 +123,7 @@ export function ProductsPage({
     totalPages,
   } = usePaginatedProducts({
     featuredOnly: initialFeaturedOnly,
-    pageSize: 20,
+    pageSize: 10,
     initialProducts,
     initialSearchQuery,
     initialSelectedCategory,
@@ -109,6 +131,15 @@ export function ProductsPage({
   });
 
   const paginationItems = buildPagination(page, totalPages);
+  const visibleRange = getVisibleRange(page, pageSize, totalCount);
+  const rangeSuffix =
+    selectedCategory !== "All" ? ` in ${selectedCategory}` : "";
+  const visibleRangeLabel = formatVisibleRangeLabel(
+    visibleRange.start,
+    visibleRange.end,
+    totalCount,
+    rangeSuffix,
+  );
 
   useEffect(() => {
     const reopenContext = readProductDetailReturnContext();
@@ -343,6 +374,12 @@ export function ProductsPage({
                 </button>
               </div>
             )}
+
+            {!loading && totalCount > 0 ? (
+              <p className="mb-6 text-center text-sm leading-6 text-gray-600 md:text-left">
+                {visibleRangeLabel}
+              </p>
+            ) : null}
 
             {loading ? (
               <div className="py-16 text-center">

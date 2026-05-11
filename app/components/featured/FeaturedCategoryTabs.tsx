@@ -48,6 +48,27 @@ function buildPagination(currentPage: number, totalPages: number) {
   return [1, "ellipsis", currentPage - 1, currentPage, currentPage + 1, "ellipsis", totalPages] as const;
 }
 
+function getVisibleRange(page: number, pageSize: number, totalCount: number) {
+  if (totalCount <= 0) {
+    return { start: 0, end: 0 };
+  }
+
+  return {
+    start: (page - 1) * pageSize + 1,
+    end: Math.min(page * pageSize, totalCount),
+  };
+}
+
+function formatVisibleRangeLabel(
+  start: number,
+  end: number,
+  totalCount: number,
+  suffix: string,
+) {
+  const visibleLabel = start === end ? `${start}` : `${start}-${end}`;
+  return `Showing ${visibleLabel} of ${totalCount} products${suffix}`;
+}
+
 export function FeaturedCategoryTabs({
   initialProducts,
   initialTotalCount,
@@ -58,12 +79,13 @@ export function FeaturedCategoryTabs({
   categories,
   sectionId,
   sectionTitle = "Products",
-  sectionSubtitle = "Browse the full product catalog by category, search what you need, and move through the catalog 20 items at a time.",
+  sectionSubtitle = "Browse the full product catalog by category, search what you need, and move through the catalog 10 items at a time.",
 }: FeaturedCategoryTabsProps) {
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const {
     loading,
     page,
+    pageSize,
     products,
     searchQuery,
     selectedCategory,
@@ -76,36 +98,39 @@ export function FeaturedCategoryTabs({
     initialProducts,
     initialTotalCount,
     onlyInStock: false,
-    pageSize: 20,
+    pageSize: 10,
   });
   const paginationItems = useMemo(
     () => buildPagination(page, totalPages),
     [page, totalPages],
   );
+  const visibleRange = useMemo(
+    () => getVisibleRange(page, pageSize, totalCount),
+    [page, pageSize, totalCount],
+  );
   const availableCategories = categories?.length ? categories : ["All"];
   const showActiveFilters = searchQuery.trim() !== "" || selectedCategory !== "All";
+  const rangeSuffix =
+    selectedCategory !== "All" ? ` in ${selectedCategory}` : "";
+  const visibleRangeLabel = useMemo(
+    () =>
+      formatVisibleRangeLabel(
+        visibleRange.start,
+        visibleRange.end,
+        totalCount,
+        rangeSuffix,
+      ),
+    [rangeSuffix, totalCount, visibleRange.end, visibleRange.start],
+  );
 
   return (
     <section id={sectionId} className="section-spacing bg-white">
       <div className="container mx-auto px-4">
-        <div className="mb-10 flex flex-col gap-4 text-center md:flex-row md:items-end md:justify-between md:text-left">
-          <div>
+        <div className="mb-10 flex flex-col items-center gap-4 text-center">
+          <div className="max-w-3xl">
             <h2 className="section-title">{sectionTitle}</h2>
-            <p className="section-copy mt-3 md:max-w-3xl">{sectionSubtitle}</p>
+            <p className="section-copy mt-3">{sectionSubtitle}</p>
           </div>
-          {onViewAll ? (
-            <div className="hidden items-center gap-2 md:flex">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={onViewAll}
-                className="text-[14px] md:px-8 md:text-lg"
-              >
-                View All Products
-                <ArrowRight className="h-4 w-4" />
-              </Button>
-            </div>
-          ) : null}
         </div>
 
         <div className="mx-auto mb-8 max-w-2xl">
@@ -122,11 +147,29 @@ export function FeaturedCategoryTabs({
           </div>
         </div>
 
-        <CategoryFilter
-          categories={availableCategories}
-          selectedCategory={selectedCategory}
-          onSelectCategory={setSelectedCategory}
-        />
+        <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-start md:justify-between md:gap-6">
+          <div className="min-w-0 md:flex-1">
+            <CategoryFilter
+              categories={availableCategories}
+              selectedCategory={selectedCategory}
+              onSelectCategory={setSelectedCategory}
+            />
+          </div>
+
+          {onViewAll ? (
+            <div className="hidden md:flex md:justify-end">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={onViewAll}
+                className="text-[14px] md:px-8 md:text-lg"
+              >
+                View All Products
+                <ArrowRight className="h-4 w-4" />
+              </Button>
+            </div>
+          ) : null}
+        </div>
 
         {showActiveFilters ? (
           <div className="mb-6 flex flex-wrap items-center gap-3 text-sm text-gray-600">
@@ -149,9 +192,11 @@ export function FeaturedCategoryTabs({
           </div>
         ) : null}
 
-        <p className="mb-6 text-sm text-gray-600">
-          Showing {products.length} of {totalCount} products
-        </p>
+        {!loading && totalCount > 0 ? (
+          <p className="mb-6 text-center text-sm leading-6 text-gray-600 md:text-left">
+            {visibleRangeLabel}
+          </p>
+        ) : null}
 
         {loading ? (
           <div className="py-16 text-center">
@@ -231,7 +276,7 @@ export function FeaturedCategoryTabs({
         )}
 
         {onViewAll ? (
-          <div className="mt-8 flex flex-col gap-2 text-center md:hidden">
+          <div className="mt-8 flex justify-center md:hidden">
             <Button type="button" variant="outline" onClick={onViewAll} className="text-[14px]">
               View All Products
               <ArrowRight className="h-4 w-4" />

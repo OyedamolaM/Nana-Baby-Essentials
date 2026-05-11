@@ -128,6 +128,27 @@ function buildPagination(currentPage: number, totalPages: number) {
   return [1, "ellipsis", currentPage - 1, currentPage, currentPage + 1, "ellipsis", totalPages] as const;
 }
 
+function getVisibleRange(page: number, pageSize: number, totalCount: number) {
+  if (totalCount <= 0) {
+    return { start: 0, end: 0 };
+  }
+
+  return {
+    start: (page - 1) * pageSize + 1,
+    end: Math.min(page * pageSize, totalCount),
+  };
+}
+
+function formatVisibleRangeLabel(
+  start: number,
+  end: number,
+  totalCount: number,
+  suffix: string,
+) {
+  const visibleLabel = start === end ? `${start}` : `${start}-${end}`;
+  return `Showing ${visibleLabel} of ${totalCount} products${suffix}`;
+}
+
 interface RegistryLandingPageProps {
   catalogOnly?: boolean;
   initialCategories?: string[];
@@ -170,16 +191,18 @@ export function RegistryLandingPage({
   const {
     loading: productsLoading,
     page,
+    pageSize,
     products,
     searchQuery,
     selectedCategory,
     setPage,
     setSearchQuery,
     setSelectedCategory,
+    totalCount,
     totalPages,
   } = usePaginatedProducts({
     onlyInStock: false,
-    pageSize: 20,
+    pageSize: 10,
     initialProducts,
     initialTotalCount,
   });
@@ -187,6 +210,22 @@ export function RegistryLandingPage({
   const paginationItems = useMemo(
     () => buildPagination(page, totalPages),
     [page, totalPages],
+  );
+  const visibleRange = useMemo(
+    () => getVisibleRange(page, pageSize, totalCount),
+    [page, pageSize, totalCount],
+  );
+  const rangeSuffix =
+    selectedCategory !== "All" ? ` in ${selectedCategory}` : "";
+  const visibleRangeLabel = useMemo(
+    () =>
+      formatVisibleRangeLabel(
+        visibleRange.start,
+        visibleRange.end,
+        totalCount,
+        rangeSuffix,
+      ),
+    [rangeSuffix, totalCount, visibleRange.end, visibleRange.start],
   );
 
   const openAuth = (tab: AuthTab) => {
@@ -641,12 +680,12 @@ export function RegistryLandingPage({
 
         <section className="bg-white py-20">
           <div className="container mx-auto px-4">
-            <div className="mb-10 flex flex-col gap-4 text-center md:flex-row md:items-end md:justify-between md:text-left">
-              <div>
+            <div className="mb-10 flex flex-col items-center text-center">
+              <div className="mx-auto max-w-3xl">
                 <h2 className="section-title">
                   {catalogOnly ? "Registry Product Catalog" : "Registry Products"}
                 </h2>
-                <p className="section-copy mt-3 md:max-w-3xl">
+                <p className="section-copy mx-auto mt-3 max-w-3xl">
                   Browse by category, add items to your registry cart, and save them once your
                   registry is ready.
                 </p>
@@ -667,11 +706,30 @@ export function RegistryLandingPage({
               </div>
             </div>
 
-            <CategoryFilter
-              categories={initialCategories?.length ? initialCategories : [...CATEGORIES]}
-              selectedCategory={selectedCategory}
-              onSelectCategory={setSelectedCategory}
-            />
+            <div className="mb-0 flex flex-col gap-4 md:flex-row md:items-start md:justify-between md:gap-6">
+              <div className="min-w-0 md:flex-1">
+                <CategoryFilter
+                  className="mb-0 pb-0"
+                  categories={initialCategories?.length ? initialCategories : [...CATEGORIES]}
+                  selectedCategory={selectedCategory}
+                  onSelectCategory={setSelectedCategory}
+                />
+              </div>
+
+              {!catalogOnly ? (
+                <div className="hidden md:flex md:justify-end">
+                  <Button asChild variant="outline" className="text-[14px] md:px-8 md:text-lg">
+                    <Link href="/registry/products">View All Products</Link>
+                  </Button>
+                </div>
+              ) : null}
+            </div>
+
+            {!productsLoading && totalCount > 0 ? (
+              <p className="mb-0 text-center text-sm leading-6 text-gray-600">
+                {visibleRangeLabel}
+              </p>
+            ) : null}
 
             {productsLoading ? (
               <div className="py-16 text-center">
@@ -685,7 +743,7 @@ export function RegistryLandingPage({
               </div>
             ) : (
               <>
-                <div className="mt-8 grid grid-cols-2 gap-4 sm:gap-6 lg:grid-cols-3 xl:grid-cols-4">
+                <div className="mt-4 grid grid-cols-2 gap-4 sm:gap-6 lg:grid-cols-3 xl:grid-cols-4">
                   {products.map((product) => (
                     <ProductCard
                       key={product.id}
@@ -751,6 +809,14 @@ export function RegistryLandingPage({
                 </Pagination>
               </>
             )}
+
+            {!catalogOnly ? (
+              <div className="mt-8 flex justify-center md:hidden">
+                <Button asChild variant="outline" className="text-[14px]">
+                  <Link href="/registry/products">View All Products</Link>
+                </Button>
+              </div>
+            ) : null}
           </div>
         </section>
 

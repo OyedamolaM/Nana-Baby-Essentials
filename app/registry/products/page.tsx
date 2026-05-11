@@ -25,7 +25,7 @@ export default async function RegistryProductsPage() {
   ] = await Promise.all([
     getPublicProductCatalogPage({
       page: 1,
-      pageSize: 20,
+      pageSize: 10,
       onlyInStock: false,
       selectedCategory: "All",
       searchQuery: "",
