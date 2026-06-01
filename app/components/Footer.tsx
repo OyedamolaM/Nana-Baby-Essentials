@@ -16,11 +16,7 @@ type FooterLink = {
 
 export function Footer() {
   const currentYear = new Date().getFullYear();
-  const savansWhatsappLink =
-    "https://wa.me/2348165258326?text=" +
-    encodeURIComponent(
-      "Hello Savans Technologies, I want to build a website like Nana Baby Essentials."
-    );
+  const savansLink = `https://www.savanstech.com?utm_source=nanasbabyessentials&utm_medium=referral&utm_campaign=footer_link`;
   const shopLinks: FooterLink[] = [
     { href: "/products", label: "All Products" },
     { href: "/products?category=Toys", label: "Toys" },
@@ -148,10 +144,10 @@ export function Footer() {
           <p className="text-xs text-gray-400 sm:text-sm">
             Powered by{" "}
             <a
-              href={savansWhatsappLink}
+              href={savansLink}
               target="_blank"
               rel="noopener noreferrer"
-              className="font-medium text-pink-400 transition-colors hover:text-pink-300"
+              className="font-medium text-pink-400 underline underline-offset-2 transition-colors hover:text-pink-300"
             >
               Savans Technologies
             </a>
