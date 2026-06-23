@@ -1304,7 +1304,7 @@ export function UserDashboard({
                             <Button asChild variant="outline" size="sm">
                               <Link href={buildRegistryDashboardPath(registry)}>
                                 <Pencil className="mr-2 h-4 w-4" />
-                                Manage Registry
+                                Edit Registry
                               </Link>
                             </Button>
                           </div>

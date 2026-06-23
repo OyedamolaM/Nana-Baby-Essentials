@@ -176,10 +176,6 @@ export function RegistryCreateModal({
       <DialogContent className="max-w-2xl">
         <DialogHeader>
           <DialogTitle>Create New Registry</DialogTitle>
-          <DialogDescription>
-            Create your registry first. After that, you can keep adding items from the
-            registry catalog whenever you like.
-          </DialogDescription>
         </DialogHeader>
 
         <form onSubmit={handleCreate} className="space-y-4">

@@ -657,7 +657,7 @@ export function RegistryDetailClient({ registryId }: { registryId: string }) {
           </Card>
         ) : (
           <div className="mx-auto max-w-5xl space-y-6">
-            <div className="flex flex-col gap-4 rounded-[32px] border bg-white p-6 shadow-sm md:flex-row md:items-start md:justify-between">
+            <div className="flex flex-col gap-4 rounded-[32px] border bg-white p-5 shadow-sm sm:p-6 md:flex-row md:items-start md:justify-between">
               <div className="space-y-2">
                 <p className="text-sm font-semibold uppercase tracking-[0.2em] text-pink-500">
                   {registryIsClosed ? "Closed Registry" : "My Registry"}
@@ -670,10 +670,10 @@ export function RegistryDetailClient({ registryId }: { registryId: string }) {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-2 md:flex md:flex-nowrap md:justify-end">
+              <div className="grid w-full grid-cols-1 gap-2 sm:grid-cols-2 md:w-auto md:flex md:flex-nowrap md:justify-end">
                 <Button
                   variant="outline"
-                  className="w-full px-3 text-xs md:w-auto md:px-4 md:text-sm"
+                  className="w-full min-w-0 px-3 text-sm md:w-auto md:px-4"
                   onClick={handleShareRegistry}
                 >
                   <Share2 className="mr-2 h-4 w-4" />
@@ -681,7 +681,7 @@ export function RegistryDetailClient({ registryId }: { registryId: string }) {
                 </Button>
                 <Button
                   variant="outline"
-                  className="w-full px-3 text-xs md:w-auto md:px-4 md:text-sm"
+                  className="w-full min-w-0 px-3 text-sm md:w-auto md:px-4"
                   onClick={() => router.push("/registry/products")}
                 >
                   <Gift className="mr-2 h-4 w-4" />
@@ -689,7 +689,7 @@ export function RegistryDetailClient({ registryId }: { registryId: string }) {
                 </Button>
                 <Button
                   variant="outline"
-                  className="col-span-2 w-full px-3 text-xs md:col-span-1 md:w-auto md:px-4 md:text-sm"
+                  className="w-full min-w-0 px-3 text-sm sm:col-span-2 md:col-span-1 md:w-auto md:px-4"
                   onClick={handleDownloadChecklist}
                 >
                   <Download className="mr-2 h-4 w-4" />
@@ -698,29 +698,29 @@ export function RegistryDetailClient({ registryId }: { registryId: string }) {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+            <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-4">
               <Card>
-                <CardContent className="p-5">
-                  <p className="text-xs uppercase tracking-[0.18em] text-gray-500">Requested</p>
+                <CardContent className="p-4 sm:p-5">
+                  <p className="text-xs uppercase tracking-[0.14em] text-gray-500 sm:tracking-[0.18em]">Requested</p>
                   <p className="mt-2 text-3xl font-bold text-gray-900">{summary.requested}</p>
                 </CardContent>
               </Card>
               <Card>
-                <CardContent className="p-5">
-                  <p className="text-xs uppercase tracking-[0.18em] text-gray-500">Covered</p>
+                <CardContent className="p-4 sm:p-5">
+                  <p className="text-xs uppercase tracking-[0.14em] text-gray-500 sm:tracking-[0.18em]">Covered</p>
                   <p className="mt-2 text-3xl font-bold text-green-600">{summary.purchased}</p>
                 </CardContent>
               </Card>
               <Card>
-                <CardContent className="p-5">
-                  <p className="text-xs uppercase tracking-[0.18em] text-gray-500">Still Needed</p>
+                <CardContent className="p-4 sm:p-5">
+                  <p className="text-xs uppercase tracking-[0.14em] text-gray-500 sm:tracking-[0.18em]">Still Needed</p>
                   <p className="mt-2 text-3xl font-bold text-pink-600">{summary.remainingQuantity}</p>
                 </CardContent>
               </Card>
               <Card>
-                <CardContent className="p-5">
-                  <p className="text-xs uppercase tracking-[0.18em] text-gray-500">Amount Left</p>
-                  <p className="mt-2 text-3xl font-bold text-purple-600">
+                <CardContent className="min-w-0 p-4 sm:p-5">
+                  <p className="text-xs uppercase tracking-[0.14em] text-gray-500 sm:tracking-[0.18em]">Amount Left</p>
+                  <p className="mt-2 text-2xl font-bold text-purple-600 sm:text-3xl">
                     {formatNairaAmount(summary.remainingAmount)}
                   </p>
                 </CardContent>
