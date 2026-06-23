@@ -180,10 +180,6 @@
     line-height: 1.5;
   }
 
-  button:not(:disabled):active {
-    filter: brightness(0.96);
-  }
-
   input {
     font-size: var(--text-base);
     font-weight: var(--font-weight-normal);
