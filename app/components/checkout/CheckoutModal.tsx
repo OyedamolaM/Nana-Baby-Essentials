@@ -552,15 +552,15 @@ export function CheckoutModal({
                   onChange={(event) => setShippingPhone(event.target.value)}
                   required
                 />
-                {!profile?.phone?.trim() ? (
+                {/* {!profile?.phone?.trim() ? (
                   <p className="text-xs text-gray-500">
                     We&apos;ll save this number to your account when you continue with checkout.
                   </p>
-                ) : null}
+                ) : null} */}
               </div>
             </div>
 
-            {!isPickupOrder ? (
+            {!isPickupOrder && (
               <>
                 <div className="space-y-2">
                   <Label htmlFor="shipping-address">Street Address</Label>
@@ -593,10 +593,6 @@ export function CheckoutModal({
                   </div>
                 </div>
               </>
-            ) : (
-              <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">
-                Pickup orders do not require a delivery address. Customer and rider pickup codes will be attached to the order automatically.
-              </div>
             )}
           </div>
 

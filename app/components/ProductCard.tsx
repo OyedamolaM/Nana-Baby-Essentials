@@ -32,10 +32,10 @@ export function ProductCard({
   const extraCategoryCount = Math.max(productCategories.length - 1, 0);
 
   return (
-    <Card className="flex h-full flex-col overflow-hidden transition-all hover:shadow-lg">
+    <Card className="flex h-full min-w-0 flex-col gap-0 overflow-hidden transition-all hover:shadow-lg">
       <button
         type="button"
-        className="aspect-square w-full overflow-hidden bg-gray-100 text-left"
+        className="block aspect-square w-full shrink-0 overflow-hidden bg-gray-100 text-left"
         onClick={() => onViewDetails?.(product)}
       >
         <ImageWithFallback
@@ -44,7 +44,7 @@ export function ProductCard({
           className="h-full w-full object-cover transition-transform hover:scale-105"
         />
       </button>
-      <CardContent className="flex flex-1 flex-col p-3 sm:p-4">
+      <CardContent className="flex min-w-0 flex-1 flex-col p-3 sm:p-4">
         <div className="mb-2 flex flex-wrap gap-2">
           <Badge variant="secondary" className="text-xs">
             {primaryCategory}
@@ -57,15 +57,15 @@ export function ProductCard({
         </div>
         <button
           type="button"
-          className="mb-1 text-left text-lg font-semibold text-gray-900 transition-colors hover:text-pink-600"
+          className="mb-1 min-h-[2.625rem] text-left text-base font-semibold leading-snug text-gray-900 line-clamp-2 transition-colors hover:text-pink-600 sm:min-h-[3rem] sm:text-lg"
           onClick={() => onViewDetails?.(product)}
         >
           {product.name}
         </button>
-        <p className="min-h-[3.5rem] text-sm leading-7 text-gray-600 line-clamp-2 sm:min-h-[3.25rem] sm:leading-6">
+        <p className="min-h-10 text-sm leading-5 text-gray-600 line-clamp-2 sm:min-h-12 sm:leading-6">
           {product.description}
         </p>
-        <p className="mt-auto pt-3 text-xl font-bold text-gray-900">
+        <p className="mt-auto pt-3 text-lg font-bold text-gray-900 sm:text-xl">
           {formatNaira(product.price)}
         </p>
       </CardContent>

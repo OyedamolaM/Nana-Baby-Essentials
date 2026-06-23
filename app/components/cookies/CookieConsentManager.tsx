@@ -2,12 +2,14 @@
 
 import dynamic from "next/dynamic";
 import { usePathname } from "next/navigation";
+import Script from "next/script";
 import {
   createContext,
   useCallback,
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -24,6 +26,14 @@ export type CookieConsentState = "accepted" | "rejected" | "unknown";
 const COOKIE_CONSENT_KEY = "nbe_cookie_consent";
 const COOKIE_CONSENT_STORAGE_KEY = "nbe:cookie-consent";
 const COOKIE_CONSENT_MAX_AGE_SECONDS = 60 * 60 * 24 * 180;
+const GOOGLE_ANALYTICS_ID = process.env.NEXT_PUBLIC_GOOGLE_ANALYTICS_ID;
+
+declare global {
+  interface Window {
+    dataLayer?: unknown[];
+    gtag?: (...args: unknown[]) => void;
+  }
+}
 
 type CookieConsentContextValue = {
   consent: CookieConsentState;
@@ -217,11 +227,65 @@ export function CookieConsentBanner() {
 }
 
 export function AnalyticsBridge() {
+  const pathname = usePathname();
   const { consent, hasResolvedConsent } = useCookieConsent();
+  const [isGoogleAnalyticsReady, setIsGoogleAnalyticsReady] = useState(false);
+  const previousGoogleAnalyticsPath = useRef<string | null>(null);
+  const hasAcceptedAnalytics = hasResolvedConsent && consent === "accepted";
+  const shouldLoadGoogleAnalytics = hasAcceptedAnalytics && Boolean(GOOGLE_ANALYTICS_ID);
 
-  if (!hasResolvedConsent || consent !== "accepted") {
+  useEffect(() => {
+    if (
+      !shouldLoadGoogleAnalytics ||
+      typeof window === "undefined" ||
+      !isGoogleAnalyticsReady ||
+      typeof window.gtag !== "function"
+    ) {
+      return;
+    }
+
+    const pagePath = `${pathname}${window.location.search}`;
+
+    if (previousGoogleAnalyticsPath.current === pagePath) {
+      return;
+    }
+
+    previousGoogleAnalyticsPath.current = pagePath;
+    window.gtag("config", GOOGLE_ANALYTICS_ID, {
+      page_path: pagePath,
+    });
+  }, [isGoogleAnalyticsReady, pathname, shouldLoadGoogleAnalytics]);
+
+  if (!hasAcceptedAnalytics) {
     return null;
   }
 
-  return <ClientAnalytics />;
+  if (!GOOGLE_ANALYTICS_ID) {
+    return <ClientAnalytics />;
+  }
+
+  return (
+    <>
+      <ClientAnalytics />
+      <Script
+        async
+        src={`https://www.googletagmanager.com/gtag/js?id=${GOOGLE_ANALYTICS_ID}`}
+        strategy="afterInteractive"
+        onLoad={() => setIsGoogleAnalyticsReady(true)}
+      />
+      <Script
+        id="google-analytics"
+        strategy="afterInteractive"
+        onReady={() => setIsGoogleAnalyticsReady(true)}
+      >
+        {`
+          window.dataLayer = window.dataLayer || [];
+          function gtag(){window.dataLayer.push(arguments);}
+          window.gtag = gtag;
+          gtag('js', new Date());
+          gtag('config', '${GOOGLE_ANALYTICS_ID}', { send_page_view: false });
+        `}
+      </Script>
+    </>
+  );
 }
