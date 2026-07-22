@@ -4,7 +4,7 @@ import { Playfair_Display } from "next/font/google";
 import "./globals.css";
 import { Providers } from "./providers";
 import { SITE_NAME, SITE_TAGLINE, buildAbsoluteUrl } from "../lib/site";
-import Script from "next/script";
+import { DebugConsole } from "./components/debugconsole";
 
 const COOKIE_CONSENT_KEY = "nbe_cookie_consent";
 const brandFont = Playfair_Display({
@@ -53,16 +53,10 @@ export default async function RootLayout({
     >
       <body className="min-h-full flex flex-col">
         <Providers initialCookieConsent={initialCookieConsent}>{children}</Providers>
-
-        {process.env.NEXT_PUBLIC_DEBUG === "true" && (
-          <>
-            <Script src="https://cdn.jsdelivr.net/npm/eruda" strategy="afterInteractive" />
-            <Script id="eruda-init" strategy="afterInteractive">
-              {`eruda.init();`}
-            </Script>
-          </>
-        )}
+        {process.env.NEXT_PUBLIC_DEBUG === "true" && <DebugConsole />}
       </body>
     </html>
   );
 }
+
+//hrhrihrirhirh
