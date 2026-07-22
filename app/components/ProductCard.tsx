@@ -41,7 +41,7 @@ export function ProductCard({
         <ImageWithFallback
           src={product.image}
           alt={product.name}
-          className="h-full w-full object-cover transition-transform hover:scale-105"
+          className="h-full w-full object-cover transition-transform [@media(hover:hover)]:hover:scale-105"
         />
       </button>
       <CardContent className="flex min-w-0 flex-1 flex-col p-3 sm:p-4">
