@@ -234,11 +234,11 @@ export function HomePage({
           swoopPackages={swoopPackages}
         />
 
-        {/* <DealOfTheWeek
+        <DealOfTheWeek
           initialDeals={initialDeals}
           onAddToCart={(product) => handleAddToCart(product)}
           onViewDetails={handleViewProduct}
-        /> */}
+        />
 
         <FeaturedCategoryTabs
           categories={initialProductCategories}

@@ -80,8 +80,8 @@ export function Hero({
                 className="rounded-3xl shadow-2xl"
               />
             </div>
-            <div className="absolute -bottom-6 -right-6 h-72 w-72 rounded-full bg-pink-300 opacity-30 blur-3xl" />
-            <div className="absolute -left-6 -top-6 h-72 w-72 rounded-full bg-blue-300 opacity-30 blur-3xl" />
+            {/* <div className="absolute -bottom-6 -right-6 h-72 w-72 rounded-full bg-pink-300 opacity-30 blur-3xl" />
+            <div className="absolute -left-6 -top-6 h-72 w-72 rounded-full bg-blue-300 opacity-30 blur-3xl" /> */}
           </div>
         </div>
       </div>
