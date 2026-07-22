@@ -234,13 +234,13 @@ export function HomePage({
           swoopPackages={swoopPackages}
         />
 
-        <DealOfTheWeek
+        {/* <DealOfTheWeek
           initialDeals={initialDeals}
           onAddToCart={(product) => handleAddToCart(product)}
           onViewDetails={handleViewProduct}
-        />
+        /> */}
 
-        {/* <FeaturedCategoryTabs
+        <FeaturedCategoryTabs
           categories={initialProductCategories}
           initialProducts={initialProducts}
           initialTotalCount={initialProductTotalCount}
@@ -250,7 +250,7 @@ export function HomePage({
           onViewProduct={handleViewProduct}
           sectionTitle="Products"
           sectionSubtitle="Browse all baby essentials by category, search within the section, and move through the catalog without leaving the homepage."
-        /> */}
+        />
 
         <section id="about">
           <About images={initialHomepageSiteContent?.aboutImages} />
