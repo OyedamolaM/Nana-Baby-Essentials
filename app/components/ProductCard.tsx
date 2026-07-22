@@ -2,7 +2,6 @@
 
 import { ShoppingCart } from "lucide-react";
 import { Button } from "./ui/button";
-import { Card, CardContent, CardFooter } from "./ui/card";
 import { Badge } from "./ui/badge";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
 import { type StoreProduct, formatNaira } from "../../lib/commerce";
@@ -32,19 +31,19 @@ export function ProductCard({
   const extraCategoryCount = Math.max(productCategories.length - 1, 0);
 
   return (
-    <Card className="flex h-full min-w-0 flex-col gap-0 overflow-hidden transition-all hover:shadow-lg">
+    <article className="flex h-full min-w-0 flex-col rounded-xl border bg-white text-gray-900">
       <button
         type="button"
-        className="block aspect-square w-full shrink-0 overflow-hidden bg-gray-100 text-left"
+        className="block aspect-square w-full shrink-0 overflow-hidden rounded-t-[11px] bg-gray-100 text-left"
         onClick={() => onViewDetails?.(product)}
       >
         <ImageWithFallback
           src={product.image}
           alt={product.name}
-          className="h-full w-full object-cover transition-transform [@media(hover:hover)]:hover:scale-105"
+          className="block h-full w-full object-cover"
         />
       </button>
-      <CardContent className="flex min-w-0 flex-1 flex-col p-3 sm:p-4">
+      <div className="flex min-w-0 flex-1 flex-col p-3 sm:p-4">
         <div className="mb-2 flex flex-wrap gap-2">
           <Badge variant="secondary" className="text-xs">
             {primaryCategory}
@@ -57,19 +56,19 @@ export function ProductCard({
         </div>
         <button
           type="button"
-          className="mb-1 min-h-[2.625rem] text-left text-base font-semibold leading-snug text-gray-900 line-clamp-2 transition-colors hover:text-pink-600 sm:min-h-[3rem] sm:text-lg"
+          className="mb-1 h-[2.625rem] overflow-hidden text-left text-base font-semibold leading-snug text-gray-900 sm:h-12 sm:text-lg"
           onClick={() => onViewDetails?.(product)}
         >
           {product.name}
         </button>
-        <p className="min-h-10 text-sm leading-5 text-gray-600 line-clamp-2 sm:min-h-12 sm:leading-6">
+        <p className="h-10 overflow-hidden text-sm leading-5 text-gray-600 sm:h-12 sm:leading-6">
           {product.description}
         </p>
         <p className="mt-auto pt-3 text-lg font-bold text-gray-900 sm:text-xl">
           {formatNaira(product.price)}
         </p>
-      </CardContent>
-      <CardFooter className="mt-auto grid gap-2 p-3 pt-0 sm:p-4 sm:pt-0">
+      </div>
+      <footer className="mt-auto grid gap-2 p-3 pt-0 sm:p-4 sm:pt-0">
         <Button
           type="button"
           className={cn(
@@ -93,7 +92,7 @@ export function ProductCard({
         >
           View Details
         </Button>
-      </CardFooter>
-    </Card>
+      </footer>
+    </article>
   );
 }
