@@ -267,6 +267,7 @@ export function usePaginatedProducts({
     initialSelectedCategory,
   );
   const [searchQuery, setSearchQueryState] = useState(initialSearchQuery);
+  const requestIdRef = useRef(0);
   const skipInitialFetchRef = useRef(
     hasInitialResult || Boolean(initialCachedResult),
   );
@@ -287,6 +288,7 @@ export function usePaginatedProducts({
   }, []);
 
   const loadProducts = useCallback(async () => {
+  const requestId = ++requestIdRef.current;
     const cacheKey = getPaginatedProductsCacheKey({
       featuredOnly,
       onlyInStock,
@@ -298,9 +300,11 @@ export function usePaginatedProducts({
     const cachedResult = readPaginatedProductsCache(cacheKey);
 
     if (cachedResult) {
-      setProducts(cachedResult.products);
-      setTotalCount(cachedResult.totalCount);
-      setLoading(false);
+      if (requestId === requestIdRef.current) {
+        setProducts(cachedResult.products);
+        setTotalCount(cachedResult.totalCount);
+        setLoading(false);
+      }
     }
 
     if (!hasSupabaseEnv) {
@@ -315,6 +319,9 @@ export function usePaginatedProducts({
       );
       const offset = (page - 1) * pageSize;
       const nextProducts = filtered.slice(offset, offset + pageSize);
+
+      if (requestId !== requestIdRef.current) return;
+
       setProducts(nextProducts);
       setTotalCount(filtered.length);
       persistPaginatedProductsCache(cacheKey, {
@@ -351,6 +358,7 @@ export function usePaginatedProducts({
       if (matchingProductIds === null) {
         query = query.eq("category", selectedCategory);
       } else if (matchingProductIds.length === 0) {
+        if (requestId !== requestIdRef.current) return;
         setProducts([]);
         setTotalCount(0);
         persistPaginatedProductsCache(cacheKey, {
@@ -385,6 +393,7 @@ export function usePaginatedProducts({
         searchQuery,
       );
       const nextProducts = filtered.slice(from, to + 1);
+      if (requestId !== requestIdRef.current) return;
       setProducts(nextProducts);
       setTotalCount(filtered.length);
       persistPaginatedProductsCache(cacheKey, {
@@ -404,6 +413,9 @@ export function usePaginatedProducts({
       mapProductRecord,
     );
     const nextTotalCount = count ?? data.length;
+
+    if (requestId !== requestIdRef.current) return;
+
     setProducts(nextProducts);
     setTotalCount(nextTotalCount);
     persistPaginatedProductsCache(cacheKey, {
