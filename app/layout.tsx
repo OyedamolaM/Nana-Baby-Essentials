@@ -4,7 +4,7 @@ import { Playfair_Display } from "next/font/google";
 import "./globals.css";
 import { Providers } from "./providers";
 import { SITE_NAME, SITE_TAGLINE, buildAbsoluteUrl } from "../lib/site";
-import { DebugConsole } from "./components/debugconsole";
+import { DebugConsole } from "./components/DebugConsole";
 
 const COOKIE_CONSENT_KEY = "nbe_cookie_consent";
 const brandFont = Playfair_Display({
@@ -58,5 +58,3 @@ export default async function RootLayout({
     </html>
   );
 }
-
-//hrhrihrirhirh
