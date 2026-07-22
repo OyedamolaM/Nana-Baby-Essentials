@@ -267,7 +267,6 @@ export function ProductDetailModal({
                 Shipping Information
               </h4>
               <ul className="space-y-1 text-sm text-gray-600">
-                <li>- Free shipping on orders above N50,000</li>
                 <li>- Delivery within 2-5 days in Lagos</li>
                 <li>- 3-7 days for other locations</li>
               </ul>

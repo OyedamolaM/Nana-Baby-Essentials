@@ -18,7 +18,7 @@ export function About({ images = DEFAULT_ABOUT_IMAGES }: AboutProps) {
     {
       icon: Truck,
       title: "Fast Delivery",
-      description: "Free shipping on orders above ₦50,000"
+      description: "Get your essentials delivered to your doorstep in record time"
     },
     {
       icon: HeadphonesIcon,
