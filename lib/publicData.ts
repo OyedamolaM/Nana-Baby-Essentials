@@ -12,6 +12,7 @@ import {
   type ProductRecord,
   type StoreProduct,
 } from "./commerce";
+import { getStorefrontProductImageUrl } from "./storefrontProductImage";
 import {
   buildFilterCategoryOptions,
   extractAssignedCategoryLabel,
@@ -65,6 +66,17 @@ type ProductCatalogSnapshot = {
   products: StoreProduct[];
   totalCount: number;
 };
+
+const PRODUCT_LIST_SELECT =
+  "id,name,slug,price,cost_price,selling_price,category,description,in_stock,is_featured,featured_sort_order,created_at";
+
+function mapCatalogProduct(record: ProductRecord): StoreProduct {
+  const product = mapProductRecord(record);
+  return {
+    ...product,
+    image: getStorefrontProductImageUrl(product.id),
+  };
+}
 
 type ProductCategorySnapshot = {
   categories: string[];
@@ -357,7 +369,7 @@ const getProductCatalogPageCached = unstable_cache(
 
     let query = client
       .from("products")
-      .select("*", { count: "exact" })
+      .select(PRODUCT_LIST_SELECT, { count: "exact" })
       .eq("product_kind", "standard")
       .order("created_at", { ascending: false });
 
@@ -411,7 +423,7 @@ const getProductCatalogPageCached = unstable_cache(
     const enrichedProducts = applyProductCategoryAssignments(productRows, assignments);
 
     return {
-      products: enrichedProducts.map(mapProductRecord),
+      products: enrichedProducts.map(mapCatalogProduct),
       totalCount: count ?? data.length,
     } satisfies ProductCatalogSnapshot;
   },

@@ -13,6 +13,7 @@ import {
   normalizeProductCategoryLabels,
   type ProductCategoryAssignmentRecord,
 } from "../../lib/productCategories";
+import { getStorefrontProductImageUrl } from "../../lib/storefrontProductImage";
 import { hasSupabaseEnv, supabase } from "../lib/supabase";
 
 interface UsePaginatedProductsOptions {
@@ -34,6 +35,16 @@ type PaginatedProductsCacheEntry = {
 
 const PAGINATED_PRODUCTS_CACHE_STORAGE_PREFIX = "nbe:product-page:";
 const paginatedProductsCache = new Map<string, PaginatedProductsCacheEntry>();
+const PRODUCT_LIST_SELECT =
+  "id,name,slug,price,cost_price,selling_price,category,description,in_stock,is_featured,featured_sort_order,created_at";
+
+function mapCatalogProduct(record: ProductRecord): StoreProduct {
+  const product = mapProductRecord(record);
+  return {
+    ...product,
+    image: getStorefrontProductImageUrl(product.id),
+  };
+}
 
 function getPaginatedProductsCacheKey({
   featuredOnly,
@@ -340,7 +351,7 @@ export function usePaginatedProducts({
 
     let query = supabase
       .from("products")
-      .select("*", { count: "exact" })
+      .select(PRODUCT_LIST_SELECT, { count: "exact" })
       .eq("product_kind", "standard")
       .order("created_at", { ascending: false });
 
@@ -410,7 +421,7 @@ export function usePaginatedProducts({
       productRows.map((product) => Number(product.id)),
     );
     const nextProducts = applyProductCategoryAssignments(productRows, assignments).map(
-      mapProductRecord,
+      mapCatalogProduct,
     );
     const nextTotalCount = count ?? data.length;
 
@@ -515,7 +526,7 @@ export function useFeaturedProducts({
     const loadFeaturedProducts = async () => {
       let query = supabase
         .from("products")
-        .select("*")
+        .select(PRODUCT_LIST_SELECT)
         .eq("product_kind", "standard")
         .eq("is_featured", true)
         .order("featured_sort_order", { ascending: true })
@@ -533,7 +544,7 @@ export function useFeaturedProducts({
         return;
       }
 
-      setProducts((data as ProductRecord[]).map(mapProductRecord));
+      setProducts((data as ProductRecord[]).map(mapCatalogProduct));
     };
 
     void loadFeaturedProducts();

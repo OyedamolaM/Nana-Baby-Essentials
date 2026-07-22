@@ -1,6 +1,7 @@
 'use client'
 
 import { ShoppingCart } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
@@ -14,6 +15,49 @@ interface ProductCardProps {
   onAddToCart: (product: Product, quantity?: number) => void;
   onViewDetails?: (product: Product) => void;
   addLabel?: string;
+}
+
+function DeferredProductImage({ product }: { product: Product }) {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const [shouldLoad, setShouldLoad] = useState(false);
+
+  useEffect(() => {
+    const container = containerRef.current;
+
+    if (!container || typeof IntersectionObserver === "undefined") {
+      setShouldLoad(true);
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (!entries.some((entry) => entry.isIntersecting)) {
+          return;
+        }
+
+        setShouldLoad(true);
+        observer.disconnect();
+      },
+      { rootMargin: "240px 0px" },
+    );
+
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, []);
+
+  return (
+    <div ref={containerRef} className="h-full w-full">
+      {shouldLoad ? (
+        <ImageWithFallback
+          src={product.image}
+          alt={product.name}
+          className="block h-full w-full object-cover"
+          decoding="async"
+          loading="lazy"
+        />
+      ) : null}
+    </div>
+  );
 }
 
 export function ProductCard({
@@ -37,11 +81,7 @@ export function ProductCard({
         className="block aspect-square w-full shrink-0 overflow-hidden rounded-t-[11px] bg-gray-100 text-left"
         onClick={() => onViewDetails?.(product)}
       >
-        <ImageWithFallback
-          src={product.image}
-          alt={product.name}
-          className="block h-full w-full object-cover"
-        />
+        <DeferredProductImage product={product} />
       </button>
       <div className="flex min-w-0 flex-1 flex-col p-3 sm:p-4">
         <div className="mb-2 flex flex-wrap gap-2">
