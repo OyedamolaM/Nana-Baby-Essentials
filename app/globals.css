@@ -1,4 +1,4 @@
-@import "tailwindcss" source(none);
+@import "tailwindcss";
 @source "./**/*.{js,ts,jsx,tsx,mdx}";
 @source "../components/**/*.{js,ts,jsx,tsx,mdx}";
 @source "../lib/**/*.{js,ts,jsx,tsx,mdx}";
@@ -229,4 +229,8 @@
   .brand-script-label {
     @apply font-serif text-lg font-medium italic text-[#b65287] md:text-xl;
   }
+}
+
+html {
+  overflow-anchor: none;
 }
