@@ -8,11 +8,11 @@ import {
 } from "./content";
 import {
   SEED_PRODUCTS,
+  PRODUCT_LIST_SELECT,
   mapProductRecord,
   type ProductRecord,
   type StoreProduct,
 } from "./commerce";
-import { getStorefrontProductImageUrl } from "./storefrontProductImage";
 import {
   buildFilterCategoryOptions,
   extractAssignedCategoryLabel,
@@ -67,15 +67,8 @@ type ProductCatalogSnapshot = {
   totalCount: number;
 };
 
-const PRODUCT_LIST_SELECT =
-  "id,name,slug,price,cost_price,selling_price,category,description,in_stock,is_featured,featured_sort_order,created_at";
-
 function mapCatalogProduct(record: ProductRecord): StoreProduct {
-  const product = mapProductRecord(record);
-  return {
-    ...product,
-    image: getStorefrontProductImageUrl(product.id),
-  };
+  return mapProductRecord(record);
 }
 
 type ProductCategorySnapshot = {
@@ -308,7 +301,7 @@ const getFeaturedProductsCached = unstable_cache(
 
     let query = client
       .from("products")
-      .select("*")
+      .select(PRODUCT_LIST_SELECT)
       .eq("product_kind", "standard")
       .eq("is_featured", true)
       .order("featured_sort_order", { ascending: true })
@@ -325,7 +318,7 @@ const getFeaturedProductsCached = unstable_cache(
       return fallbackProducts;
     }
 
-    return (data as ProductRecord[]).map(mapProductRecord);
+    return (data as ProductRecord[]).map(mapCatalogProduct);
   },
   ["public-featured-products"],
   { revalidate: 300, tags: ["products"] },
@@ -524,7 +517,7 @@ const getHomepageDealsCached = unstable_cache(
     if (productIds.length > 0) {
       const { data: productRows } = await client
         .from("products")
-        .select("*")
+        .select(PRODUCT_LIST_SELECT)
         .eq("product_kind", "standard")
         .in("id", productIds);
 
@@ -659,6 +652,33 @@ const getProductBySlugCached = unstable_cache(
       return null;
     }
 
+    const enrichProductDetail = async (record: ProductRecord) => {
+      const [imagesResult, variantsResult] = await Promise.all([
+        client
+          .from("product_images")
+          .select("id, url, thumbnail_url, sort_order, is_primary")
+          .eq("product_id", record.id)
+          .order("sort_order", { ascending: true }),
+        client
+          .from("product_variants")
+          .select("id, size, color, sku, price_override, stock_quantity, in_stock")
+          .eq("product_id", record.id)
+          .order("created_at", { ascending: true }),
+      ]);
+
+      return mapProductRecord({
+        ...record,
+        product_images:
+          imagesResult.error?.code === "42P01" || imagesResult.error
+            ? undefined
+            : imagesResult.data ?? [],
+        product_variants:
+          variantsResult.error?.code === "42P01" || variantsResult.error
+            ? undefined
+            : variantsResult.data ?? [],
+      } as ProductRecord);
+    };
+
     const { data } = await client
       .from("products")
       .select("*")
@@ -667,12 +687,12 @@ const getProductBySlugCached = unstable_cache(
       .maybeSingle();
 
     if (data) {
-      return mapProductRecord(data as ProductRecord);
+      return enrichProductDetail(data as ProductRecord);
     }
 
     const { data: fallbackRows } = await client
       .from("products")
-      .select("*")
+      .select(PRODUCT_LIST_SELECT)
       .eq("product_kind", "standard")
       .order("created_at", { ascending: false });
 
@@ -680,7 +700,7 @@ const getProductBySlugCached = unstable_cache(
       return mapProductRecord(record).slug === slug;
     });
 
-    return fallbackMatch ? mapProductRecord(fallbackMatch) : null;
+    return fallbackMatch ? enrichProductDetail(fallbackMatch) : null;
   },
   ["public-product-by-slug"],
   { revalidate: 300, tags: ["products"] },
@@ -703,7 +723,7 @@ const getSpecialPackagesCached = unstable_cache(
 
     const { data, error } = await client
       .from("special_packages")
-      .select("*, products(*)")
+      .select(`*, products(${PRODUCT_LIST_SELECT})`)
       .eq("is_active", true)
       .order("package_type", { ascending: false })
       .order("sort_order", { ascending: true });
@@ -820,7 +840,7 @@ const getRegistryByShareCodeCached = unstable_cache(
 
     const { data: itemRows } = await client
       .from("registry_items")
-      .select("*, products(*)")
+      .select(`*, products(${PRODUCT_LIST_SELECT})`)
       .eq("registry_id", registry.id)
       .order("created_at", { ascending: false });
 

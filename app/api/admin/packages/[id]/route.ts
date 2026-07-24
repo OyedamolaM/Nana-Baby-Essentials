@@ -2,6 +2,7 @@ import { revalidatePath, revalidateTag } from "next/cache";
 import { NextResponse } from "next/server";
 
 import { requireAdminRoute } from "@/lib/authServer";
+import { PRODUCT_LIST_SELECT } from "@/lib/commerce";
 import { createSlug } from "@/lib/content";
 import { normalizeExternalVideoUrl } from "@/lib/specialPackages";
 import {
@@ -217,7 +218,7 @@ export async function PATCH(
       updated_at: new Date().toISOString(),
     })
     .eq("id", id)
-    .select("*, products(*)")
+    .select(`*, products(${PRODUCT_LIST_SELECT})`)
     .single();
 
   if (packageUpdateError?.code === "23505") {

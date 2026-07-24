@@ -9,6 +9,7 @@ import {
 } from "../../lib/content";
 import {
   SEED_PRODUCTS,
+  PRODUCT_LIST_SELECT,
   mapProductRecord,
   type ProductRecord,
 } from "../../lib/commerce";
@@ -126,7 +127,7 @@ export function useHomepageDeals(initialDeals?: HomepageDeal[]) {
       if (productIds.length > 0) {
         const { data: productRows } = await supabase
           .from("products")
-          .select("*")
+          .select(PRODUCT_LIST_SELECT)
           .eq("product_kind", "standard")
           .in("id", productIds);
 

@@ -22,7 +22,11 @@ import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { Card, CardContent } from "../../components/ui/card";
 import { Input } from "../../components/ui/input";
-import { formatNairaAmount, toNairaAmount } from "../../../lib/commerce";
+import {
+  formatNairaAmount,
+  PRODUCT_LIST_SELECT,
+  toNairaAmount,
+} from "../../../lib/commerce";
 import {
   formatBabyGender,
   formatDueMonth,
@@ -161,7 +165,7 @@ export function PublicRegistryPageClient({
 
       const { data: itemRows } = await supabase
         .from("registry_items")
-        .select("*, products(*)")
+        .select(`*, products(${PRODUCT_LIST_SELECT})`)
         .eq("registry_id", typedRegistry.id)
         .order("created_at", { ascending: false });
 
@@ -305,7 +309,7 @@ export function PublicRegistryPageClient({
 
     const { data: itemRows } = await supabase
       .from("registry_items")
-      .select("*, products(*)")
+      .select(`*, products(${PRODUCT_LIST_SELECT})`)
       .eq("registry_id", registry.id)
       .order("created_at", { ascending: false });
 
