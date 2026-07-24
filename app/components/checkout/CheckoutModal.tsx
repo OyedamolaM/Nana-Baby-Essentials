@@ -3,11 +3,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useAuth } from "../../contexts/AuthContext";
+import { type StoreCartItem } from "../../contexts/StoreCartContext";
 import { hasSupabaseEnv, supabase } from "../../lib/supabase";
 import { loadPaystackScript } from "../../lib/loadPaystack";
 import { formatNairaAmount, toNairaAmount } from "../../../lib/commerce";
 import { normalizeShippingAddress } from "../../../lib/userProfile";
-import { type Product } from "../ProductCard";
 import { Button } from "../ui/button";
 import {
   Dialog,
@@ -26,9 +26,7 @@ import {
 } from "../ui/select";
 import { Separator } from "../ui/separator";
 
-interface CartItem extends Product {
-  quantity: number;
-}
+type CartItem = StoreCartItem;
 
 type PaystackHandler = {
   openIframe: () => void;
@@ -256,11 +254,26 @@ export function CheckoutModal({
       };
 
       const orderItems = cartItems.map((item) => ({
+        color: item.color ?? null,
         product_id: item.id,
         name: item.name,
         price: toNairaAmount(item.price),
         quantity: item.quantity,
+        size: item.size ?? null,
+        variant_id: item.variantId ?? null,
       }));
+
+      const { error: availabilityError } = await supabase.rpc(
+        "assert_store_order_items_available",
+        { p_items: orderItems },
+      );
+
+      if (availabilityError) {
+        throw new Error(
+          availabilityError.message ||
+            "One or more selected items are no longer available.",
+        );
+      }
 
       const { data: orderId, error } = await supabase.rpc(
         "create_store_order",
@@ -355,6 +368,7 @@ export function CheckoutModal({
         currency: "NGN",
         ref: `NBE-${orderId}-${Date.now()}`,
         metadata: {
+          order_id: orderId,
           custom_fields: [
             {
               display_name: "Order ID",

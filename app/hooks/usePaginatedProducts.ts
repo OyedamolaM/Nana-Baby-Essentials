@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   CATEGORIES,
+  PRODUCT_LIST_SELECT,
   SEED_PRODUCTS,
   mapProductRecord,
   type ProductRecord,
@@ -13,7 +14,6 @@ import {
   normalizeProductCategoryLabels,
   type ProductCategoryAssignmentRecord,
 } from "../../lib/productCategories";
-import { getStorefrontProductImageUrl } from "../../lib/storefrontProductImage";
 import { hasSupabaseEnv, supabase } from "../lib/supabase";
 
 interface UsePaginatedProductsOptions {
@@ -35,15 +35,8 @@ type PaginatedProductsCacheEntry = {
 
 const PAGINATED_PRODUCTS_CACHE_STORAGE_PREFIX = "nbe:product-page:";
 const paginatedProductsCache = new Map<string, PaginatedProductsCacheEntry>();
-const PRODUCT_LIST_SELECT =
-  "id,name,slug,price,cost_price,selling_price,category,description,in_stock,is_featured,featured_sort_order,created_at";
-
 function mapCatalogProduct(record: ProductRecord): StoreProduct {
-  const product = mapProductRecord(record);
-  return {
-    ...product,
-    image: getStorefrontProductImageUrl(product.id),
-  };
+  return mapProductRecord(record);
 }
 
 function getPaginatedProductsCacheKey({
@@ -299,7 +292,7 @@ export function usePaginatedProducts({
   }, []);
 
   const loadProducts = useCallback(async () => {
-  const requestId = ++requestIdRef.current;
+    const requestId = ++requestIdRef.current;
     const cacheKey = getPaginatedProductsCacheKey({
       featuredOnly,
       onlyInStock,

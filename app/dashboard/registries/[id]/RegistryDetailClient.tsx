@@ -6,7 +6,11 @@ import { useRouter } from "next/navigation";
 import { Download, Gift, Pencil, Share2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
-import { formatNairaAmount, toNairaAmount } from "../../../../lib/commerce";
+import {
+  formatNairaAmount,
+  PRODUCT_LIST_SELECT,
+  toNairaAmount,
+} from "../../../../lib/commerce";
 import { REGISTRY_CHECKLIST_DOWNLOAD_PATH } from "../../../../lib/registryLandingContent";
 import {
   clearRegistryCart,
@@ -219,7 +223,7 @@ export function RegistryDetailClient({ registryId }: { registryId: string }) {
       await Promise.all([
         supabase
           .from("registry_items")
-          .select("*, products(*)")
+          .select(`*, products(${PRODUCT_LIST_SELECT})`)
           .eq("registry_id", typedRegistry.id)
           .order("created_at", { ascending: false }),
         supabase

@@ -2,6 +2,7 @@ import { revalidatePath, revalidateTag } from "next/cache";
 import { NextResponse } from "next/server";
 
 import { requireAdminRoute } from "@/lib/authServer";
+import { PRODUCT_LIST_SELECT } from "@/lib/commerce";
 import { createSlug } from "@/lib/content";
 import { normalizeExternalVideoUrl } from "@/lib/specialPackages";
 import {
@@ -210,7 +211,7 @@ export async function POST(request: Request) {
       title,
       updated_at: new Date().toISOString(),
     })
-    .select("*, products(*)")
+    .select(`*, products(${PRODUCT_LIST_SELECT})`)
     .single();
 
   if (packageInsertError) {

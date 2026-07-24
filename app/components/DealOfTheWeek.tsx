@@ -21,6 +21,7 @@ import {
   toNairaAmount,
 } from "../../lib/commerce";
 import { type HomepageDeal } from "../../lib/content";
+import { getFullProductImageUrl } from "../../lib/storefrontProductImage";
 
 interface DealOfTheWeekProps {
   initialDeals?: HomepageDeal[];
@@ -144,9 +145,10 @@ export function DealOfTheWeek({
                             {deal.badgeText}
                           </Badge>
                           <ImageWithFallback
-                            src={deal.image}
+                            src={getFullProductImageUrl(deal.image)}
                             alt={deal.title}
                             className="h-48 w-full rounded-lg object-cover sm:h-full"
+                            decoding="async"
                           />
                         </div>
 

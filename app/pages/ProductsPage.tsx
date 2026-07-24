@@ -187,13 +187,13 @@ export function ProductsPage({
     );
   };
 
-  const handleRemoveItem = (productId: number) => {
-    removeItem(productId);
+  const handleRemoveItem = (itemKey: string) => {
+    removeItem(itemKey);
     toast.info("Item removed from cart.");
   };
 
-  const handleUpdateQuantity = (productId: number, quantity: number) => {
-    updateQuantity(productId, quantity);
+  const handleUpdateQuantity = (itemKey: string, quantity: number) => {
+    updateQuantity(itemKey, quantity);
   };
 
   const handleNavigate = (section: "home" | "products" | "about" | "faq") => {

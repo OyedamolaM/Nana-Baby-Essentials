@@ -11,7 +11,9 @@ import {
   getCurrentProductReturnPath,
   persistProductDetailReturnContext,
 } from "../../lib/productDetailReturn";
+import { getFullProductImageUrl } from "../../lib/storefrontProductImage";
 import { type Product } from "./ProductCard";
+import { ImageWithFallback } from "./figma/ImageWithFallback";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
@@ -156,11 +158,12 @@ export function ProductDetailModal({
           <DialogTitle>{product.name}</DialogTitle>
         </DialogHeader>
         <div className="grid gap-8 md:grid-cols-2">
-          <div className="space-y-4">
-            <img
-              src={product.image}
+          <div className="flex aspect-square items-center justify-center overflow-hidden rounded-lg bg-gray-50">
+            <ImageWithFallback
+              src={getFullProductImageUrl(product.image)}
               alt={product.name}
-              className="aspect-square w-full rounded-lg object-cover"
+              className="max-h-full max-w-full object-contain"
+              decoding="async"
             />
           </div>
 
@@ -209,15 +212,27 @@ export function ProductDetailModal({
               </div>
 
               <div className="flex gap-2">
-                <Button
-                  type="button"
-                  className="flex-1"
-                  onClick={handleAddToCart}
-                  disabled={!product.inStock}
-                >
-                  <ShoppingCart className="mr-2 h-4 w-4" />
-                  {product.inStock ? addActionLabel : "Out of Stock"}
-                </Button>
+                {product.hasVariants ? (
+                  <Button asChild type="button" className="flex-1">
+                    <Link
+                      href={`/products/${product.slug}`}
+                      onClick={handleOpenFullProductPage}
+                    >
+                      <ShoppingCart className="mr-2 h-4 w-4" />
+                      Choose Options
+                    </Link>
+                  </Button>
+                ) : (
+                  <Button
+                    type="button"
+                    className="flex-1"
+                    onClick={handleAddToCart}
+                    disabled={!product.inStock}
+                  >
+                    <ShoppingCart className="mr-2 h-4 w-4" />
+                    {product.inStock ? addActionLabel : "Out of Stock"}
+                  </Button>
+                )}
 
                 <Button
                   type="button"

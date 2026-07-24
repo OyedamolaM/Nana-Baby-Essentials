@@ -7,6 +7,7 @@ import { Badge } from "./ui/badge";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
 import { type StoreProduct, formatNaira } from "../../lib/commerce";
 import { cn } from "./ui/utils";
+import { getProductImageSrcSet } from "../../lib/storefrontProductImage";
 
 export type Product = StoreProduct;
 
@@ -54,6 +55,7 @@ function DeferredProductImage({ product }: { product: Product }) {
           className="block h-full w-full object-cover"
           decoding="async"
           loading="lazy"
+          srcSet={getProductImageSrcSet(product.image)}
         />
       ) : null}
     </div>
@@ -66,7 +68,9 @@ export function ProductCard({
   onViewDetails,
   addLabel = "Add to Cart",
 }: ProductCardProps) {
-  const useCompactAddButton = addLabel.length > 12;
+  const needsVariantSelection = Boolean(product.hasVariants);
+  const resolvedAddLabel = needsVariantSelection ? "Choose Options" : addLabel;
+  const useCompactAddButton = resolvedAddLabel.length > 12;
   const productCategories =
     product.categories && product.categories.length > 0
       ? product.categories
@@ -116,13 +120,24 @@ export function ProductCard({
             useCompactAddButton &&
               "gap-1 px-2 text-[13px] sm:gap-2 sm:px-4 sm:text-sm",
           )}
-          onClick={() => onAddToCart(product)}
-          disabled={!product.inStock}
+          onClick={() => {
+            if (needsVariantSelection) {
+              onViewDetails?.(product);
+              return;
+            }
+
+            onAddToCart(product);
+          }}
+          disabled={needsVariantSelection ? !onViewDetails : !product.inStock}
         >
           <ShoppingCart
             className={cn("h-4 w-4", useCompactAddButton && "h-3.5 w-3.5 sm:h-4 sm:w-4")}
           />
-          {product.inStock ? addLabel : "Out of Stock"}
+           {needsVariantSelection
+             ? resolvedAddLabel
+             : product.inStock
+               ? resolvedAddLabel
+               : "Out of Stock"}
         </Button>
         <Button
           type="button"

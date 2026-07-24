@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  ArrowDown,
+  ArrowUp,
   BookOpen,
   ChevronDown,
   DollarSign,
@@ -31,6 +33,7 @@ import {
   formatNairaAmount,
   getProductCostPrice,
   getProductSellingPrice,
+  PRODUCT_LIST_SELECT,
   toNairaAmount,
   type ProductRecord,
 } from "../../lib/commerce";
@@ -83,6 +86,7 @@ import { AdminDateTimeField } from "../components/admin/AdminDateTimeField";
 import { useAuth } from "../contexts/AuthContext";
 import { hasSupabaseEnv, supabase } from "../lib/supabase";
 import { Button } from "../components/ui/button";
+import { ImageWithFallback } from "../components/figma/ImageWithFallback";
 import {
   Card,
   CardContent,
@@ -183,6 +187,31 @@ type ShippingTier = {
 
 type AboutImageDraft = HomepageImageAsset & {
   file: File | null;
+};
+
+type AdminProductImage = {
+  id: string;
+  is_primary: boolean;
+  sort_order: number;
+  thumbnail_url?: string | null;
+  url: string;
+};
+
+type ProductVariantDraft = {
+  color: string;
+  id?: string;
+  inStock: boolean;
+  priceOverride: string;
+  size: string;
+  sku: string;
+  stockQuantity: string;
+};
+
+type UploadedProductImage = {
+  path: string;
+  thumbnailPath: string;
+  thumbnailUrl: string;
+  url: string;
 };
 
 type AdminDashboardCacheEntry = {
@@ -523,7 +552,13 @@ export function AdminDashboard() {
   const [productCategory, setProductCategory] = useState("Toys");
   const [productCategoriesSelection, setProductCategoriesSelection] = useState<string[]>(["Toys"]);
   const [productImage, setProductImage] = useState("");
-  const [productImageFile, setProductImageFile] = useState<File | null>(null);
+  const [productImageFiles, setProductImageFiles] = useState<File[]>([]);
+  const [productGalleryImages, setProductGalleryImages] = useState<AdminProductImage[]>([]);
+  const [productGalleryAction, setProductGalleryAction] = useState<string | null>(null);
+  const [productBrand, setProductBrand] = useState("");
+  const [productAgeRange, setProductAgeRange] = useState("");
+  const [productHasVariants, setProductHasVariants] = useState(false);
+  const [productVariantDrafts, setProductVariantDrafts] = useState<ProductVariantDraft[]>([]);
   const [productDescription, setProductDescription] = useState("");
   const [productInStock, setProductInStock] = useState(true);
   const [productIsFeatured, setProductIsFeatured] = useState(false);
@@ -640,13 +675,13 @@ export function AdminDashboard() {
         .or("is_admin.eq.false,is_admin.is.null"),
       supabase
         .from("products")
-        .select("*")
+        .select(`${PRODUCT_LIST_SELECT},brand,age_range,has_variants`)
         .eq("product_kind", "standard")
         .order("created_at", { ascending: false }),
       supabase.from("registries").select("*").order("created_at", { ascending: false }),
       supabase
         .from("registry_items")
-        .select("*, products(*)")
+        .select(`*, products(${PRODUCT_LIST_SELECT})`)
         .order("created_at", { ascending: false }),
       supabase
         .from("registry_orders")
@@ -686,7 +721,7 @@ export function AdminDashboard() {
         .order("created_at", { ascending: false }),
       supabase
         .from("special_packages")
-        .select("*, products(*)")
+        .select(`*, products(${PRODUCT_LIST_SELECT})`)
         .order("package_type", { ascending: false })
         .order("sort_order", { ascending: true }),
       supabase
@@ -1973,14 +2008,20 @@ export function AdminDashboard() {
     setProductCategory(defaultCategory);
     setProductCategoriesSelection([defaultCategory]);
     setProductImage("");
-    setProductImageFile(null);
+    setProductImageFiles([]);
+    setProductGalleryImages([]);
+    setProductGalleryAction(null);
+    setProductBrand("");
+    setProductAgeRange("");
+    setProductHasVariants(false);
+    setProductVariantDrafts([]);
     setProductDescription("");
     setProductInStock(true);
     setProductIsFeatured(false);
     setProductFeaturedSortOrder("0");
   };
 
-  const handleEditProduct = (product: ProductRecord) => {
+  const handleEditProduct = async (product: ProductRecord) => {
     setEditingProduct(product);
     setProductName(product.name);
     setProductSellingPrice(
@@ -1990,13 +2031,224 @@ export function AdminDashboard() {
     const nextCategories = normalizeProductCategoryLabels(product.category, product.categories);
     setProductCategory(nextCategories[0] ?? product.category);
     setProductCategoriesSelection(nextCategories.length > 0 ? nextCategories : [product.category]);
-    setProductImage(product.image);
-    setProductImageFile(null);
+    setProductImage(product.image ?? "");
+    setProductImageFiles([]);
+    setProductGalleryImages([]);
+    setProductGalleryAction(null);
+    setProductBrand(product.brand ?? "");
+    setProductAgeRange(product.age_range ?? "");
+    setProductHasVariants(Boolean(product.has_variants));
+    setProductVariantDrafts([]);
     setProductDescription(product.description);
     setProductInStock(Boolean(product.in_stock));
     setProductIsFeatured(Boolean(product.is_featured));
     setProductFeaturedSortOrder(String(product.featured_sort_order ?? 0));
     setShowProductModal(true);
+
+    const [imagesResult, variantsResult] = await Promise.all([
+      supabase
+        .from("product_images")
+        .select("id, url, thumbnail_url, sort_order, is_primary")
+        .eq("product_id", product.id)
+        .order("sort_order", { ascending: true }),
+      supabase
+        .from("product_variants")
+        .select("id, size, color, sku, price_override, stock_quantity, in_stock")
+        .eq("product_id", product.id)
+        .order("created_at", { ascending: true }),
+    ]);
+
+    if (!imagesResult.error) {
+      const images = (imagesResult.data ?? []) as AdminProductImage[];
+      setProductGalleryImages(images);
+      const primary = images.find((image) => image.is_primary);
+      if (primary?.thumbnail_url) {
+        setProductImage(primary.thumbnail_url);
+      }
+    } else if (imagesResult.error.code !== "42P01") {
+      toast.error("Could not load the product gallery.");
+    }
+
+    if (!variantsResult.error) {
+      setProductVariantDrafts(
+        (variantsResult.data ?? []).map((variant) => ({
+          color: variant.color ?? "",
+          id: variant.id,
+          inStock: Boolean(variant.in_stock),
+          priceOverride:
+            variant.price_override === null || variant.price_override === undefined
+              ? ""
+              : String(toNairaAmount(Number(variant.price_override))),
+          size: variant.size ?? "",
+          sku: variant.sku ?? "",
+          stockQuantity: String(variant.stock_quantity ?? 0),
+        })),
+      );
+    } else if (variantsResult.error.code !== "42P01") {
+      toast.error("Could not load product variants.");
+    }
+  };
+
+  const applyProductGalleryImages = (images: AdminProductImage[]) => {
+    const nextImages = [...images].sort(
+      (left, right) => Number(left.sort_order) - Number(right.sort_order),
+    );
+    setProductGalleryImages(nextImages);
+    const primary = nextImages.find((image) => image.is_primary);
+    setProductImage(primary?.thumbnail_url ?? nextImages[0]?.thumbnail_url ?? "");
+  };
+
+  const handleSetPrimaryProductImage = async (imageId: string) => {
+    if (!editingProduct) {
+      return;
+    }
+
+    const accessToken = await getAdminAccessToken();
+    if (!accessToken) {
+      toast.error("Sign in again to update product images.");
+      return;
+    }
+
+    setProductGalleryAction(imageId);
+    try {
+      const response = await fetch(`/api/admin/products/${editingProduct.id}/images`, {
+        method: "PATCH",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ action: "set-primary", imageId }),
+      });
+      const result = (await response.json().catch(() => null)) as
+        | { images?: AdminProductImage[]; message?: string }
+        | null;
+      if (!response.ok) {
+        toast.error(result?.message ?? "Could not set the primary product image.");
+        return;
+      }
+
+      applyProductGalleryImages(result?.images ?? []);
+      await revalidatePublicTags(["products"]);
+      toast.success("Primary product image updated.");
+    } catch (error) {
+      console.error("Failed to set the primary product image.", error);
+      toast.error("Could not set the primary product image.");
+    } finally {
+      setProductGalleryAction(null);
+    }
+  };
+
+  const handleReorderProductImage = async (imageId: string, direction: -1 | 1) => {
+    if (!editingProduct) {
+      return;
+    }
+
+    const currentIndex = productGalleryImages.findIndex((image) => image.id === imageId);
+    const nextIndex = currentIndex + direction;
+    if (currentIndex < 0 || nextIndex < 0 || nextIndex >= productGalleryImages.length) {
+      return;
+    }
+
+    const accessToken = await getAdminAccessToken();
+    if (!accessToken) {
+      toast.error("Sign in again to reorder product images.");
+      return;
+    }
+
+    const nextImages = [...productGalleryImages];
+    const [movedImage] = nextImages.splice(currentIndex, 1);
+    nextImages.splice(nextIndex, 0, movedImage);
+    setProductGalleryAction(imageId);
+
+    try {
+      const response = await fetch(`/api/admin/products/${editingProduct.id}/images`, {
+        method: "PATCH",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          action: "reorder",
+          imageIds: nextImages.map((image) => image.id),
+        }),
+      });
+      const result = (await response.json().catch(() => null)) as
+        | { images?: AdminProductImage[]; message?: string }
+        | null;
+      if (!response.ok) {
+        toast.error(result?.message ?? "Could not reorder the product gallery.");
+        return;
+      }
+
+      applyProductGalleryImages(result?.images ?? []);
+      await revalidatePublicTags(["products"]);
+    } catch (error) {
+      console.error("Failed to reorder the product gallery.", error);
+      toast.error("Could not reorder the product gallery.");
+    } finally {
+      setProductGalleryAction(null);
+    }
+  };
+
+  const handleDeleteProductImage = async (imageId: string) => {
+    if (!editingProduct || !window.confirm("Delete this image from the product gallery?")) {
+      return;
+    }
+
+    const accessToken = await getAdminAccessToken();
+    if (!accessToken) {
+      toast.error("Sign in again to delete product images.");
+      return;
+    }
+
+    setProductGalleryAction(imageId);
+    try {
+      const response = await fetch(
+        `/api/admin/products/${editingProduct.id}/images?imageId=${encodeURIComponent(imageId)}`,
+        {
+          method: "DELETE",
+          headers: { Authorization: `Bearer ${accessToken}` },
+        },
+      );
+      const result = (await response.json().catch(() => null)) as
+        | { images?: AdminProductImage[]; message?: string }
+        | null;
+      if (!response.ok) {
+        toast.error(result?.message ?? "Could not delete the product image.");
+        return;
+      }
+
+      applyProductGalleryImages(result?.images ?? []);
+      await revalidatePublicTags(["products"]);
+      toast.success("Product image deleted.");
+    } catch (error) {
+      console.error("Failed to delete product image.", error);
+      toast.error("Could not delete the product image.");
+    } finally {
+      setProductGalleryAction(null);
+    }
+  };
+
+  const updateProductVariantDraft = (
+    index: number,
+    patch: Partial<ProductVariantDraft>,
+  ) => {
+    setProductVariantDrafts((currentVariants) =>
+      currentVariants.map((variant, variantIndex) =>
+        variantIndex === index ? { ...variant, ...patch } : variant,
+      ),
+    );
+  };
+
+  const handleProductVariantsToggle = (nextHasVariants: boolean) => {
+    if (!nextHasVariants && productVariantDrafts.length > 0) {
+      if (!window.confirm("Turning options off will delete every saved variant when you update this product. Continue?")) {
+        return;
+      }
+      setProductVariantDrafts([]);
+    }
+
+    setProductHasVariants(nextHasVariants);
   };
 
   const handleSaveProduct = async (event: React.FormEvent) => {
@@ -2038,12 +2290,19 @@ export function AdminDashboard() {
         : null;
     let nextProductImage = nextStoredProductImage;
 
-    if (!productImageFile && !nextProductImage) {
-      toast.error("Upload a product image file that is 500KB or smaller.");
+    if (productImageFiles.length === 0 && !nextProductImage) {
+      toast.error("Upload a product image file that is 15MB or smaller.");
       return;
     }
 
-    if (productImageFile) {
+    if (productHasVariants && productVariantDrafts.length === 0) {
+      toast.error("Add at least one product variant before enabling options.");
+      return;
+    }
+
+    let uploadedProductImages: UploadedProductImage[] = [];
+
+    if (productImageFiles.length > 0) {
       const accessToken = await getAdminAccessToken();
       if (!accessToken) {
         toast.error("Sign in again to upload product images.");
@@ -2051,7 +2310,17 @@ export function AdminDashboard() {
       }
 
       const uploadFormData = new FormData();
-      uploadFormData.append("image", productImageFile);
+      for (const imageFile of productImageFiles) {
+        uploadFormData.append("images", imageFile);
+      }
+      if (editingProduct) {
+        uploadFormData.append("productId", String(editingProduct.id));
+      } else {
+        uploadFormData.append(
+          "uploadId",
+          `upload-${globalThis.crypto.randomUUID?.() ?? Date.now()}`,
+        );
+      }
 
       const uploadResponse = await fetch("/api/admin/products/upload", {
         method: "POST",
@@ -2062,15 +2331,29 @@ export function AdminDashboard() {
       });
 
       const uploadResult = (await uploadResponse.json().catch(() => null)) as
-        | { dataUrl?: string; message?: string }
+        | {
+            images?: Array<{
+              path: string;
+              thumbnailPath: string;
+              thumbnailUrl: string;
+              url: string;
+            }>;
+            message?: string;
+          }
         | null;
 
-      if (!uploadResponse.ok || !uploadResult?.dataUrl) {
-        toast.error(uploadResult?.message ?? "Could not upload the product image.");
+      const uploadedImages = (uploadResult?.images ?? []).filter(
+        (image): image is UploadedProductImage => Boolean(image?.thumbnailUrl),
+      );
+      if (!uploadResponse.ok || uploadedImages.length !== productImageFiles.length) {
+        toast.error(uploadResult?.message ?? "Could not upload the product images.");
         return;
       }
 
-      nextProductImage = uploadResult.dataUrl;
+      uploadedProductImages = uploadedImages;
+      if (!editingProduct) {
+        nextProductImage = uploadedImages[0]?.thumbnailUrl ?? nextProductImage;
+      }
     }
 
     const baseProductSlug = createProductSlug(productName) || "product";
@@ -2091,6 +2374,9 @@ export function AdminDashboard() {
       cost_price: costPrice,
       category: normalizedCategory,
       image: nextProductImage,
+      brand: productBrand.trim() || null,
+      age_range: productAgeRange.trim() || null,
+      has_variants: productHasVariants,
       description: productDescription,
       in_stock: productInStock,
       is_featured: productIsFeatured,
@@ -2160,6 +2446,83 @@ export function AdminDashboard() {
       }
     }
 
+    if (uploadedProductImages.length > 0) {
+      const accessToken = await getAdminAccessToken();
+      if (!accessToken) {
+        toast.error("Product saved, but its gallery images could not be synchronized. Sign in again and retry the image upload.");
+      } else {
+        for (const uploadedImage of uploadedProductImages) {
+          const imageResponse = await fetch(
+            `/api/admin/products/${savedProduct.id}/images`,
+            {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${accessToken}`,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                mode: "append",
+                path: uploadedImage.path,
+                thumbnailPath: uploadedImage.thumbnailPath,
+              }),
+            },
+          );
+          const imageResult = (await imageResponse.json().catch(() => null)) as
+            | { message?: string }
+            | null;
+
+          if (!imageResponse.ok && imageResponse.status !== 409) {
+            toast.error(
+              imageResult?.message ??
+                "Product saved, but a gallery image could not be synchronized.",
+            );
+            return;
+          }
+        }
+      }
+    }
+
+    const variantAccessToken = await getAdminAccessToken();
+    if (!variantAccessToken) {
+      toast.error("Product saved, but its variants could not be synchronized. Sign in again and retry.");
+      return;
+    }
+
+    const variantsResponse = await fetch(
+      `/api/admin/products/${savedProduct.id}/variants`,
+      {
+        method: "PUT",
+        headers: {
+          Authorization: `Bearer ${variantAccessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          deleteExistingVariants: !productHasVariants,
+          hasVariants: productHasVariants,
+          variants: productVariantDrafts.map((variant) => ({
+            color: variant.color,
+            id: variant.id,
+            inStock: variant.inStock,
+            priceOverride: variant.priceOverride
+              ? Number(variant.priceOverride) / 1000
+              : null,
+            size: variant.size,
+            sku: variant.sku,
+            stockQuantity: variant.stockQuantity,
+          })),
+        }),
+      },
+    );
+    const variantsResult = (await variantsResponse.json().catch(() => null)) as
+      | { message?: string }
+      | null;
+    if (!variantsResponse.ok && variantsResponse.status !== 409) {
+      toast.error(
+        variantsResult?.message ?? "Product saved, but its variants could not be synchronized.",
+      );
+      return;
+    }
+
     toast.success(editingProduct ? "Product updated." : "Product created.");
     setShowProductModal(false);
     resetProductForm();
@@ -2172,9 +2535,24 @@ export function AdminDashboard() {
       return;
     }
 
-    const { error } = await supabase.from("products").delete().eq("id", productId);
-    if (error) {
-      toast.error("Failed to delete product.");
+    const accessToken = await getAdminAccessToken();
+    if (!accessToken) {
+      toast.error("Sign in again to delete products.");
+      return;
+    }
+
+    const response = await fetch(`/api/admin/products/${productId}`, {
+      method: "DELETE",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    });
+    const result = (await response.json().catch(() => null)) as
+      | { message?: string }
+      | null;
+
+    if (!response.ok) {
+      toast.error(result?.message ?? "Failed to delete product.");
       return;
     }
 
@@ -2871,7 +3249,7 @@ export function AdminDashboard() {
                           <Button
                             variant="outline"
                             size="sm"
-                            onClick={() => handleEditProduct(product)}
+                            onClick={() => void handleEditProduct(product)}
                           >
                             <Edit className="h-4 w-4" />
                           </Button>
@@ -4353,22 +4731,115 @@ export function AdminDashboard() {
               </div>
             </div>
 
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="product-brand">Brand (optional)</Label>
+                <Input
+                  id="product-brand"
+                  value={productBrand}
+                  onChange={(event) => setProductBrand(event.target.value)}
+                  placeholder="e.g. Tommee Tippee"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="product-age-range">Age range (optional)</Label>
+                <Input
+                  id="product-age-range"
+                  value={productAgeRange}
+                  onChange={(event) => setProductAgeRange(event.target.value)}
+                  placeholder="e.g. 0-6 months"
+                />
+              </div>
+            </div>
+
             <div className="space-y-2">
-              <Label htmlFor="product-image">Product Image Upload</Label>
+              <Label htmlFor="product-image">Product Images</Label>
               <Input
                 id="product-image"
                 type="file"
                 accept="image/*"
-                required={!editingProduct && !productImage}
-                onChange={(event) => setProductImageFile(event.target.files?.[0] ?? null)}
+                multiple
+                required={!editingProduct && !productImage && productImageFiles.length === 0}
+                onChange={(event) => setProductImageFiles(Array.from(event.target.files ?? []))}
               />
               <p className="text-xs text-gray-500">
-                Upload an image file up to 500KB. URLs are no longer supported.
+                Upload one or more images up to 15MB each. They are compressed to WebP and thumbnails are created automatically.
               </p>
-              {productImage ? (
+              {productImageFiles.length > 0 ? (
                 <p className="text-xs text-gray-500">
-                  Existing image will stay in place unless you upload a new one.
+                  {productImageFiles.length} new image{productImageFiles.length === 1 ? "" : "s"} will be added when you save this product.
                 </p>
+              ) : null}
+              {editingProduct && productGalleryImages.length > 0 ? (
+                <div className="grid grid-cols-2 gap-3 pt-2 sm:grid-cols-3">
+                  {productGalleryImages.map((image, index) => (
+                    <div key={image.id} className="overflow-hidden rounded-lg border bg-white">
+                      <ImageWithFallback
+                        src={image.thumbnail_url || image.url}
+                        alt={`${productName} image ${index + 1}`}
+                        className="aspect-square w-full object-cover"
+                      />
+                      <div className="flex items-center justify-between gap-1 p-2">
+                        <span className="truncate text-xs text-gray-600">
+                          {image.is_primary ? "Primary" : `Image ${index + 1}`}
+                        </span>
+                        <div className="flex items-center gap-1">
+                          <Button
+                            type="button"
+                            size="icon"
+                            variant={image.is_primary ? "default" : "outline"}
+                            className="h-7 w-7"
+                            title="Set as primary image"
+                            aria-label="Set as primary image"
+                            disabled={Boolean(productGalleryAction) || image.is_primary}
+                            onClick={() => void handleSetPrimaryProductImage(image.id)}
+                          >
+                            <Star className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button
+                            type="button"
+                            size="icon"
+                            variant="outline"
+                            className="h-7 w-7"
+                            title="Move image earlier"
+                            aria-label="Move image earlier"
+                            disabled={Boolean(productGalleryAction) || index === 0}
+                            onClick={() => void handleReorderProductImage(image.id, -1)}
+                          >
+                            <ArrowUp className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button
+                            type="button"
+                            size="icon"
+                            variant="outline"
+                            className="h-7 w-7"
+                            title="Move image later"
+                            aria-label="Move image later"
+                            disabled={
+                              Boolean(productGalleryAction) ||
+                              index === productGalleryImages.length - 1
+                            }
+                            onClick={() => void handleReorderProductImage(image.id, 1)}
+                          >
+                            <ArrowDown className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button
+                            type="button"
+                            size="icon"
+                            variant="outline"
+                            className="h-7 w-7 text-red-600"
+                            title="Delete image"
+                            aria-label="Delete image"
+                            disabled={Boolean(productGalleryAction)}
+                            onClick={() => void handleDeleteProductImage(image.id)}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               ) : null}
             </div>
 
@@ -4381,6 +4852,108 @@ export function AdminDashboard() {
                 rows={4}
                 required
               />
+            </div>
+
+            <div className="space-y-3 rounded-lg border border-pink-100 bg-pink-50/50 p-4">
+              <label className="flex items-center gap-2 text-sm font-medium text-gray-800">
+                <input
+                  type="checkbox"
+                  checked={productHasVariants}
+                  onChange={(event) => handleProductVariantsToggle(event.target.checked)}
+                />
+                This product has selectable size or color options
+              </label>
+
+              {productHasVariants ? (
+                <div className="space-y-3">
+                  {productVariantDrafts.map((variant, index) => (
+                    <div
+                      key={variant.id ?? `new-variant-${index}`}
+                      className="grid grid-cols-1 gap-2 rounded-md border bg-white p-3 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_1fr_0.8fr_0.9fr_auto]"
+                    >
+                      <Input
+                        aria-label={`Variant ${index + 1} size`}
+                        value={variant.size}
+                        onChange={(event) => updateProductVariantDraft(index, { size: event.target.value })}
+                        placeholder="Size"
+                      />
+                      <Input
+                        aria-label={`Variant ${index + 1} color`}
+                        value={variant.color}
+                        onChange={(event) => updateProductVariantDraft(index, { color: event.target.value })}
+                        placeholder="Color"
+                      />
+                      <Input
+                        aria-label={`Variant ${index + 1} SKU`}
+                        value={variant.sku}
+                        onChange={(event) => updateProductVariantDraft(index, { sku: event.target.value })}
+                        placeholder="SKU"
+                      />
+                      <Input
+                        aria-label={`Variant ${index + 1} stock quantity`}
+                        type="number"
+                        min="0"
+                        value={variant.stockQuantity}
+                        onChange={(event) => updateProductVariantDraft(index, { stockQuantity: event.target.value })}
+                        placeholder="Stock"
+                      />
+                      <Input
+                        aria-label={`Variant ${index + 1} price override in Naira`}
+                        type="number"
+                        min="0"
+                        value={variant.priceOverride}
+                        onChange={(event) => updateProductVariantDraft(index, { priceOverride: event.target.value })}
+                        placeholder="Price override (NGN)"
+                      />
+                      <div className="flex items-center gap-2">
+                        <label className="flex items-center gap-1 text-xs text-gray-600">
+                          <input
+                            type="checkbox"
+                            checked={variant.inStock}
+                            onChange={(event) => updateProductVariantDraft(index, { inStock: event.target.checked })}
+                          />
+                          In stock
+                        </label>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="icon"
+                          className="h-9 w-9 text-red-600"
+                          title="Remove variant"
+                          aria-label="Remove variant"
+                          onClick={() =>
+                            setProductVariantDrafts((currentVariants) =>
+                              currentVariants.filter((_, variantIndex) => variantIndex !== index),
+                            )
+                          }
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() =>
+                      setProductVariantDrafts((currentVariants) => [
+                        ...currentVariants,
+                        {
+                          color: "",
+                          inStock: true,
+                          priceOverride: "",
+                          size: "",
+                          sku: "",
+                          stockQuantity: "0",
+                        },
+                      ])
+                    }
+                  >
+                    <Plus className="mr-2 h-4 w-4" />
+                    Add Option
+                  </Button>
+                </div>
+              ) : null}
             </div>
 
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
