@@ -11,21 +11,22 @@ import {
   SheetTitle,
 } from "./ui/sheet";
 import { Separator } from "./ui/separator";
-import { Product } from "./ProductCard";
+import {
+  getStoreCartItemKey,
+  type StoreCartItem,
+} from "../contexts/StoreCartContext";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
 import { formatNaira, formatNairaAmount, toNairaAmount } from "../../lib/commerce";
 import { Input } from "./ui/input";
 
-interface CartItem extends Product {
-  quantity: number;
-}
+type CartItem = StoreCartItem;
 
 interface ShoppingCartDrawerProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   cartItems: CartItem[];
-  onRemoveItem: (productId: number) => void;
-  onUpdateQuantity: (productId: number, quantity: number) => void;
+  onRemoveItem: (itemKey: string) => void;
+  onUpdateQuantity: (itemKey: string, quantity: number) => void;
   onCheckout: () => void;
 }
 
@@ -63,9 +64,13 @@ export function ShoppingCartDrawer({
             </div>
           ) : (
             <div className="space-y-4">
-              {cartItems.map((item) => (
+              {cartItems.map((item) => {
+                const itemKey = getStoreCartItemKey(item);
+                const optionLabel = [item.size, item.color].filter(Boolean).join(" / ");
+
+                return (
                 <div
-                  key={item.id}
+                  key={itemKey}
                   className="flex gap-4 rounded-2xl border border-gray-200 p-4"
                 >
                   <ImageWithFallback
@@ -76,12 +81,15 @@ export function ShoppingCartDrawer({
                   <div className="flex-1">
                     <h4 className="font-semibold text-sm">{item.name}</h4>
                     <p className="text-sm text-gray-600">{formatNaira(item.price)}</p>
+                    {optionLabel ? (
+                      <p className="mt-0.5 text-xs text-gray-500">{optionLabel}</p>
+                    ) : null}
                     <div className="mt-3 flex items-center gap-2">
                       <Button
                         variant="outline"
                         size="sm"
                         type="button"
-                        onClick={() => onUpdateQuantity(item.id, Math.max(1, item.quantity - 1))}
+                        onClick={() => onUpdateQuantity(itemKey, Math.max(1, item.quantity - 1))}
                         className="h-7 w-7 p-0"
                       >
                         -
@@ -102,7 +110,7 @@ export function ShoppingCartDrawer({
                             return;
                           }
 
-                          onUpdateQuantity(item.id, nextQuantity);
+                          onUpdateQuantity(itemKey, nextQuantity);
                         }}
                         className="h-8 w-20 text-center"
                       />
@@ -110,7 +118,7 @@ export function ShoppingCartDrawer({
                         variant="outline"
                         size="sm"
                         type="button"
-                        onClick={() => onUpdateQuantity(item.id, item.quantity + 1)}
+                        onClick={() => onUpdateQuantity(itemKey, item.quantity + 1)}
                         className="h-7 w-7 p-0"
                       >
                         +
@@ -121,13 +129,14 @@ export function ShoppingCartDrawer({
                     variant="ghost"
                     size="icon"
                     type="button"
-                    onClick={() => onRemoveItem(item.id)}
+                    onClick={() => onRemoveItem(itemKey)}
                     className="h-8 w-8"
                   >
                     <Trash2 className="h-4 w-4" />
                   </Button>
                 </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
