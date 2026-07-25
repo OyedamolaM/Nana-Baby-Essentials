@@ -196,13 +196,13 @@ export function ProductDetailModal({
 
   return (
     <Dialog open={open} onOpenChange={(nextOpen) => !nextOpen && onClose()}>
-    <DialogContent
-      className="max-h-[90vh] overflow-y-auto max-w-4xl md:max-w-5xl"
-    >
+      <DialogContent className="max-h-[90vh] overflow-y-auto max-w-4xl md:max-w-5xl">
         <DialogHeader className="sr-only">
           <DialogTitle>{product.name}</DialogTitle>
         </DialogHeader>
-        <div className="grid gap-8 md:grid-cols-2">    
+
+        <div className="grid gap-8 md:grid-cols-2">
+          {/* Left Column */}
           <div className="space-y-3">
             <div
               className="relative flex aspect-square items-center justify-center overflow-hidden rounded-lg bg-gray-50"
@@ -212,13 +212,13 @@ export function ProductDetailModal({
               onTouchEnd={(event) => {
                 const startX = touchStartXRef.current;
                 touchStartXRef.current = null;
-                if (startX === null || galleryImages.length < 2) {
-                  return;
-                }
+
+                if (startX === null || galleryImages.length < 2) return;
+
                 const distance = event.changedTouches[0]?.clientX - startX;
-                if (Math.abs(distance) < 48) {
-                  return;
-                }
+
+                if (Math.abs(distance) < 48) return;
+
                 showImage(selectedImageIndex + (distance < 0 ? 1 : -1));
               }}
             >
@@ -231,7 +231,8 @@ export function ProductDetailModal({
                 className="max-h-full max-w-full object-contain"
                 decoding="async"
               />
-              {galleryImages.length > 1 ? (
+
+              {galleryImages.length > 1 && (
                 <>
                   <Button
                     type="button"
@@ -242,6 +243,7 @@ export function ProductDetailModal({
                   >
                     <ChevronLeft className="h-5 w-5" />
                   </Button>
+
                   <Button
                     type="button"
                     aria-label="Show next image"
@@ -252,10 +254,10 @@ export function ProductDetailModal({
                     <ChevronRight className="h-5 w-5" />
                   </Button>
                 </>
-              ) : null}
+              )}
             </div>
 
-            {galleryImages.length > 1 ? (
+            {galleryImages.length > 1 && (
               <div className="flex gap-2 overflow-x-auto pb-1">
                 {galleryImages.map((image, index) => (
                   <button
@@ -264,7 +266,9 @@ export function ProductDetailModal({
                     aria-label={`Show image ${index + 1}`}
                     onClick={() => showImage(index)}
                     className={`h-14 w-14 shrink-0 overflow-hidden rounded-lg border-2 ${
-                      index === selectedImageIndex ? "border-pink-500" : "border-transparent"
+                      index === selectedImageIndex
+                        ? "border-pink-500"
+                        : "border-transparent"
                     }`}
                   >
                     <ImageWithFallback
@@ -275,36 +279,57 @@ export function ProductDetailModal({
                   </button>
                 ))}
               </div>
-            ) : null}
+            )}
           </div>
 
+          {/* Right Column */}
           <div className="space-y-6">
+            {/* Product Info */}
             <div className="space-y-3">
               <div className="flex items-start justify-between gap-4">
                 <div>
-                  <h2 className="text-2xl font-semibold text-gray-900">{product.name}</h2>
-                  <p className="mt-2 text-sm text-gray-600">{product.description}</p>
+                  <h2 className="text-2xl font-semibold text-gray-900">
+                    {product.name}
+                  </h2>
+
+                  <p className="mt-2 text-3xl font-bold text-pink-600">
+                    {formatNaira(product.price)}
+                  </p>
+
+                  <p className="mt-3 text-sm text-gray-600">
+                    {product.description}
+                  </p>
                 </div>
-                <Badge variant={product.inStock ? "secondary" : "destructive"}>
+
+                <Badge
+                  variant={product.inStock ? "secondary" : "destructive"}
+                >
                   {product.inStock ? "In Stock" : "Out of Stock"}
                 </Badge>
               </div>
 
               <div className="flex items-center gap-2">
-                <span className="text-sm font-medium text-gray-700">Quantity</span>
+                <span className="text-sm font-medium text-gray-700">
+                  Quantity
+                </span>
+
                 <div className="inline-flex items-center rounded-full border border-gray-200 bg-white p-1">
                   <Button
                     type="button"
                     variant="outline"
                     size="sm"
-                    onClick={() => setQuantity((current) => Math.max(current - 1, 1))}
+                    onClick={() =>
+                      setQuantity((current) => Math.max(current - 1, 1))
+                    }
                     disabled={quantity <= 1}
                   >
                     -
                   </Button>
+
                   <span className="mx-3 min-w-[2rem] text-center text-sm font-medium">
                     {quantity}
                   </span>
+
                   <Button
                     type="button"
                     variant="outline"
@@ -317,53 +342,64 @@ export function ProductDetailModal({
               </div>
             </div>
 
-              <div className="flex gap-2">
-                {product.hasVariants ? (
-                  <Button asChild type="button" className="flex-1">
-                    <Link
-                      href={`/products/${product.slug}`}
-                      onClick={handleOpenFullProductPage}
-                    >
-                      <ShoppingCart className="mr-2 h-4 w-4" />
-                      Choose Options
-                    </Link>
-                  </Button>
-                ) : (
-                  <Button
-                    type="button"
-                    className="flex-1"
-                    onClick={handleAddToCart}
-                    disabled={!product.inStock}
+            {/* Actions */}
+            <div className="flex gap-2">
+              {product.hasVariants ? (
+                <Button asChild type="button" className="flex-1">
+                  <Link
+                    href={`/products/${product.slug}`}
+                    onClick={handleOpenFullProductPage}
                   >
                     <ShoppingCart className="mr-2 h-4 w-4" />
-                    {product.inStock ? addActionLabel : "Out of Stock"}
-                  </Button>
-                )}
-
+                    Choose Options
+                  </Link>
+                </Button>
+              ) : (
                 <Button
                   type="button"
-                  variant="outline"
-                  size="icon"
-                  onClick={toggleWishlist}
-                  disabled={loading}
+                  className="flex-1"
+                  onClick={handleAddToCart}
+                  disabled={!product.inStock}
                 >
-                  <Heart
-                    className={`h-5 w-5 ${isInWishlist ? "fill-red-500 text-red-500" : ""}`}
-                  />
+                  <ShoppingCart className="mr-2 h-4 w-4" />
+                  {product.inStock ? addActionLabel : "Out of Stock"}
                 </Button>
+              )}
 
-                <Button type="button" variant="outline" size="icon" onClick={handleShare}>
-                  <Share2 className="h-5 w-5" />
-                </Button>
-              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                onClick={toggleWishlist}
+                disabled={loading}
+              >
+                <Heart
+                  className={`h-5 w-5 ${
+                    isInWishlist ? "fill-red-500 text-red-500" : ""
+                  }`}
+                />
+              </Button>
 
-              <Button asChild type="button" variant="ghost" className="w-full">
-                <Link href={`/products/${product.slug}`} onClick={handleOpenFullProductPage}>
-                  Open Full Product Page
-                </Link>
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                onClick={handleShare}
+              >
+                <Share2 className="h-5 w-5" />
               </Button>
             </div>
 
+            <Button asChild type="button" variant="ghost" className="w-full">
+              <Link
+                href={`/products/${product.slug}`}
+                onClick={handleOpenFullProductPage}
+              >
+                Open Full Product Page
+              </Link>
+            </Button>
+
+            {/* Product Details */}
             <div className="space-y-2 border-t pt-4">
               <div className="flex justify-between text-sm">
                 <span className="text-gray-600">SKU:</span>
@@ -371,29 +407,38 @@ export function ProductDetailModal({
                   BB-{product.id.toString().padStart(6, "0")}
                 </span>
               </div>
+
               <div className="flex justify-between text-sm">
                 <span className="text-gray-600">Availability:</span>
-                <span className={product.inStock ? "text-green-600" : "text-red-600"}>
+                <span
+                  className={
+                    product.inStock ? "text-green-600" : "text-red-600"
+                  }
+                >
                   {product.inStock ? "In Stock" : "Out of Stock"}
                 </span>
               </div>
+
               <div className="flex justify-between text-sm">
                 <span className="text-gray-600">Category:</span>
                 <span className="font-semibold">{product.category}</span>
               </div>
             </div>
 
+            {/* Shipping */}
             <div className="rounded-lg bg-pink-50 p-4">
               <h4 className="mb-2 font-semibold text-gray-900">
                 Shipping Information
               </h4>
+
               <ul className="space-y-1 text-sm text-gray-600">
-                <li>- Delivery within 2-5 days in Lagos</li>
-                <li>- 3-7 days for other locations</li>
+                <li>- Delivery within 2–5 days in Lagos</li>
+                <li>- 3–7 days for other locations</li>
               </ul>
             </div>
           </div>
-    </DialogContent>
+        </div>
+      </DialogContent>
     </Dialog>
   );
 }
