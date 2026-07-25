@@ -9,6 +9,7 @@ import {
   ChevronRight,
   HeartHandshake,
   ShoppingCart,
+  Share2,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -171,6 +172,26 @@ export function ProductDetailPageClient({
       toast.success(`${product.name} added to cart.`);
     }
   };
+
+  const handleShare = async () => {
+  const shareUrl = window.location.href;
+
+  if (navigator.share) {
+    try {
+      await navigator.share({
+        title: product.name,
+        text: product.description,
+        url: shareUrl,
+      });
+    } catch {
+      // User cancelled sharing.
+    }
+    return;
+  }
+
+  await navigator.clipboard.writeText(shareUrl);
+  toast.success("Product link copied to clipboard.");
+};
 
   const handleBackToPreviousProductView = () => {
     const reopenContext = readProductDetailReturnContext();
@@ -375,7 +396,7 @@ export function ProductDetailPageClient({
               <div className="flex flex-col gap-3 sm:flex-row">
                 <Button
                   type="button"
-                  className="flex-1"
+                  className="flex-1 cursor-pointer"
                   onClick={handleAddToCart}
                   disabled={!canAddToCart}
                 >
@@ -400,8 +421,16 @@ export function ProductDetailPageClient({
                   <p>{availabilityLabel}</p>
                 </div>
                 <div>
-                  <p className="font-semibold text-gray-900">Product Link</p>
-                  <p>Share this page directly with friends and family.</p>
+                  <p className="font-semibold text-gray-900">Share Product</p>
+
+                  <button
+                    type="button"
+                    onClick={handleShare}
+                    className="mt-1 flex items-center gap-2 text-pink-600 hover:text-pink-700 cursor-pointer"
+                  >
+                    <Share2 className="h-4 w-4" />
+                    <span>Share this page with friends and family.</span>
+                  </button>
                 </div>
               </div>
             </div>
