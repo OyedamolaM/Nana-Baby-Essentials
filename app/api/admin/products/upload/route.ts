@@ -56,44 +56,35 @@ function getImageFiles(formData: FormData) {
   return values.filter((value): value is File => value instanceof File);
 }
 
-// async function compressImage(file: File) {
-//   const input = Buffer.from(await file.arrayBuffer());
-//   const source = sharp(input, { limitInputPixels: 40_000_000 }).rotate();
-
-//   const fullImage = await source
-//     .clone()
-//     .resize({
-//       width: FULL_IMAGE_SIZE,
-//       height: FULL_IMAGE_SIZE,
-//       fit: "inside",
-//       withoutEnlargement: true,
-//     })
-//     .webp({ quality: 80 })
-//     .toBuffer();
-//   const thumbnail = await source
-//     .clone()
-//     .resize({
-//       width: THUMBNAIL_IMAGE_SIZE,
-//       height: THUMBNAIL_IMAGE_SIZE,
-//       fit: "inside",
-//       withoutEnlargement: true,
-//     })
-//     .webp({ quality: 75 })
-//     .toBuffer();
-
-//   return {
-//     fullImage,
-//     thumbnail,
-//     hash: createHash("sha256").update(fullImage).digest("hex"),
-//   };
-// }
 async function compressImage(file: File) {
   const input = Buffer.from(await file.arrayBuffer());
-  // TEMPORARY DIAGNOSTIC: skip sharp entirely, upload raw bytes as-is
+  const source = sharp(input, { limitInputPixels: 40_000_000 }).rotate();
+
+  const fullImage = await source
+    .clone()
+    .resize({
+      width: FULL_IMAGE_SIZE,
+      height: FULL_IMAGE_SIZE,
+      fit: "inside",
+      withoutEnlargement: true,
+    })
+    .webp({ quality: 80 })
+    .toBuffer();
+  const thumbnail = await source
+    .clone()
+    .resize({
+      width: THUMBNAIL_IMAGE_SIZE,
+      height: THUMBNAIL_IMAGE_SIZE,
+      fit: "inside",
+      withoutEnlargement: true,
+    })
+    .webp({ quality: 75 })
+    .toBuffer();
+
   return {
-    fullImage: input,
-    thumbnail: input,
-    hash: createHash("sha256").update(input).digest("hex"),
+    fullImage,
+    thumbnail,
+    hash: createHash("sha256").update(fullImage).digest("hex"),
   };
 }
 
