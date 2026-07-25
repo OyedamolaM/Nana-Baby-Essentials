@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
-import { Heart, Share2, ShoppingCart } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { ChevronLeft, ChevronRight, Heart, Share2, ShoppingCart } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "../contexts/AuthContext";
 import { hasSupabaseEnv, supabase } from "../lib/supabase";
@@ -17,7 +17,6 @@ import { ImageWithFallback } from "./figma/ImageWithFallback";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
-
 interface ProductDetailModalProps {
   product: Product | null;
   open: boolean;
@@ -37,40 +36,84 @@ export function ProductDetailModal({
   const [isInWishlist, setIsInWishlist] = useState(false);
   const [loading, setLoading] = useState(false);
   const { user } = useAuth();
+  const [selectedImageIndex, setSelectedImageIndex] = useState(0);
+  const touchStartXRef = useRef<number | null>(null);
+  const [fetchedGalleryImages, setFetchedGalleryImages] = useState<
+    Array<{
+      id: string;
+      url: string;
+      thumbnailUrl?: string;
+      isPrimary: boolean;
+      sortOrder: number;
+    }>
+  >([]);
+
+  const galleryImages = useMemo(() => {
+    const base = product?.images ?? [];
+    return (base.length > 0 ? base : fetchedGalleryImages).filter((image) => image.url.trim());
+  }, [product?.images, fetchedGalleryImages]);
+
+
+  const showImage = (nextIndex: number) => {
+    if (galleryImages.length === 0) {
+      return;
+    }
+    setSelectedImageIndex((nextIndex + galleryImages.length) % galleryImages.length);
+  };
 
   useEffect(() => {
-    if (!open || !product || !user || !hasSupabaseEnv) {
+    if (!open || !product || !hasSupabaseEnv) {
+      return;
+    }
+
+    if (product.images && product.images.length > 0) {
       return;
     }
 
     let isMounted = true;
 
-    const loadWishlistState = async () => {
+    const loadGalleryImages = async () => {
       const { data, error } = await supabase
-        .from("wishlists")
-        .select("id")
-        .eq("user_id", user.id)
+        .from("product_images")
+        .select("id, url, thumbnail_url, is_primary, sort_order")
         .eq("product_id", product.id)
-        .maybeSingle();
+        .order("sort_order", { ascending: true });
 
-      if (!isMounted) {
+      if (!isMounted || error || !data) {
         return;
       }
 
-      if (error) {
-        setIsInWishlist(false);
-        return;
-      }
-
-      setIsInWishlist(Boolean(data));
+      setFetchedGalleryImages(
+        data.map((row) => ({
+          id: String(row.id),
+          url: row.url,
+          thumbnailUrl: row.thumbnail_url ?? undefined,
+          isPrimary: Boolean(row.is_primary),
+          sortOrder: Number(row.sort_order ?? 0),
+        })),
+      );
     };
 
-    void loadWishlistState();
+    void loadGalleryImages();
 
     return () => {
       isMounted = false;
     };
-  }, [open, product, user]);
+  }, [open, product?.id, product?.images?.length, hasSupabaseEnv]);
+
+  useEffect(() => {
+    if (!product) {
+      return;
+    }
+
+    const resetIndex = window.setTimeout(() => {
+      setSelectedImageIndex(0);
+    }, 0);
+
+    return () => {
+      window.clearTimeout(resetIndex);
+    };
+  }, [product?.id]);
 
   if (!product) {
     return null;
@@ -153,53 +196,115 @@ export function ProductDetailModal({
 
   return (
     <Dialog open={open} onOpenChange={(nextOpen) => !nextOpen && onClose()}>
-      <DialogContent className="max-h-[90vh] max-w-4xl overflow-y-auto">
+    <DialogContent
+      className="max-h-[90vh] overflow-y-auto max-w-4xl md:max-w-5xl"
+    >
         <DialogHeader className="sr-only">
           <DialogTitle>{product.name}</DialogTitle>
         </DialogHeader>
-        <div className="grid gap-8 md:grid-cols-2">
-          <div className="flex aspect-square items-center justify-center overflow-hidden rounded-lg bg-gray-50">
-            <ImageWithFallback
-              src={getFullProductImageUrl(product.image)}
-              alt={product.name}
-              className="max-h-full max-w-full object-contain"
-              decoding="async"
-            />
+        <div className="grid gap-8 md:grid-cols-2">    
+          <div className="space-y-3">
+            <div
+              className="relative flex aspect-square items-center justify-center overflow-hidden rounded-lg bg-gray-50"
+              onTouchStart={(event) => {
+                touchStartXRef.current = event.touches[0]?.clientX ?? null;
+              }}
+              onTouchEnd={(event) => {
+                const startX = touchStartXRef.current;
+                touchStartXRef.current = null;
+                if (startX === null || galleryImages.length < 2) {
+                  return;
+                }
+                const distance = event.changedTouches[0]?.clientX - startX;
+                if (Math.abs(distance) < 48) {
+                  return;
+                }
+                showImage(selectedImageIndex + (distance < 0 ? 1 : -1));
+              }}
+            >
+              <ImageWithFallback
+                src={
+                  galleryImages[selectedImageIndex]?.url ||
+                  getFullProductImageUrl(product.image)
+                }
+                alt={product.name}
+                className="max-h-full max-w-full object-contain"
+                decoding="async"
+              />
+              {galleryImages.length > 1 ? (
+                <>
+                  <Button
+                    type="button"
+                    aria-label="Show previous image"
+                    variant="outline"
+                    className="absolute left-3 top-1/2 h-9 w-9 -translate-y-1/2 rounded-full bg-white/90 p-0 text-gray-900 hover:bg-white"
+                    onClick={() => showImage(selectedImageIndex - 1)}
+                  >
+                    <ChevronLeft className="h-5 w-5" />
+                  </Button>
+                  <Button
+                    type="button"
+                    aria-label="Show next image"
+                    variant="outline"
+                    className="absolute right-3 top-1/2 h-9 w-9 -translate-y-1/2 rounded-full bg-white/90 p-0 text-gray-900 hover:bg-white"
+                    onClick={() => showImage(selectedImageIndex + 1)}
+                  >
+                    <ChevronRight className="h-5 w-5" />
+                  </Button>
+                </>
+              ) : null}
+            </div>
+
+            {galleryImages.length > 1 ? (
+              <div className="flex gap-2 overflow-x-auto pb-1">
+                {galleryImages.map((image, index) => (
+                  <button
+                    key={image.id}
+                    type="button"
+                    aria-label={`Show image ${index + 1}`}
+                    onClick={() => showImage(index)}
+                    className={`h-14 w-14 shrink-0 overflow-hidden rounded-lg border-2 ${
+                      index === selectedImageIndex ? "border-pink-500" : "border-transparent"
+                    }`}
+                  >
+                    <ImageWithFallback
+                      src={image.thumbnailUrl || image.url}
+                      alt={`${product.name} thumbnail ${index + 1}`}
+                      className="h-full w-full object-cover"
+                    />
+                  </button>
+                ))}
+              </div>
+            ) : null}
           </div>
 
           <div className="space-y-6">
-            <div>
-              <Badge variant="secondary" className="mb-2">
-                {product.category}
-              </Badge>
-              <h2 className="mb-2 text-3xl font-bold text-gray-900">
-                {product.name}
-              </h2>
-              <p className="text-3xl font-bold text-pink-600">
-                {formatNaira(product.price)}
-              </p>
-            </div>
+            <div className="space-y-3">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h2 className="text-2xl font-semibold text-gray-900">{product.name}</h2>
+                  <p className="mt-2 text-sm text-gray-600">{product.description}</p>
+                </div>
+                <Badge variant={product.inStock ? "secondary" : "destructive"}>
+                  {product.inStock ? "In Stock" : "Out of Stock"}
+                </Badge>
+              </div>
 
-            <div>
-              <h3 className="mb-2 font-semibold text-gray-900">Description</h3>
-              <p className="leading-relaxed text-gray-600">
-                {product.description}
-              </p>
-            </div>
-
-            <div className="space-y-4">
-              <div className="flex items-center gap-4">
-                <label className="font-semibold">Quantity:</label>
-                <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-medium text-gray-700">Quantity</span>
+                <div className="inline-flex items-center rounded-full border border-gray-200 bg-white p-1">
                   <Button
                     type="button"
                     variant="outline"
                     size="sm"
-                    onClick={() => setQuantity((current) => Math.max(1, current - 1))}
+                    onClick={() => setQuantity((current) => Math.max(current - 1, 1))}
+                    disabled={quantity <= 1}
                   >
                     -
                   </Button>
-                  <span className="w-12 text-center">{quantity}</span>
+                  <span className="mx-3 min-w-[2rem] text-center text-sm font-medium">
+                    {quantity}
+                  </span>
                   <Button
                     type="button"
                     variant="outline"
@@ -210,6 +315,7 @@ export function ProductDetailModal({
                   </Button>
                 </div>
               </div>
+            </div>
 
               <div className="flex gap-2">
                 {product.hasVariants ? (
@@ -287,8 +393,7 @@ export function ProductDetailModal({
               </ul>
             </div>
           </div>
-        </div>
-      </DialogContent>
+    </DialogContent>
     </Dialog>
   );
 }
