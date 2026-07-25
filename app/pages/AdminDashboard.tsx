@@ -553,6 +553,7 @@ export function AdminDashboard() {
   const [productCategoriesSelection, setProductCategoriesSelection] = useState<string[]>(["Toys"]);
   const [productImage, setProductImage] = useState("");
   const [productImageFiles, setProductImageFiles] = useState<File[]>([]);
+  const [pendingImagePreviews, setPendingImagePreviews] = useState<{ file: File; url: string }[]>([]);
   const [productGalleryImages, setProductGalleryImages] = useState<AdminProductImage[]>([]);
   const [productGalleryAction, setProductGalleryAction] = useState<string | null>(null);
   const [productBrand, setProductBrand] = useState("");
@@ -1264,6 +1265,8 @@ export function AdminDashboard() {
   };
 
   const handleEditHomepageReview = (review: HomepageReviewRecord) => {
+    pendingImagePreviews.forEach((preview) => URL.revokeObjectURL(preview.url));
+    setPendingImagePreviews([]);
     setEditingHomepageReview(review);
     setHomepageReviewName(review.reviewer_name);
     setHomepageReviewRole(review.reviewer_role ?? "");
@@ -2000,6 +2003,8 @@ export function AdminDashboard() {
   };
 
   const resetProductForm = () => {
+    pendingImagePreviews.forEach((preview) => URL.revokeObjectURL(preview.url));
+    setPendingImagePreviews([]);
     const defaultCategory = productCategoryOptions[0] ?? "Toys";
     setEditingProduct(null);
     setProductName("");
@@ -2295,9 +2300,16 @@ export function AdminDashboard() {
       return;
     }
 
-    if (productHasVariants && productVariantDrafts.length === 0) {
-      toast.error("Add at least one product variant before enabling options.");
-      return;
+    if (productHasVariants) {
+      const hasUsableVariant = productVariantDrafts.some(
+        (variant) => variant.size.trim() || variant.color.trim(),
+      );
+      if (!hasUsableVariant) {
+        toast.error(
+          "Add at least one size or color option, or uncheck 'selectable size or color options' if this product doesn't need them.",
+        );
+        return;
+      }
     }
 
     let uploadedProductImages: UploadedProductImage[] = [];
@@ -2472,9 +2484,14 @@ export function AdminDashboard() {
             | null;
 
           if (!imageResponse.ok && imageResponse.status !== 409) {
+            console.error("Gallery image sync failed", {
+              status: imageResponse.status,
+              result: imageResult,
+              path: uploadedImage.path,
+              thumbnailPath: uploadedImage.thumbnailPath,
+            });
             toast.error(
-              imageResult?.message ??
-                "Product saved, but a gallery image could not be synchronized.",
+              imageResult?.message ?? `Gallery image failed to save (status ${imageResponse.status}). Check console.`,
             );
             return;
           }
@@ -4760,22 +4777,60 @@ export function AdminDashboard() {
                 accept="image/*"
                 multiple
                 required={!editingProduct && !productImage && productImageFiles.length === 0}
-                onChange={(event) => setProductImageFiles(Array.from(event.target.files ?? []))}
+                onChange={(event) => {
+                  const files = Array.from(event.target.files ?? []);
+                  setPendingImagePreviews((current) => {
+                    current.forEach((preview) => URL.revokeObjectURL(preview.url));
+                    return files.map((file) => ({ file, url: URL.createObjectURL(file) }));
+                  });
+                  setProductImageFiles(files);
+                }}
               />
               <p className="text-xs text-gray-500">
-                Upload one or more images up to 15MB each. They are compressed to WebP and thumbnails are created automatically.
+                Upload one or more images 
               </p>
-              {productImageFiles.length > 0 ? (
-                <p className="text-xs text-gray-500">
-                  {productImageFiles.length} new image{productImageFiles.length === 1 ? "" : "s"} will be added when you save this product.
-                </p>
+              {pendingImagePreviews.length > 0 ? (
+                <div className="space-y-2 pt-2">
+                  <p className="text-xs text-gray-500">
+                    {pendingImagePreviews.length} new image{pendingImagePreviews.length === 1 ? "" : "s"} will be added when you save this product.
+                  </p>
+                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                    {pendingImagePreviews.map((preview, index) => (
+                      <div key={preview.url} className="overflow-hidden rounded-lg border bg-white">
+                        <img
+                          src={preview.url}
+                          alt={`New image ${index + 1}`}
+                          className="aspect-square w-full object-cover"
+                        />
+                        <div className="flex items-center justify-between gap-1 p-2">
+                          <span className="truncate text-xs text-gray-600">Pending {index + 1}</span>
+                          <Button
+                            type="button"
+                            size="icon"
+                            variant="outline"
+                            className="h-7 w-7 text-red-600"
+                            title="Remove this image"
+                            aria-label="Remove this image"
+                            onClick={() => {
+                              URL.revokeObjectURL(preview.url);
+                              setPendingImagePreviews((current) => current.filter((_, i) => i !== index));
+                              setProductImageFiles((current) => current.filter((_, i) => i !== index));
+                            }}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
               ) : null}
               {editingProduct && productGalleryImages.length > 0 ? (
                 <div className="grid grid-cols-2 gap-3 pt-2 sm:grid-cols-3">
                   {productGalleryImages.map((image, index) => (
                     <div key={image.id} className="overflow-hidden rounded-lg border bg-white">
                       <ImageWithFallback
-                        src={image.thumbnail_url || image.url}
+                        src={`${image.thumbnail_url || image.url}?v=${image.id}`}
                         alt={`${productName} image ${index + 1}`}
                         className="aspect-square w-full object-cover"
                       />
