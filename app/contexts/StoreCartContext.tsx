@@ -15,21 +15,34 @@ import {
   hasSupabaseEnv,
   supabase,
 } from "../lib/supabase";
-import { mapProductRecord, type ProductRecord, type StoreProduct } from "../../lib/commerce";
+import {
+  mapProductRecord,
+  PRODUCT_LIST_SELECT,
+  type ProductRecord,
+  type StoreProduct,
+  type StoreProductVariant,
+} from "../../lib/commerce";
 
 const STORE_CART_STORAGE_KEY = "nbe_store_cart_v1";
 
 export interface StoreCartItem extends StoreProduct {
   quantity: number;
+  variantId?: string;
+  size?: string;
+  color?: string;
 }
 
 interface StoreCartContextValue {
   items: StoreCartItem[];
   distinctItemCount: number;
   totalQuantity: number;
-  addItem: (product: StoreProduct, quantity?: number) => void;
-  removeItem: (productId: number) => void;
-  updateQuantity: (productId: number, quantity: number) => void;
+  addItem: (
+    product: StoreProduct,
+    quantity?: number,
+    variant?: StoreProductVariant,
+  ) => boolean;
+  removeItem: (itemKey: string) => void;
+  updateQuantity: (itemKey: string, quantity: number) => void;
   clearCart: () => void;
 }
 
@@ -39,7 +52,18 @@ type ShoppingCartRow = {
 
 type ShoppingCartItemRow = {
   quantity: number;
+  variant_id?: string | null;
+  product_variants?: ShoppingCartVariantRow | ShoppingCartVariantRow[] | null;
   products: ProductRecord | ProductRecord[] | null;
+};
+
+type ShoppingCartVariantRow = {
+  color?: string | null;
+  id: string;
+  in_stock?: boolean | null;
+  price_override?: number | null;
+  size?: string | null;
+  stock_quantity?: number | null;
 };
 
 const StoreCartContext = createContext<StoreCartContextValue | undefined>(
@@ -56,6 +80,16 @@ function normalizeCartQuantity(quantity: unknown) {
   return Math.min(normalizedQuantity, 9999);
 }
 
+function normalizeOptionalCartText(value: unknown) {
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+export function getStoreCartItemKey(
+  item: Pick<StoreCartItem, "id" | "variantId">,
+) {
+  return `${item.id}-${item.variantId?.trim() || "base"}`;
+}
+
 function isStoreCartItem(value: unknown): value is StoreCartItem {
   if (!value || typeof value !== "object") {
     return false;
@@ -70,12 +104,16 @@ function isStoreCartItem(value: unknown): value is StoreCartItem {
     typeof item.image === "string" &&
     typeof item.description === "string" &&
     typeof item.inStock === "boolean" &&
+    (item.variantId === undefined ||
+      (typeof item.variantId === "string" && item.variantId.trim().length > 0)) &&
+    (item.size === undefined || item.size === null || typeof item.size === "string") &&
+    (item.color === undefined || item.color === null || typeof item.color === "string") &&
     normalizeCartQuantity(item.quantity) > 0
   );
 }
 
 function sanitizeStoreCartItems(items: unknown[]) {
-  const deduped = new Map<number, StoreCartItem>();
+  const deduped = new Map<string, StoreCartItem>();
 
   for (const value of items) {
     if (!isStoreCartItem(value)) {
@@ -87,9 +125,16 @@ function sanitizeStoreCartItems(items: unknown[]) {
       continue;
     }
 
-    const existing = deduped.get(value.id);
-    deduped.set(value.id, {
+    const sanitizedItem = {
       ...value,
+      color: normalizeOptionalCartText(value.color),
+      size: normalizeOptionalCartText(value.size),
+      variantId: normalizeOptionalCartText(value.variantId),
+      quantity,
+    } satisfies StoreCartItem;
+    const existing = deduped.get(getStoreCartItemKey(sanitizedItem));
+    deduped.set(getStoreCartItemKey(sanitizedItem), {
+      ...sanitizedItem,
       quantity: existing
         ? Math.max(existing.quantity, quantity)
         : quantity,
@@ -104,7 +149,7 @@ function shouldResetCorruptedCartSnapshot(rawItems: unknown[], sanitizedItems: S
     return true;
   }
 
-  const seenProductIds = new Set<number>();
+  const seenItemKeys = new Set<string>();
   for (const rawItem of rawItems) {
     if (!isStoreCartItem(rawItem)) {
       return true;
@@ -115,11 +160,12 @@ function shouldResetCorruptedCartSnapshot(rawItems: unknown[], sanitizedItems: S
       return true;
     }
 
-    if (seenProductIds.has(rawItem.id)) {
+    const itemKey = getStoreCartItemKey(rawItem);
+    if (seenItemKeys.has(itemKey)) {
       return true;
     }
 
-    seenProductIds.add(rawItem.id);
+    seenItemKeys.add(itemKey);
   }
 
   return false;
@@ -194,22 +240,23 @@ function mergeCartItems(
   serverItems: StoreCartItem[],
   localItems: StoreCartItem[],
 ) {
-  const merged = new Map<number, StoreCartItem>();
+  const merged = new Map<string, StoreCartItem>();
 
   for (const item of serverItems) {
-    merged.set(item.id, { ...item });
+    merged.set(getStoreCartItemKey(item), { ...item });
   }
 
   for (const item of localItems) {
-    const existing = merged.get(item.id);
+    const itemKey = getStoreCartItemKey(item);
+    const existing = merged.get(itemKey);
     if (existing) {
-      merged.set(item.id, {
+      merged.set(itemKey, {
         ...existing,
         ...item,
         quantity: Math.max(existing.quantity, item.quantity),
       });
     } else {
-      merged.set(item.id, { ...item });
+      merged.set(itemKey, { ...item });
     }
   }
 
@@ -249,7 +296,9 @@ async function loadRemoteCart(userId: string) {
 
   const { data: itemRows, error } = await supabase
     .from("shopping_cart_items")
-    .select("quantity, products(*)")
+    .select(
+      `quantity, variant_id, products(${PRODUCT_LIST_SELECT}), product_variants(id, size, color, price_override, stock_quantity, in_stock)`,
+    )
     .eq("cart_id", cart.id);
 
   if (error) {
@@ -261,15 +310,31 @@ async function loadRemoteCart(userId: string) {
       const productRecord = Array.isArray(row.products)
         ? row.products[0]
         : row.products;
+      const variantRecord = Array.isArray(row.product_variants)
+        ? row.product_variants[0]
+        : row.product_variants;
 
       if (!productRecord) {
         return null;
       }
 
+      const product = mapProductRecord(productRecord);
+      const variantId = normalizeOptionalCartText(row.variant_id) ?? variantRecord?.id;
+      const variantPrice = Number(variantRecord?.price_override);
+      const price =
+        Number.isFinite(variantPrice) && variantRecord?.price_override !== null
+          ? variantPrice
+          : product.price;
+
       return {
-        ...mapProductRecord(productRecord),
+        ...product,
+        color: normalizeOptionalCartText(variantRecord?.color),
+        price,
+        sellingPrice: price,
         quantity: normalizeCartQuantity(row.quantity),
-      } satisfies StoreCartItem;
+        size: normalizeOptionalCartText(variantRecord?.size),
+        variantId,
+      } as StoreCartItem;
     })
     .filter(
       (item): item is StoreCartItem =>
@@ -301,13 +366,13 @@ async function persistRemoteCart(
 
   const { error: insertError } = await supabase
     .from("shopping_cart_items")
-    .upsert(
+    .insert(
       items.map((item) => ({
         cart_id: resolvedCartId,
         product_id: item.id,
         quantity: item.quantity,
+        variant_id: item.variantId ?? null,
       })),
-      { onConflict: "cart_id,product_id" },
     );
 
   if (insertError) {
@@ -429,14 +494,26 @@ export function StoreCartProvider({ children }: { children: ReactNode }) {
     };
   }, [disableRemoteCartSync, hydrated, items, remoteCartSupported, remoteReady, userId]);
 
-  const addItem = useCallback((product: StoreProduct, quantity = 1) => {
+  const addItem = useCallback((product: StoreProduct, quantity = 1, variant?: StoreProductVariant) => {
+    if (product.hasVariants && (!variant || !variant.id || !variant.inStock || variant.stockQuantity <= 0)) {
+      return false;
+    }
+
+    if (!product.hasVariants && !product.inStock) {
+      return false;
+    }
+
     setItems((currentItems) => {
       const nextQuantity = normalizeCartQuantity(quantity) || 1;
-      const existingItem = currentItems.find((item) => item.id === product.id);
+      const variantId = variant?.id;
+      const itemKey = getStoreCartItemKey({ id: product.id, variantId });
+      const existingItem = currentItems.find(
+        (item) => getStoreCartItemKey(item) === itemKey,
+      );
 
       if (existingItem) {
         return currentItems.map((item) =>
-          item.id === product.id
+          getStoreCartItemKey(item) === itemKey
             ? {
                 ...item,
                 quantity: normalizeCartQuantity(item.quantity + nextQuantity) || 1,
@@ -445,22 +522,38 @@ export function StoreCartProvider({ children }: { children: ReactNode }) {
         );
       }
 
-      return [...currentItems, { ...product, quantity: nextQuantity }];
+      const price = variant?.priceOverride ?? product.price;
+      return [
+        ...currentItems,
+        {
+          ...product,
+          color: variant?.color,
+          price,
+          sellingPrice: price,
+          quantity: nextQuantity,
+          size: variant?.size,
+          variantId,
+        },
+      ];
     });
+
+    return true;
   }, []);
 
-  const removeItem = useCallback((productId: number) => {
+  const removeItem = useCallback((itemKey: string) => {
     setItems((currentItems) =>
-      currentItems.filter((item) => item.id !== productId),
+      currentItems.filter((item) => getStoreCartItemKey(item) !== itemKey),
     );
   }, []);
 
-  const updateQuantity = useCallback((productId: number, quantity: number) => {
+  const updateQuantity = useCallback((itemKey: string, quantity: number) => {
     const nextQuantity = normalizeCartQuantity(quantity);
     setItems((currentItems) =>
       currentItems
         .map((item) =>
-          item.id === productId ? { ...item, quantity: nextQuantity } : item,
+          getStoreCartItemKey(item) === itemKey
+            ? { ...item, quantity: nextQuantity }
+            : item,
         )
         .filter((item) => item.quantity > 0),
     );

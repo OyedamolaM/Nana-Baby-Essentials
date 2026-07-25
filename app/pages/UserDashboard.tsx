@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Download, Gift, Lock, MapPin, Package, Pencil, Share2, Trash2, User } from "lucide-react";
 import { toast } from "sonner";
-import { formatNairaAmount } from "../../lib/commerce";
+import { formatNairaAmount, PRODUCT_LIST_SELECT } from "../../lib/commerce";
 import {
   formatPaymentMethodLabel,
   formatPaymentReferenceDisplay,
@@ -438,7 +438,7 @@ export function UserDashboard({
       ] = await Promise.all([
         supabase
           .from("registry_items")
-          .select("*, products(*)")
+          .select(`*, products(${PRODUCT_LIST_SELECT})`)
           .in("registry_id", registryIds)
           .order("created_at", { ascending: false }),
         supabase

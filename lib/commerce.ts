@@ -1,7 +1,13 @@
 import { normalizeProductCategoryLabels } from "./productCategories";
+import { getLegacyProductImageFallbackUrl } from "./storefrontProductImage";
 
 export interface StoreProduct {
   categories?: string[];
+  brand?: string;
+  ageRange?: string;
+  hasVariants?: boolean;
+  images?: StoreProductImage[];
+  variants?: StoreProductVariant[];
   id: number;
   name: string;
   slug: string;
@@ -16,8 +22,47 @@ export interface StoreProduct {
   featuredSortOrder: number;
 }
 
+export interface StoreProductImage {
+  id: string;
+  url: string;
+  thumbnailUrl?: string;
+  isPrimary: boolean;
+  sortOrder: number;
+}
+
+export interface StoreProductVariant {
+  id: string;
+  size?: string;
+  color?: string;
+  sku?: string;
+  priceOverride?: number;
+  stockQuantity: number;
+  inStock: boolean;
+}
+
+export interface ProductImageRecord {
+  id: string;
+  url: string;
+  thumbnail_url?: string | null;
+  is_primary?: boolean | null;
+  sort_order?: number | null;
+}
+
+export interface ProductVariantRecord {
+  id: string;
+  size?: string | null;
+  color?: string | null;
+  sku?: string | null;
+  price_override?: number | null;
+  stock_quantity?: number | null;
+  in_stock?: boolean | null;
+}
+
 export interface ProductRecord {
+  age_range?: string | null;
+  brand?: string | null;
   categories?: string[] | null;
+  has_variants?: boolean | null;
   id: number;
   name: string;
   slug?: string | null;
@@ -25,13 +70,19 @@ export interface ProductRecord {
   cost_price?: number | null;
   selling_price?: number | null;
   category: string;
-  image: string;
+  image?: string | null;
   description: string;
   in_stock: boolean;
   is_featured?: boolean | null;
   featured_sort_order?: number | null;
+  product_images?: ProductImageRecord[] | null;
+  product_variants?: ProductVariantRecord[] | null;
   created_at?: string;
 }
+
+/** Fields required by product cards, deals, registries, and cart summaries. */
+export const PRODUCT_LIST_SELECT =
+  "id,name,slug,price,cost_price,selling_price,category,image,description,in_stock,is_featured,featured_sort_order,created_at";
 
 export const SEED_PRODUCTS: StoreProduct[] = [
   {
@@ -264,19 +315,56 @@ export function mapProductRecord(record: ProductRecord): StoreProduct {
   const costPrice = getProductCostPrice(record);
   const categories = normalizeProductCategoryLabels(record.category, record.categories);
 
+  const images = Array.isArray(record.product_images)
+    ? record.product_images
+        .filter((image): image is ProductImageRecord => Boolean(image?.id && image?.url))
+        .sort((left, right) => Number(left.sort_order ?? 0) - Number(right.sort_order ?? 0))
+        .map((image) => ({
+          id: image.id,
+          url: image.url,
+          thumbnailUrl: image.thumbnail_url?.trim() || undefined,
+          isPrimary: Boolean(image.is_primary),
+          sortOrder: Number(image.sort_order ?? 0),
+        }))
+    : undefined;
+  const variants = Array.isArray(record.product_variants)
+    ? record.product_variants
+        .filter((variant): variant is ProductVariantRecord => Boolean(variant?.id))
+        .map((variant) => ({
+          id: variant.id,
+          size: variant.size?.trim() || undefined,
+          color: variant.color?.trim() || undefined,
+          sku: variant.sku?.trim() || undefined,
+          priceOverride:
+            variant.price_override === null || variant.price_override === undefined
+              ? undefined
+              : Number(variant.price_override),
+          stockQuantity: Math.max(0, Math.floor(Number(variant.stock_quantity ?? 0))),
+          inStock: Boolean(variant.in_stock),
+        }))
+    : undefined;
+  const image = record.image?.trim() || images?.find((entry) => entry.isPrimary)?.thumbnailUrl || images?.[0]?.thumbnailUrl || images?.[0]?.url || "";
+
   return {
+    ageRange: record.age_range?.trim() || undefined,
+    brand: record.brand?.trim() || undefined,
     categories,
+    hasVariants: Boolean(record.has_variants),
     id: Number(record.id),
+    images,
     name: record.name,
     slug: record.slug?.trim() || createProductSlug(record.name) || `product-${record.id}`,
     price: sellingPrice,
     sellingPrice,
     costPrice,
     category: categories[0] ?? record.category,
-    image: record.image,
+    image: image.startsWith("data:")
+      ? getLegacyProductImageFallbackUrl(Number(record.id))
+      : image,
     description: record.description,
     inStock: Boolean(record.in_stock),
     isFeatured: Boolean(record.is_featured),
     featuredSortOrder: Number(record.featured_sort_order ?? 0),
+    variants,
   };
 }
