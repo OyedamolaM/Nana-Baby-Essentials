@@ -138,7 +138,6 @@ export function AdminDateTimeField({
                 mode="single"
                 selected={selectedDate ?? undefined}
                 onSelect={handleDateSelect}
-                initialFocus
               />
               <div className="flex items-center justify-end border-t pt-3">
                 {value ? (
