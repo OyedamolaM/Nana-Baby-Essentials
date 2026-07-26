@@ -201,6 +201,7 @@ type AdminProductImage = {
 type ProductVariantDraft = {
   color: string;
   id?: string;
+  imageId: string;
   inStock: boolean;
   priceOverride: string;
   size: string;
@@ -2173,7 +2174,7 @@ useEffect(() => {
         .order("sort_order", { ascending: true }),
       supabase
         .from("product_variants")
-        .select("id, size, color, sku, price_override, stock_quantity, in_stock")
+        .select("id, size, color, sku, price_override, stock_quantity, in_stock, image_id")
         .eq("product_id", product.id)
         .order("created_at", { ascending: true }),
     ]);
@@ -2194,6 +2195,7 @@ useEffect(() => {
         (variantsResult.data ?? []).map((variant) => ({
           color: variant.color ?? "",
           id: variant.id,
+          imageId: variant.image_id ?? "",
           inStock: Boolean(variant.in_stock),
           priceOverride:
             variant.price_override === null || variant.price_override === undefined
@@ -2637,6 +2639,7 @@ useEffect(() => {
           variants: productVariantDrafts.map((variant) => ({
             color: variant.color,
             id: variant.id,
+            imageId: variant.imageId || null,
             inStock: variant.inStock,
             priceOverride: variant.priceOverride
               ? Number(variant.priceOverride) / 1000
@@ -3079,7 +3082,7 @@ useEffect(() => {
             <TabsTrigger value="categories" className="h-10 px-4 py-3 whitespace-nowrap">Categories</TabsTrigger>
             <TabsTrigger value="deals" className="h-10 px-4 py-3 whitespace-nowrap">Deals</TabsTrigger>
             <TabsTrigger value="packages" className="h-10 px-4 py-3 whitespace-nowrap">Packages</TabsTrigger>
-            <TabsTrigger value="content" className="h-10 px-4 py-3 whitespace-nowrap">Content</TabsTrigger>
+            <TabsTrigger value="content" className="h-10 px-4 py-3 whitespace-nowrap">Website Editor</TabsTrigger>
             <TabsTrigger value="reviews" className="h-10 px-4 py-3 whitespace-nowrap">Reviews</TabsTrigger>
             <TabsTrigger value="shipping" className="h-10 px-4 py-3 whitespace-nowrap">Shipping Tiers</TabsTrigger>
             <TabsTrigger value="blogs" className="h-10 px-4 py-3 whitespace-nowrap">Blogs</TabsTrigger>
@@ -3147,7 +3150,11 @@ useEffect(() => {
                 </TableHeader>
                 <TableBody>
                   {customers.map((customer) => (
-                    <TableRow key={customer.id}>
+                    <TableRow
+                      key={customer.id}
+                      className="cursor-pointer hover:bg-gray-50"
+                      onClick={() => handleEditCustomer(customer)}
+                    >
                       <TableCell>{customer.full_name ?? "N/A"}</TableCell>
                       <TableCell>{customer.email ?? "N/A"}</TableCell>
                       <TableCell>{customer.phone ?? "N/A"}</TableCell>
@@ -3167,14 +3174,20 @@ useEffect(() => {
                           <Button
                             variant="outline"
                             size="sm"
-                            onClick={() => handleEditCustomer(customer)}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              handleEditCustomer(customer);
+                            }}
                           >
                             <Edit className="h-4 w-4" />
                           </Button>
                           <Button
                             variant="destructive"
                             size="sm"
-                            onClick={() => handleDeleteCustomer(customer.id)}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              handleDeleteCustomer(customer.id);
+                            }}
                           >
                             <Trash2 className="h-4 w-4" />
                           </Button>
@@ -3491,7 +3504,11 @@ useEffect(() => {
                 </TableHeader>
                 <TableBody>
                   {deals.map((deal) => (
-                    <TableRow key={deal.id}>
+                    <TableRow
+                      key={deal.id}
+                      className="cursor-pointer hover:bg-gray-50"
+                      onClick={() => handleEditDeal(deal)}
+                    >
                       <TableCell>
                         <div className="font-medium">{deal.title}</div>
                         <div className="text-xs text-gray-500">
@@ -3517,14 +3534,20 @@ useEffect(() => {
                           <Button
                             variant="outline"
                             size="sm"
-                            onClick={() => handleEditDeal(deal)}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              handleEditDeal(deal);
+                            }}
                           >
                             <Edit className="h-4 w-4" />
                           </Button>
                           <Button
                             variant="destructive"
                             size="sm"
-                            onClick={() => handleDeleteDeal(deal.id)}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              handleDeleteDeal(deal.id);
+                            }}
                           >
                             <Trash2 className="h-4 w-4" />
                           </Button>
@@ -3576,7 +3599,11 @@ useEffect(() => {
                         : (pkg.products ?? null);
 
                       return (
-                        <TableRow key={pkg.id}>
+                        <TableRow
+                          key={pkg.id}
+                          className="cursor-pointer hover:bg-gray-50"
+                          onClick={() => handleEditPackage(pkg)}
+                        >
                           <TableCell>
                             <div className="font-medium">{pkg.title}</div>
                             <div className="text-xs text-gray-500">
@@ -3596,14 +3623,20 @@ useEffect(() => {
                               <Button
                                 variant="outline"
                                 size="sm"
-                                onClick={() => handleEditPackage(pkg)}
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  handleEditPackage(pkg);
+                                }}
                               >
                                 <Edit className="h-4 w-4" />
                               </Button>
                               <Button
                                 variant="destructive"
                                 size="sm"
-                                onClick={() => void handleDeletePackage(pkg)}
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  void handleDeletePackage(pkg);
+                                }}
                               >
                                 <Trash2 className="h-4 w-4" />
                               </Button>
@@ -3878,7 +3911,11 @@ useEffect(() => {
                   </TableHeader>
                   <TableBody>
                     {(homepageReviews ?? []).map((review) => (
-                      <TableRow key={review.id}>
+                      <TableRow
+                        key={review.id}
+                        className="cursor-pointer hover:bg-gray-50"
+                        onClick={() => handleEditHomepageReview(review)}
+                      >
                         <TableCell>
                           <div className="font-medium">{review.reviewer_name}</div>
                           <div className="text-xs text-gray-500">
@@ -3908,14 +3945,20 @@ useEffect(() => {
                             <Button
                               variant="outline"
                               size="sm"
-                              onClick={() => handleEditHomepageReview(review)}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                handleEditHomepageReview(review);
+                              }}
                             >
                               <Edit className="h-4 w-4" />
                             </Button>
                             <Button
                               variant="destructive"
                               size="sm"
-                              onClick={() => handleDeleteHomepageReview(review.id)}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                handleDeleteHomepageReview(review.id);
+                              }}
                             >
                               <Trash2 className="h-4 w-4" />
                             </Button>
@@ -3960,7 +4003,11 @@ useEffect(() => {
                   </TableHeader>
                   <TableBody>
                     {(registryReviews ?? []).map((review) => (
-                      <TableRow key={review.id}>
+                      <TableRow
+                        key={review.id}
+                        className="cursor-pointer hover:bg-gray-50"
+                        onClick={() => handleEditRegistryReview(review)}
+                      >
                         <TableCell>
                           <div className="font-medium">{review.reviewer_name}</div>
                           <div className="text-xs text-gray-500">
@@ -3990,14 +4037,20 @@ useEffect(() => {
                             <Button
                               variant="outline"
                               size="sm"
-                              onClick={() => handleEditRegistryReview(review)}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                handleEditRegistryReview(review);
+                              }}
                             >
                               <Edit className="h-4 w-4" />
                             </Button>
                             <Button
                               variant="destructive"
                               size="sm"
-                              onClick={() => handleDeleteRegistryReview(review.id)}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                handleDeleteRegistryReview(review.id);
+                              }}
                             >
                               <Trash2 className="h-4 w-4" />
                             </Button>
@@ -4042,7 +4095,11 @@ useEffect(() => {
                 </TableHeader>
                 <TableBody>
                   {shippingTiers.map((tier) => (
-                    <TableRow key={tier.id}>
+                    <TableRow
+                      key={tier.id}
+                      className="cursor-pointer hover:bg-gray-50"
+                      onClick={() => handleEditShippingTier(tier)}
+                    >
                       <TableCell>
                         <div className="font-medium">{tier.label}</div>
                         <div className="text-xs text-gray-500">
@@ -4059,14 +4116,20 @@ useEffect(() => {
                           <Button
                             variant="outline"
                             size="sm"
-                            onClick={() => handleEditShippingTier(tier)}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              handleEditShippingTier(tier);
+                            }}
                           >
                             <Edit className="h-4 w-4" />
                           </Button>
                           <Button
                             variant="destructive"
                             size="sm"
-                            onClick={() => handleDeleteShippingTier(tier.id)}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              handleDeleteShippingTier(tier.id);
+                            }}
                           >
                             <Trash2 className="h-4 w-4" />
                           </Button>
@@ -4110,7 +4173,11 @@ useEffect(() => {
                 </TableHeader>
                 <TableBody>
                   {blogPosts.map((post) => (
-                    <TableRow key={post.id}>
+                    <TableRow
+                      key={post.id}
+                      className="cursor-pointer hover:bg-gray-50"
+                      onClick={() => handleEditBlog(post)}
+                    >
                       <TableCell>
                         <div className="font-medium">{post.title}</div>
                         <div className="text-xs text-gray-500">{post.slug}</div>
@@ -4124,13 +4191,21 @@ useEffect(() => {
                           <Button
                             variant="outline"
                             size="sm"
-                            onClick={() => handleEditBlog(post)}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              handleEditBlog(post);
+                            }}
                           >
                             <Edit className="h-4 w-4" />
                           </Button>
                           {post.is_published ? (
                             <Button asChild variant="outline" size="sm">
-                              <a href={`/blog/${post.slug}`} target="_blank" rel="noreferrer">
+                              <a
+                                href={`/blog/${post.slug}`}
+                                target="_blank"
+                                rel="noreferrer"
+                                onClick={(event) => event.stopPropagation()}
+                              >
                                 <ExternalLink className="h-4 w-4" />
                               </a>
                             </Button>
@@ -4138,7 +4213,10 @@ useEffect(() => {
                           <Button
                             variant="destructive"
                             size="sm"
-                            onClick={() => handleDeleteBlog(post.id)}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              handleDeleteBlog(post.id);
+                            }}
                           >
                             <Trash2 className="h-4 w-4" />
                           </Button>
@@ -5064,11 +5142,17 @@ useEffect(() => {
 
               {productHasVariants ? (
                 <div className="space-y-3">
-                  {productVariantDrafts.map((variant, index) => (
+                  {productVariantDrafts.map((variant, index) => {
+                    const selectedVariantImage = productGalleryImages.find(
+                      (image) => image.id === variant.imageId,
+                    );
+
+                    return (
                     <div
                       key={variant.id ?? `new-variant-${index}`}
-                      className="grid grid-cols-1 gap-2 rounded-md border bg-white p-3 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_1fr_0.8fr_0.9fr_auto]"
+                      className="space-y-2 rounded-md border bg-white p-3"
                     >
+                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_1fr_0.8fr_0.9fr_auto]">
                       <Input
                         aria-label={`Variant ${index + 1} size`}
                         value={variant.size}
@@ -5093,7 +5177,7 @@ useEffect(() => {
                         min="0"
                         value={variant.stockQuantity}
                         onChange={(event) => updateProductVariantDraft(index, { stockQuantity: event.target.value })}
-                        placeholder="Stock"
+                        placeholder="Stock (optional)"
                       />
                       <Input
                         aria-label={`Variant ${index + 1} price override in Naira`}
@@ -5128,8 +5212,39 @@ useEffect(() => {
                           <Trash2 className="h-4 w-4" />
                         </Button>
                       </div>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <div className="h-12 w-12 shrink-0 overflow-hidden rounded-md border bg-gray-50">
+                          {selectedVariantImage ? (
+                            <img
+                              src={selectedVariantImage.thumbnail_url || selectedVariantImage.url}
+                              alt={`Variant ${index + 1} thumbnail`}
+                              className="h-full w-full object-cover"
+                            />
+                          ) : null}
+                        </div>
+                        <Select
+                          value={variant.imageId || "none"}
+                          onValueChange={(value) =>
+                            updateProductVariantDraft(index, { imageId: value === "none" ? "" : value })
+                          }
+                        >
+                          <SelectTrigger className="w-full max-w-xs">
+                            <SelectValue placeholder="No specific image" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="none">Use main product image</SelectItem>
+                            {productGalleryImages.map((image, imageIndex) => (
+                              <SelectItem key={image.id} value={image.id}>
+                                Photo {imageIndex + 1}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
                     </div>
-                  ))}
+                    );
+                  })}
                   <Button
                     type="button"
                     variant="outline"
@@ -5138,6 +5253,7 @@ useEffect(() => {
                         ...currentVariants,
                         {
                           color: "",
+                          imageId: "",
                           inStock: true,
                           priceOverride: "",
                           size: "",

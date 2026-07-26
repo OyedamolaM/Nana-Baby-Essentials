@@ -731,7 +731,11 @@ export function AdminOrdersManager({
                           const isPickupTier =
                             selectedTier?.fulfillment_type === "pickup";
                           return (
-                            <TableRow key={order.id}>
+                            <TableRow
+                              key={order.id}
+                              className="cursor-pointer hover:bg-gray-50"
+                              onClick={() => handleEditOrder(order)}
+                            >
                               <TableCell>
                                 <div className="font-mono text-sm">{order.id.slice(0, 8)}</div>
                                 <div className="text-xs text-gray-500">
@@ -787,7 +791,8 @@ export function AdminOrdersManager({
                                   <Button
                                     variant="outline"
                                     size="sm"
-                                    onClick={() =>
+                                    onClick={(event) => {
+                                      event.stopPropagation();
                                       downloadOrderReceipt({
                                         createdAt: order.created_at,
                                         customerEmail: order.customer_email,
@@ -803,8 +808,8 @@ export function AdminOrdersManager({
                                         shippingTier: order.shipping_tier,
                                         status: order.status,
                                         total: Number(order.total ?? 0),
-                                      })
-                                    }
+                                      });
+                                    }}
                                   >
                                     <Download className="h-4 w-4" />
                                     Receipt
@@ -812,14 +817,20 @@ export function AdminOrdersManager({
                                   <Button
                                     variant="outline"
                                     size="sm"
-                                    onClick={() => handleEditOrder(order)}
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      handleEditOrder(order);
+                                    }}
                                   >
                                     <Edit className="h-4 w-4" />
                                   </Button>
                                   <Button
                                     variant="destructive"
                                     size="sm"
-                                    onClick={() => handleDeleteOrder(order.id)}
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      handleDeleteOrder(order.id);
+                                    }}
                                   >
                                     <Trash2 className="h-4 w-4" />
                                   </Button>

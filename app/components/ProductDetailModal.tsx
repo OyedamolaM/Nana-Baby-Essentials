@@ -6,7 +6,7 @@ import { ChevronLeft, ChevronRight, Heart, Share2, ShoppingCart } from "lucide-r
 import { toast } from "sonner";
 import { useAuth } from "../contexts/AuthContext";
 import { hasSupabaseEnv, supabase } from "../lib/supabase";
-import { formatNaira } from "../../lib/commerce";
+import { formatNaira, type StoreProductVariant } from "../../lib/commerce";
 import {
   getCurrentProductReturnPath,
   persistProductDetailReturnContext,
@@ -21,7 +21,7 @@ interface ProductDetailModalProps {
   product: Product | null;
   open: boolean;
   onClose: () => void;
-  onAddToCart: (product: Product, quantity?: number) => void;
+  onAddToCart: (product: Product, quantity?: number, variant?: StoreProductVariant) => void;
   addActionLabel?: string;
 }
 
@@ -53,6 +53,118 @@ export function ProductDetailModal({
     return (base.length > 0 ? base : fetchedGalleryImages).filter((image) => image.url.trim());
   }, [product?.images, fetchedGalleryImages]);
 
+  const [fetchedVariants, setFetchedVariants] = useState<StoreProductVariant[]>([]);
+  const [selectedSize, setSelectedSize] = useState("");
+  const [selectedColor, setSelectedColor] = useState("");
+
+  const productVariants = useMemo(() => {
+    const base = product?.variants ?? [];
+    return base.length > 0 ? base : fetchedVariants;
+  }, [product?.variants, fetchedVariants]);
+  const hasVariantChoices = Boolean(product?.hasVariants);
+  const hasSizePicker = productVariants.some((variant) => Boolean(variant.size));
+  const hasColorPicker = productVariants.some((variant) => Boolean(variant.color));
+
+  const selectedVariant = useMemo(() => {
+    if (!hasVariantChoices || productVariants.length === 0) {
+      return undefined;
+    }
+
+    if (hasSizePicker && !selectedSize) {
+      return undefined;
+    }
+
+    if (hasColorPicker && !selectedColor) {
+      return undefined;
+    }
+
+    return productVariants.find(
+      (variant) =>
+        (!hasSizePicker || variant.size === selectedSize) &&
+        (!hasColorPicker || variant.color === selectedColor),
+    );
+  }, [hasColorPicker, hasSizePicker, hasVariantChoices, productVariants, selectedColor, selectedSize]);
+
+  const needsSelection =
+    hasVariantChoices &&
+    (!selectedVariant || (hasSizePicker && !selectedSize) || (hasColorPicker && !selectedColor));
+  const selectedVariantInStock = Boolean(selectedVariant && selectedVariant.inStock);
+
+  const sizeOptions = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          productVariants
+            .map((variant) => variant.size)
+            .filter((value): value is string => Boolean(value)),
+        ),
+      ),
+    [productVariants],
+  );
+  const colorOptions = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          productVariants
+            .map((variant) => variant.color)
+            .filter((value): value is string => Boolean(value)),
+        ),
+      ),
+    [productVariants],
+  );
+  const visibleSizeOptions = useMemo(
+    () =>
+      sizeOptions.filter((size) =>
+        productVariants.some(
+          (variant) =>
+            variant.size === size &&
+            (!selectedColor || !hasColorPicker || variant.color === selectedColor),
+        ),
+      ),
+    [hasColorPicker, productVariants, selectedColor, sizeOptions],
+  );
+  const visibleColorOptions = useMemo(
+    () =>
+      colorOptions.filter((color) =>
+        productVariants.some(
+          (variant) =>
+            variant.color === color &&
+            (!selectedSize || !hasSizePicker || variant.size === selectedSize),
+        ),
+      ),
+    [colorOptions, hasSizePicker, productVariants, selectedSize],
+  );
+
+  const getVariantImageForColor = (color: string) =>
+    productVariants.find(
+      (variant) =>
+        variant.color === color &&
+        variant.imageUrl &&
+        (!selectedSize || !hasSizePicker || variant.size === selectedSize),
+    )?.imageUrl;
+
+  const chooseSize = (size: string) => {
+    setSelectedSize(size);
+    if (
+      selectedColor &&
+      !productVariants.some((variant) => variant.size === size && variant.color === selectedColor)
+    ) {
+      setSelectedColor("");
+    }
+  };
+
+  const chooseColor = (color: string) => {
+    setSelectedColor(color);
+    if (
+      selectedSize &&
+      !productVariants.some((variant) => variant.color === color && variant.size === selectedSize)
+    ) {
+      setSelectedSize("");
+    }
+  };
+
+  const canAddToCart = hasVariantChoices ? selectedVariantInStock : Boolean(product?.inStock);
+
 
   const showImage = (nextIndex: number) => {
     if (galleryImages.length === 0) {
@@ -60,6 +172,62 @@ export function ProductDetailModal({
     }
     setSelectedImageIndex((nextIndex + galleryImages.length) % galleryImages.length);
   };
+
+  useEffect(() => {
+    if (!open || !product || !hasSupabaseEnv || !product.hasVariants) {
+      return;
+    }
+
+    if (product.variants && product.variants.length > 0) {
+      return;
+    }
+
+    let isMounted = true;
+
+    const loadVariants = async () => {
+      const { data, error } = await supabase
+        .from("product_variants")
+        .select(
+          "id, size, color, sku, price_override, stock_quantity, in_stock, image_id, variant_image:product_images(url, thumbnail_url)",
+        )
+        .eq("product_id", product.id)
+        .order("created_at", { ascending: true });
+
+      if (!isMounted || error || !data) {
+        return;
+      }
+
+      setFetchedVariants(
+        data.map((row) => {
+          const variantImageRow = Array.isArray(row.variant_image)
+            ? row.variant_image[0]
+            : row.variant_image;
+
+          return {
+            id: String(row.id),
+            size: row.size ?? undefined,
+            color: row.color ?? undefined,
+            sku: row.sku ?? undefined,
+            priceOverride:
+              row.price_override === null || row.price_override === undefined
+                ? undefined
+                : Number(row.price_override),
+            stockQuantity: Math.max(0, Math.floor(Number(row.stock_quantity ?? 0))),
+            inStock: Boolean(row.in_stock),
+            imageId: row.image_id ?? undefined,
+            imageUrl: variantImageRow?.url ?? undefined,
+            imageThumbnailUrl: variantImageRow?.thumbnail_url ?? undefined,
+          };
+        }),
+      );
+    };
+
+    void loadVariants();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [open, product?.id, product?.hasVariants, product?.variants?.length, hasSupabaseEnv]);
 
   useEffect(() => {
     if (!open || !product || !hasSupabaseEnv) {
@@ -108,6 +276,8 @@ export function ProductDetailModal({
 
     const resetIndex = window.setTimeout(() => {
       setSelectedImageIndex(0);
+      setSelectedSize("");
+      setSelectedColor("");
     }, 0);
 
     return () => {

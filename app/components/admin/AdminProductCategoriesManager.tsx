@@ -185,7 +185,11 @@ export function AdminProductCategoriesManager({
               </TableHeader>
               <TableBody>
                 {categories.map((category) => (
-                  <TableRow key={category.id}>
+                  <TableRow
+                    key={category.id}
+                    className="cursor-pointer hover:bg-gray-50"
+                    onClick={() => handleEditCategory(category)}
+                  >
                     <TableCell>
                       <div className="font-medium">{category.label}</div>
                     </TableCell>
@@ -195,10 +199,24 @@ export function AdminProductCategoriesManager({
                     <TableCell>{Number(category.sort_order ?? 0)}</TableCell>
                     <TableCell>
                       <div className="flex gap-2">
-                        <Button variant="outline" size="sm" onClick={() => handleEditCategory(category)}>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            handleEditCategory(category);
+                          }}
+                        >
                           <Edit className="h-4 w-4" />
                         </Button>
-                        <Button variant="destructive" size="sm" onClick={() => void handleDeleteCategory(category)}>
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            void handleDeleteCategory(category);
+                          }}
+                        >
                           <Trash2 className="h-4 w-4" />
                         </Button>
                       </div>

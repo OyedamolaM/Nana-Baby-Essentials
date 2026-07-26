@@ -191,10 +191,10 @@ function LocationFacts({ store }: { store: DisplayLocation }) {
             {store.hours.map(([day, time], index) => (
               <li
                 key={`${store.id}-${day}-${index}`}
-                className="flex justify-between gap-4"
+                className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between"
               >
-                <span>{day}</span>
-                <span className="text-right text-neutral-500">{time}</span>
+                <span className="font-medium text-neutral-700">{day}</span>
+                <span className="text-neutral-500 sm:text-right">{time}</span>
               </li>
             ))}
           </ul>

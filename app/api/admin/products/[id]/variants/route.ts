@@ -14,6 +14,7 @@ type RouteProps = {
 type VariantInput = {
   color?: unknown;
   id?: unknown;
+  imageId?: unknown;
   inStock?: unknown;
   priceOverride?: unknown;
   size?: unknown;
@@ -30,6 +31,7 @@ type SaveVariantsPayload = {
 type ProductVariantRow = {
   color: string | null;
   id: string;
+  image_id: string | null;
   in_stock: boolean;
   price_override: number | null;
   size: string | null;
@@ -40,6 +42,7 @@ type ProductVariantRow = {
 type NormalizedVariant = {
   color: string | null;
   id: string | null;
+  image_id: string | null;
   in_stock: boolean;
   price_override: number | null;
   size: string | null;
@@ -128,7 +131,7 @@ async function readProductVariants(
 ) {
   return client
     .from("product_variants")
-    .select("id, size, color, sku, price_override, stock_quantity, in_stock")
+    .select("id, size, color, sku, price_override, stock_quantity, in_stock, image_id")
     .eq("product_id", productId)
     .order("created_at", { ascending: true });
 }
@@ -193,6 +196,7 @@ export async function PUT(request: Request, context: RouteProps) {
     normalizedVariants.push({
       color: normalizeText(variant.color),
       id: normalizeText(variant.id),
+      image_id: normalizeText(variant.imageId),
       in_stock: variant.inStock !== false,
       price_override: priceOverride,
       size: normalizeText(variant.size),
@@ -261,6 +265,7 @@ export async function PUT(request: Request, context: RouteProps) {
     for (const variant of normalizedVariants) {
       const variantPayload = {
         color: variant.color,
+        image_id: variant.image_id,
         in_stock: variant.in_stock,
         price_override: variant.price_override,
         product_id: resolved.productId,

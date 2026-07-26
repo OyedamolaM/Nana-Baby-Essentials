@@ -85,16 +85,25 @@ export function ProductDetailPageClient({
   );
 
   const displayedPrice = selectedVariant?.priceOverride ?? product.price;
-  const selectedVariantInStock = Boolean(
-    selectedVariant && selectedVariant.inStock && selectedVariant.stockQuantity > 0,
-  );
+  const selectedVariantInStock = Boolean(selectedVariant && selectedVariant.inStock);
   const needsSelection =
     hasVariantChoices &&
     (!selectedVariant || (hasSizePicker && !selectedSize) || (hasColorPicker && !selectedColor));
   const canAddToCart = hasVariantChoices
     ? selectedVariantInStock
     : product.inStock;
-  const mainImage = galleryImages[selectedImageIndex]?.url || getFullProductImageUrl(product.image);
+  const mainImage =
+    selectedVariant?.imageUrl ||
+    galleryImages[selectedImageIndex]?.url ||
+    getFullProductImageUrl(product.image);
+
+  const getVariantImageForColor = (color: string) =>
+    productVariants.find(
+      (variant) =>
+        variant.color === color &&
+        variant.imageUrl &&
+        (!selectedSize || !hasSizePicker || variant.size === selectedSize),
+    )?.imageUrl;
 
   const visibleColorOptions = useMemo(
     () =>
@@ -357,16 +366,38 @@ export function ProductDetailPageClient({
                     <div className="space-y-2">
                       <p className="text-sm font-semibold text-gray-900">Color</p>
                       <div className="flex flex-wrap gap-2">
-                        {visibleColorOptions.map((color) => (
-                          <Button
-                            key={color}
-                            type="button"
-                            variant={selectedColor === color ? "default" : "outline"}
-                            onClick={() => chooseColor(color)}
-                          >
-                            {color}
-                          </Button>
-                        ))}
+                        {visibleColorOptions.map((color) => {
+                          const colorImage = getVariantImageForColor(color);
+                          return colorImage ? (
+                            <button
+                              key={color}
+                              type="button"
+                              onClick={() => chooseColor(color)}
+                              aria-label={color}
+                              className={`flex flex-col items-center gap-1 rounded-lg border-2 p-1 ${
+                                selectedColor === color ? "border-pink-500" : "border-transparent"
+                              }`}
+                            >
+                              <span className="h-14 w-14 overflow-hidden rounded-md bg-gray-100">
+                                <ImageWithFallback
+                                  src={colorImage}
+                                  alt={color}
+                                  className="h-full w-full object-cover"
+                                />
+                              </span>
+                              <span className="text-xs text-gray-700">{color}</span>
+                            </button>
+                          ) : (
+                            <Button
+                              key={color}
+                              type="button"
+                              variant={selectedColor === color ? "default" : "outline"}
+                              onClick={() => chooseColor(color)}
+                            >
+                              {color}
+                            </Button>
+                          );
+                        })}
                       </div>
                     </div>
                   ) : null}
@@ -376,7 +407,9 @@ export function ProductDetailPageClient({
                       : needsSelection
                         ? "Select the available option before adding this product to cart."
                         : selectedVariantInStock
-                          ? `${selectedVariant?.stockQuantity} available`
+                          ? selectedVariant && selectedVariant.stockQuantity > 0
+                            ? `${selectedVariant.stockQuantity} available`
+                            : "In stock"
                           : "This selected option is currently unavailable."}
                   </p>
                 </div>

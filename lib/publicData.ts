@@ -661,7 +661,9 @@ const getProductBySlugCached = unstable_cache(
           .order("sort_order", { ascending: true }),
         client
           .from("product_variants")
-          .select("id, size, color, sku, price_override, stock_quantity, in_stock")
+          .select(
+            "id, size, color, sku, price_override, stock_quantity, in_stock, image_id, variant_image:product_images(url, thumbnail_url)",
+          )
           .eq("product_id", record.id)
           .order("created_at", { ascending: true }),
       ]);

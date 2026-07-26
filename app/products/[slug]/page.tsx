@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
 import { Footer } from "../../components/Footer";
+import { SiteHeaderShell } from "../../components/SiteHeaderShell";
 import { ProductDetailPageClient } from "./ProductDetailPageClient";
 import { getPublicProductBySlug } from "../../../lib/publicData";
 
@@ -48,6 +49,7 @@ export default async function ProductDetailPage({ params }: ProductPageProps) {
 
   return (
     <>
+      <SiteHeaderShell />
       <ProductDetailPageClient product={product} />
       <Footer />
     </>

@@ -38,6 +38,9 @@ export interface StoreProductVariant {
   priceOverride?: number;
   stockQuantity: number;
   inStock: boolean;
+  imageId?: string;
+  imageUrl?: string;
+  imageThumbnailUrl?: string;
 }
 
 export interface ProductImageRecord {
@@ -56,6 +59,11 @@ export interface ProductVariantRecord {
   price_override?: number | null;
   stock_quantity?: number | null;
   in_stock?: boolean | null;
+  image_id?: string | null;
+  variant_image?:
+    | { url: string; thumbnail_url?: string | null }
+    | { url: string; thumbnail_url?: string | null }[]
+    | null;
 }
 
 export interface ProductRecord {
@@ -330,18 +338,27 @@ export function mapProductRecord(record: ProductRecord): StoreProduct {
   const variants = Array.isArray(record.product_variants)
     ? record.product_variants
         .filter((variant): variant is ProductVariantRecord => Boolean(variant?.id))
-        .map((variant) => ({
-          id: variant.id,
-          size: variant.size?.trim() || undefined,
-          color: variant.color?.trim() || undefined,
-          sku: variant.sku?.trim() || undefined,
-          priceOverride:
-            variant.price_override === null || variant.price_override === undefined
-              ? undefined
-              : Number(variant.price_override),
-          stockQuantity: Math.max(0, Math.floor(Number(variant.stock_quantity ?? 0))),
-          inStock: Boolean(variant.in_stock),
-        }))
+        .map((variant) => {
+          const variantImageRecord = Array.isArray(variant.variant_image)
+            ? variant.variant_image[0]
+            : variant.variant_image;
+
+          return {
+            id: variant.id,
+            size: variant.size?.trim() || undefined,
+            color: variant.color?.trim() || undefined,
+            sku: variant.sku?.trim() || undefined,
+            priceOverride:
+              variant.price_override === null || variant.price_override === undefined
+                ? undefined
+                : Number(variant.price_override),
+            stockQuantity: Math.max(0, Math.floor(Number(variant.stock_quantity ?? 0))),
+            inStock: Boolean(variant.in_stock),
+            imageId: variant.image_id?.trim() || undefined,
+            imageUrl: variantImageRecord?.url?.trim() || undefined,
+            imageThumbnailUrl: variantImageRecord?.thumbnail_url?.trim() || undefined,
+          };
+        })
     : undefined;
   const image = record.image?.trim() || images?.find((entry) => entry.isPrimary)?.thumbnailUrl || images?.[0]?.thumbnailUrl || images?.[0]?.url || "";
 

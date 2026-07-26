@@ -64,6 +64,11 @@ type ShoppingCartVariantRow = {
   price_override?: number | null;
   size?: string | null;
   stock_quantity?: number | null;
+  image_id?: string | null;
+  variant_image?:
+    | { url: string; thumbnail_url?: string | null }
+    | { url: string; thumbnail_url?: string | null }[]
+    | null;
 };
 
 const StoreCartContext = createContext<StoreCartContextValue | undefined>(
@@ -297,7 +302,7 @@ async function loadRemoteCart(userId: string) {
   const { data: itemRows, error } = await supabase
     .from("shopping_cart_items")
     .select(
-      `quantity, variant_id, products(${PRODUCT_LIST_SELECT}), product_variants(id, size, color, price_override, stock_quantity, in_stock)`,
+      `quantity, variant_id, products(${PRODUCT_LIST_SELECT}), product_variants(id, size, color, price_override, stock_quantity, in_stock, image_id, variant_image:product_images(url, thumbnail_url))`,
     )
     .eq("cart_id", cart.id);
 
@@ -325,10 +330,14 @@ async function loadRemoteCart(userId: string) {
         Number.isFinite(variantPrice) && variantRecord?.price_override !== null
           ? variantPrice
           : product.price;
+      const variantImageRecord = Array.isArray(variantRecord?.variant_image)
+        ? variantRecord?.variant_image[0]
+        : variantRecord?.variant_image;
 
       return {
         ...product,
         color: normalizeOptionalCartText(variantRecord?.color),
+        image: variantImageRecord?.url?.trim() || product.image,
         price,
         sellingPrice: price,
         quantity: normalizeCartQuantity(row.quantity),
@@ -495,7 +504,7 @@ export function StoreCartProvider({ children }: { children: ReactNode }) {
   }, [disableRemoteCartSync, hydrated, items, remoteCartSupported, remoteReady, userId]);
 
   const addItem = useCallback((product: StoreProduct, quantity = 1, variant?: StoreProductVariant) => {
-    if (product.hasVariants && (!variant || !variant.id || !variant.inStock || variant.stockQuantity <= 0)) {
+    if (product.hasVariants && (!variant || !variant.id || !variant.inStock)) {
       return false;
     }
 
@@ -528,6 +537,7 @@ export function StoreCartProvider({ children }: { children: ReactNode }) {
         {
           ...product,
           color: variant?.color,
+          image: variant?.imageUrl || product.image,
           price,
           sellingPrice: price,
           quantity: nextQuantity,
