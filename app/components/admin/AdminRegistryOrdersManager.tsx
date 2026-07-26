@@ -442,9 +442,6 @@ export function AdminRegistryOrdersManager({
         <CardHeader className="space-y-4">
           <div className="space-y-1">
             <CardTitle>Registry Orders</CardTitle>
-            <p className="text-sm text-gray-500">
-              Manually create, edit, or delete registry gift orders and keep funding totals in sync.
-            </p>
           </div>
           <div className="flex flex-wrap gap-2">
             <Button

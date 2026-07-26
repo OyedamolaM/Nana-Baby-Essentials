@@ -154,13 +154,8 @@ export function AdminProductCategoriesManager({
     <>
       <Card>
         <CardHeader className="space-y-4">
-          <div className="space-y-1">
+          <div className="space-y-1 flex justify-between items-center">
             <CardTitle>Product Categories</CardTitle>
-            <p className="text-sm text-gray-500">
-              Manage the category list used when products are created and filtered on the storefront.
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-2">
             <Button
               onClick={() => {
                 resetCategoryForm();
@@ -170,6 +165,7 @@ export function AdminProductCategoriesManager({
               <Plus className="mr-2 h-4 w-4" />
               Add Category
             </Button>
+            
           </div>
         </CardHeader>
         <CardContent>

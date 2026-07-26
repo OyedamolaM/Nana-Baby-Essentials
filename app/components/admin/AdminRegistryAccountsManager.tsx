@@ -148,9 +148,6 @@ export function AdminRegistryAccountsManager({
     <Card>
       <CardHeader>
         <CardTitle>Registry Accounts</CardTitle>
-        <p className="mt-1 text-sm text-gray-500">
-          Review customers first, then open each account to see every registry, its funding state, and payment history.
-        </p>
       </CardHeader>
       <CardContent className="space-y-4">
         {groupedAccounts.length === 0 ? (

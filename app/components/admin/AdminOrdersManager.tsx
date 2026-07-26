@@ -1,8 +1,17 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { Download, Edit, Package, Plus, Trash2 } from "lucide-react";
+import { useMemo, useState, type FormEvent } from "react";
+import { Download, Edit, Package, Plus, Trash2, CalendarIcon } from "lucide-react";
 import { toast } from "sonner";
+import { Calendar } from "../ui/calendar";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "../ui/popover";
+
+import { format } from "date-fns";
+import { DateRange } from "react-day-picker";
 
 import {
   formatNairaAmount,
@@ -158,21 +167,95 @@ function getLocalMonthKey(value?: string | null) {
   return getLocalDateKey(value).slice(0, 7);
 }
 
+function getPresetRange(filter: string): DateRange | undefined {
+  const today = new Date();
+
+  const startOfToday = new Date(
+    today.getFullYear(),
+    today.getMonth(),
+    today.getDate()
+  );
+
+  switch (filter) {
+    case "today":
+      return {
+        from: startOfToday,
+        to: startOfToday,
+      };
+
+    case "yesterday": {
+      const yesterday = new Date(startOfToday);
+      yesterday.setDate(yesterday.getDate() - 1);
+
+      return {
+        from: yesterday,
+        to: yesterday,
+      };
+    }
+
+    case "last7": {
+      const from = new Date(startOfToday);
+      from.setDate(from.getDate() - 6);
+
+      return {
+        from,
+        to: startOfToday,
+      };
+    }
+
+    case "thisMonth":
+      return {
+        from: new Date(today.getFullYear(), today.getMonth(), 1),
+        to: new Date(today.getFullYear(), today.getMonth() + 1, 0),
+      };
+
+    case "lastMonth":
+      return {
+        from: new Date(today.getFullYear(), today.getMonth() - 1, 1),
+        to: new Date(today.getFullYear(), today.getMonth(), 0),
+      };
+
+    default:
+      return undefined;
+  }
+}
+
 function filterOrdersByDate<T extends { created_at?: string | null }>(
   items: T[],
-  selectedDay: string,
-  selectedMonth: string,
+  range?: DateRange
 ) {
+  if (!range?.from) return items;
+
+  const { from, to } = range;
+
   return items.filter((item) => {
-    if (selectedDay) {
-      return getLocalDateKey(item.created_at) === selectedDay;
+    const created = new Date(item.created_at ?? "");
+
+    if (Number.isNaN(created.getTime())) {
+      return false;
     }
 
-    if (selectedMonth) {
-      return getLocalMonthKey(item.created_at) === selectedMonth;
-    }
+    const orderDate = new Date(
+      created.getFullYear(),
+      created.getMonth(),
+      created.getDate()
+    );
 
-    return true;
+    const fromDate = new Date(
+      from.getFullYear(),
+      from.getMonth(),
+      from.getDate()
+    );
+
+    const toDate = to
+      ? new Date(
+          to.getFullYear(),
+          to.getMonth(),
+          to.getDate()
+        )
+      : fromDate;
+
+    return orderDate >= fromDate && orderDate <= toDate;
   });
 }
 
@@ -207,9 +290,18 @@ export function AdminOrdersManager({
   const [shippingAddress, setShippingAddress] = useState("");
   const [shippingCity, setShippingCity] = useState("");
   const [shippingState, setShippingState] = useState("");
-  const [orderFilterDay, setOrderFilterDay] = useState("");
-  const [orderFilterMonth, setOrderFilterMonth] = useState("");
+  const [dateRange, setDateRange] = useState<DateRange | undefined>();
+  const [calendarOpen, setCalendarOpen] = useState(false);
   const [draftItems, setDraftItems] = useState<DraftOrderItem[]>([createEmptyDraftItem()]);
+
+  const [dateFilter, setDateFilter] = useState<
+    | "today"
+    | "yesterday"
+    | "last7"
+    | "thisMonth"
+    | "lastMonth"
+    | "custom"
+  >("today");
 
   const activeShippingTiers = useMemo(() => {
     return shippingTiers.filter((tier) => tier.is_active);
@@ -253,12 +345,19 @@ export function AdminOrdersManager({
   const unpaidOrders = useMemo(() => {
     return orders.filter((order) => order.status !== "paid");
   }, [orders]);
+
+  const activeRange =
+  dateFilter === "custom"
+    ? dateRange
+    : getPresetRange(dateFilter);
+
   const filteredPaidOrders = useMemo(() => {
-    return filterOrdersByDate(paidOrders, orderFilterDay, orderFilterMonth);
-  }, [orderFilterDay, orderFilterMonth, paidOrders]);
+    return filterOrdersByDate(paidOrders, activeRange);
+  }, [paidOrders, activeRange]);
+
   const filteredUnpaidOrders = useMemo(() => {
-    return filterOrdersByDate(unpaidOrders, orderFilterDay, orderFilterMonth);
-  }, [orderFilterDay, orderFilterMonth, unpaidOrders]);
+    return filterOrdersByDate(unpaidOrders, activeRange);
+  }, [unpaidOrders, activeRange]);
 
   const applyCustomerSnapshot = (customerId: string) => {
     setSelectedCustomerId(customerId);
@@ -485,13 +584,8 @@ export function AdminOrdersManager({
     <>
       <Card>
         <CardHeader className="space-y-4">
-          <div className="space-y-1">
+          <div className="space-y-1 flex justify-between items-center">
             <CardTitle>Store Orders</CardTitle>
-            <p className="text-sm text-gray-500">
-              Create, edit, and delete store orders without reloading the dashboard.
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-2">
             <Button
               onClick={() => {
                 resetOrderForm();
@@ -511,46 +605,88 @@ export function AdminOrdersManager({
               defaultValue={filteredPaidOrders.length > 0 ? "paid" : "unpaid"}
               className="space-y-4"
             >
-              <div className="flex flex-col gap-3 rounded-2xl border border-gray-100 bg-gray-50 p-4 sm:flex-row sm:items-end">
-                <div className="grid flex-1 gap-3 sm:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label htmlFor="admin-order-filter-day">Filter By Day</Label>
-                    <Input
-                      id="admin-order-filter-day"
-                      type="date"
-                      value={orderFilterDay}
-                      onChange={(event) => {
-                        setOrderFilterDay(event.target.value);
-                        if (event.target.value) {
-                          setOrderFilterMonth("");
-                        }
-                      }}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="admin-order-filter-month">Filter By Month</Label>
-                    <Input
-                      id="admin-order-filter-month"
-                      type="month"
-                      value={orderFilterMonth}
-                      onChange={(event) => {
-                        setOrderFilterMonth(event.target.value);
-                        if (event.target.value) {
-                          setOrderFilterDay("");
-                        }
-                      }}
-                    />
-                  </div>
+             <div className="flex flex-col gap-4 rounded-2xl border border-gray-100 bg-gray-50 p-4 md:flex-row md:items-end">
+
+                <div className="w-full md:w-64">
+                  <Label>Filter</Label>
+
+                  <Select
+                    value={dateFilter}
+                    onValueChange={(value) =>
+                      setDateFilter(value as typeof dateFilter)
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+
+                    <SelectContent>
+                      <SelectItem value="today">Today</SelectItem>
+                      <SelectItem value="yesterday">Yesterday</SelectItem>
+                      <SelectItem value="last7">Last 7 Days</SelectItem>
+                      <SelectItem value="thisMonth">This Month</SelectItem>
+                      <SelectItem value="lastMonth">Last Month</SelectItem>
+                      <SelectItem value="custom">Custom Range</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
+
+                {dateFilter === "custom" && (
+                  <div className="flex-1">
+                    <Label>Custom Range</Label>
+
+                    <Popover
+                      open={calendarOpen}
+                      onOpenChange={setCalendarOpen}
+                    >
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant="outline"
+                          className="w-full justify-start"
+                        >
+                          <CalendarIcon className="mr-2 h-4 w-4" />
+
+                          {dateRange?.from ? (
+                            dateRange.to ? (
+                              <>
+                                {format(dateRange.from, "PPP")} -{" "}
+                                {format(dateRange.to, "PPP")}
+                              </>
+                            ) : (
+                              format(dateRange.from, "PPP")
+                            )
+                          ) : (
+                            "Select dates"
+                          )}
+                        </Button>
+                      </PopoverTrigger>
+
+                      <PopoverContent className="w-auto p-0">
+                        <Calendar
+                          mode="range"
+                          selected={dateRange}
+                          onSelect={(range) => {
+                            setDateRange(range);
+                            if (range?.from && range?.to) {
+                              setCalendarOpen(false);
+                            }
+                          }}
+                        />
+                      </PopoverContent>
+                    </Popover>
+                  </div>
+                )}
+
                 <Button
                   variant="outline"
                   onClick={() => {
-                    setOrderFilterDay("");
-                    setOrderFilterMonth("");
+                    setDateFilter("today");
+                    setDateRange(undefined);
                   }}
                 >
-                  Clear Filter
+                  Reset
                 </Button>
+
               </div>
               <TabsList className="grid w-full grid-cols-2">
                 <TabsTrigger value="paid" className="min-w-0 cursor-pointer whitespace-normal px-3 py-2 text-center text-xs leading-tight sm:text-sm">

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useDebouncedValue } from "../hooks/useDebounceValue";
 import {
   ArrowDown,
   ArrowUp,
@@ -217,14 +218,12 @@ type UploadedProductImage = {
 type AdminDashboardCacheEntry = {
   blogPosts: BlogPostRecord[];
   campaignContacts: CampaignContactRecord[];
-  customers: Customer[];
   deals: HomeDealRecord[];
   homepageReviews: HomepageReviewRecord[];
   newsletterCampaigns: NewsletterCampaign[];
   newsletterSubscribers: NewsletterSubscriber[];
   orders: AdminOrderRecord[];
   productCategories: ProductCategoryRecord[];
-  products: ProductRecord[];
   registryReviews: HomepageReviewRecord[];
   specialPackages: SpecialPackageRecord[];
   registries: RegistryRecord[];
@@ -399,8 +398,25 @@ export function AdminDashboard() {
   >(cachedAdminEntry ? "allowed" : "checking");
   const initialAdminLoadKeyRef = useRef<string | null>(null);
   const [orders, setOrders] = useState<AdminOrderRecord[]>(cachedAdminEntry?.orders ?? []);
-  const [customers, setCustomers] = useState<Customer[]>(cachedAdminEntry?.customers ?? []);
-  const [products, setProducts] = useState<ProductRecord[]>(cachedAdminEntry?.products ?? []);
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const PRODUCTS_PAGE_SIZE = 200;
+  const [products, setProducts] = useState<ProductRecord[]>([]);
+  const [productSearchInput, setProductSearchInput] = useState("");
+  const productSearchQuery = useDebouncedValue(productSearchInput, 400);
+  const [productCategoryFilter, setProductCategoryFilter] = useState("all");
+  const [productsLoadingMore, setProductsLoadingMore] = useState(false);
+  const [productsHasMore, setProductsHasMore] = useState(true);
+  const productsPageRef = useRef(0);
+  const productsSentinelRef = useRef<HTMLDivElement | null>(null);
+  const [allProductOptions, setAllProductOptions] = useState<{ id: number; name: string }[]>([]);
+
+  const CUSTOMERS_PAGE_SIZE = 200;
+  const [customerSearchInput, setCustomerSearchInput] = useState("");
+  const customerSearchQuery = useDebouncedValue(customerSearchInput, 400);
+  const [customersLoadingMore, setCustomersLoadingMore] = useState(false);
+  const [customersHasMore, setCustomersHasMore] = useState(true);
+  const customersPageRef = useRef(0);
+  const customersSentinelRef = useRef<HTMLDivElement | null>(null);
   const [specialPackages, setSpecialPackages] = useState<SpecialPackageRecord[]>(
     cachedAdminEntry?.specialPackages ?? [],
   );
@@ -475,6 +491,16 @@ export function AdminDashboard() {
   const [savingRegistryReview, setSavingRegistryReview] = useState(false);
 
   useEffect(() => {
+  if (adminAccessStatus !== "allowed") return;
+  void supabase
+    .from("products")
+    .select("id, name")
+    .eq("product_kind", "standard")
+    .order("name", { ascending: true })
+    .then(({ data }) => setAllProductOptions((data ?? []) as { id: number; name: string }[]));
+}, [adminAccessStatus]);
+
+  useEffect(() => {
     if (!cachedAdminEntry) {
       return;
     }
@@ -502,8 +528,6 @@ export function AdminDashboard() {
 
     const frameId = window.requestAnimationFrame(() => {
       setOrders(cachedAdminEntry.orders);
-      setCustomers(cachedAdminEntry.customers);
-      setProducts(cachedAdminEntry.products);
       setSpecialPackages(cachedSpecialPackages);
       setRegistries(cachedAdminEntry.registries);
       setRegistryItemsByRegistry(cachedAdminEntry.registryItemsByRegistry);
@@ -564,6 +588,7 @@ export function AdminDashboard() {
   const [productInStock, setProductInStock] = useState(true);
   const [productIsFeatured, setProductIsFeatured] = useState(false);
   const [productFeaturedSortOrder, setProductFeaturedSortOrder] = useState("0");
+  const [savingProduct, setSavingProduct] = useState(false);
 
   const [showDealModal, setShowDealModal] = useState(false);
   const [editingDeal, setEditingDeal] = useState<HomeDealRecord | null>(null);
@@ -638,6 +663,74 @@ export function AdminDashboard() {
   const [newsletterBody, setNewsletterBody] = useState("");
   const [sendingNewsletter, setSendingNewsletter] = useState(false);
 
+  const fetchProductsPage = useCallback(
+    async (reset: boolean) => {
+      if (productsLoadingMore) return;
+      setProductsLoadingMore(true);
+
+      const page = reset ? 0 : productsPageRef.current;
+      const from = page * PRODUCTS_PAGE_SIZE;
+      const to = from + PRODUCTS_PAGE_SIZE - 1;
+
+      let query = supabase
+        .from("products")
+        .select(`${PRODUCT_LIST_SELECT},brand,age_range,has_variants`)
+        .eq("product_kind", "standard")
+        .order("created_at", { ascending: false })
+        .range(from, to);
+
+      if (productSearchQuery.trim()) {
+        query = query.ilike("name", `%${productSearchQuery.trim()}%`);
+      }
+      if (productCategoryFilter !== "all") {
+        query = query.eq("category", productCategoryFilter);
+      }
+
+      const { data, error } = await query;
+      const rows = ((error ? [] : data) ?? []) as ProductRecord[];
+
+      setProducts((current) => (reset ? rows : [...current, ...rows]));
+      setProductsHasMore(rows.length === PRODUCTS_PAGE_SIZE);
+      productsPageRef.current = page + 1;
+      setProductsLoadingMore(false);
+    },
+    [productSearchQuery, productCategoryFilter, productsLoadingMore],
+  );
+
+  const fetchCustomersPage = useCallback(
+    async (reset: boolean) => {
+      if (customersLoadingMore) return;
+      setCustomersLoadingMore(true);
+
+      const page = reset ? 0 : customersPageRef.current;
+      const from = page * CUSTOMERS_PAGE_SIZE;
+      const to = from + CUSTOMERS_PAGE_SIZE - 1;
+
+      let query = supabase
+        .from("user_profiles")
+        .select("*")
+        .or("is_admin.eq.false,is_admin.is.null")
+        .order("created_at", { ascending: false })
+        .range(from, to);
+
+      const trimmedQuery = customerSearchQuery.trim();
+      if (trimmedQuery) {
+        query = query.or(
+          `full_name.ilike.%${trimmedQuery}%,email.ilike.%${trimmedQuery}%,phone.ilike.%${trimmedQuery}%`,
+        );
+      }
+
+      const { data, error } = await query;
+      const rows = ((error ? [] : data) ?? []) as Customer[];
+
+      setCustomers((current) => (reset ? rows : [...current, ...rows]));
+      setCustomersHasMore(rows.length === CUSTOMERS_PAGE_SIZE);
+      customersPageRef.current = page + 1;
+      setCustomersLoadingMore(false);
+    },
+    [customerSearchQuery, customersLoadingMore],
+  );
+
   const loadAdminData = useCallback(async (showSpinner = false) => {
     if (!userId) {
       return;
@@ -649,8 +742,6 @@ export function AdminDashboard() {
 
     const [
       ordersResult,
-      customersResult,
-      productsResult,
       registriesResult,
       registryItemsResult,
       registryOrdersResult,
@@ -661,7 +752,6 @@ export function AdminDashboard() {
       newsletterCampaignsResult,
       campaignContactsResult,
       productCategoriesResult,
-      productCategoryAssignmentsResult,
       specialPackagesResult,
       shippingTiersResult,
       siteContentSettingsResult,
@@ -670,15 +760,6 @@ export function AdminDashboard() {
       registryReviewsResult,
     ] = await Promise.all([
       supabase.from("orders").select("*").order("created_at", { ascending: false }),
-      supabase
-        .from("user_profiles")
-        .select("*")
-        .or("is_admin.eq.false,is_admin.is.null"),
-      supabase
-        .from("products")
-        .select(`${PRODUCT_LIST_SELECT},brand,age_range,has_variants`)
-        .eq("product_kind", "standard")
-        .order("created_at", { ascending: false }),
       supabase.from("registries").select("*").order("created_at", { ascending: false }),
       supabase
         .from("registry_items")
@@ -717,10 +798,6 @@ export function AdminDashboard() {
         .select("*")
         .order("sort_order", { ascending: true }),
       supabase
-        .from("product_category_assignments")
-        .select("product_id, category_id, product_categories(label, sort_order, is_active)")
-        .order("created_at", { ascending: false }),
-      supabase
         .from("special_packages")
         .select(`*, products(${PRODUCT_LIST_SELECT})`)
         .order("package_type", { ascending: false })
@@ -749,27 +826,6 @@ export function AdminDashboard() {
     ]);
 
     setOrders(((ordersResult.error ? [] : ordersResult.data) ?? []) as AdminOrderRecord[]);
-    setCustomers(
-      ((customersResult.error ? [] : customersResult.data) ?? []) as Customer[],
-    );
-    const rawProducts = ((productsResult.error ? [] : productsResult.data) ?? []) as ProductRecord[];
-    const productCategoryAssignments =
-      productCategoryAssignmentsResult.error?.code === "42P01"
-        ? []
-        : (((productCategoryAssignmentsResult.error
-            ? []
-            : productCategoryAssignmentsResult.data) ?? []) as ProductCategoryAssignmentRecord[]);
-    const assignedProductCategoriesByProductId = buildAssignedProductCategoriesByProductId(
-      productCategoryAssignments,
-    );
-    const nextProducts = rawProducts.map((product) => ({
-      ...product,
-      categories: normalizeProductCategoryLabels(
-        product.category,
-        assignedProductCategoriesByProductId[Number(product.id)],
-      ),
-    }));
-    setProducts(nextProducts);
     setSpecialPackages(
       ((specialPackagesResult.error ? [] : specialPackagesResult.data) ?? []) as SpecialPackageRecord[],
     );
@@ -870,14 +926,15 @@ export function AdminDashboard() {
         RegistryOrderItemRecord[];
     }
 
-    const registryOrderItemsMap = registryOrderItems.reduce<
-      Record<string, RegistryOrderItemRecord[]>
-    >((accumulator, item) => {
-      const existing = accumulator[item.registry_order_id] ?? [];
-      existing.push(item);
-      accumulator[item.registry_order_id] = existing;
-      return accumulator;
-    }, {});
+    const registryOrderItemsMap = registryOrderItems.reduce<Record<string, RegistryOrderItemRecord[]>>(
+      (accumulator, item) => {
+        const existing = accumulator[item.registry_order_id] ?? [];
+        existing.push(item);
+        accumulator[item.registry_order_id] = existing;
+        return accumulator;
+      },
+      {},
+    );
 
     const registryPaymentsMap = (((registriesResult.error ? [] : registriesResult.data) ?? []) as
       RegistryRecord[]).reduce<Record<string, RegistryPaymentActivity[]>>(
@@ -909,7 +966,6 @@ export function AdminDashboard() {
         campaignContactsResult.error?.code === "42P01"
           ? []
           : (((campaignContactsResult.error ? [] : campaignContactsResult.data) ?? []) as CampaignContactRecord[]),
-      customers: ((customersResult.error ? [] : customersResult.data) ?? []) as Customer[],
       deals: ((dealsResult.error ? [] : dealsResult.data) ?? []) as HomeDealRecord[],
       newsletterCampaigns:
         ((newsletterCampaignsResult.error ? [] : newsletterCampaignsResult.data) ?? []) as NewsletterCampaign[],
@@ -920,7 +976,6 @@ export function AdminDashboard() {
         productCategoriesResult.error?.code === "42P01"
           ? []
           : (((productCategoriesResult.error ? [] : productCategoriesResult.data) ?? []) as ProductCategoryRecord[]),
-      products: nextProducts,
       specialPackages:
         ((specialPackagesResult.error ? [] : specialPackagesResult.data) ?? []) as SpecialPackageRecord[],
       registries: ((registriesResult.error ? [] : registriesResult.data) ?? []) as RegistryRecord[],
@@ -952,12 +1007,69 @@ export function AdminDashboard() {
     }
   }, [userId]);
 
+  useEffect(() => {
+    if (adminAccessStatus !== "allowed") return;
+    productsPageRef.current = 0;
+
+    const timeoutId = window.setTimeout(() => {
+      void fetchProductsPage(true);
+    }, 0);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [adminAccessStatus, fetchProductsPage, productSearchQuery, productCategoryFilter]);
+
+  useEffect(() => {
+    if (adminAccessStatus !== "allowed") return;
+    customersPageRef.current = 0;
+
+    const timeoutId = window.setTimeout(() => {
+      void fetchCustomersPage(true);
+    }, 0);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [adminAccessStatus, fetchCustomersPage, customerSearchQuery]);
+
+  const fetchProductsPageRef = useRef(fetchProductsPage);
+useEffect(() => {
+  fetchProductsPageRef.current = fetchProductsPage;
+}, [fetchProductsPage]);
+
+useEffect(() => {
+  const node = productsSentinelRef.current;
+  if (!node || !productsHasMore) return;
+  const observer = new IntersectionObserver((entries) => {
+      if (entries[0]?.isIntersecting) void fetchProductsPageRef.current(false);
+    });
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [productsHasMore]);
+
+  const fetchCustomersPageRef = useRef(fetchCustomersPage);
+  useEffect(() => {
+    fetchCustomersPageRef.current = fetchCustomersPage;
+  }, [fetchCustomersPage]);
+
+  useEffect(() => {
+    const node = customersSentinelRef.current;
+    if (!node || !customersHasMore) return;
+    const observer = new IntersectionObserver((entries) => {
+      if (entries[0]?.isIntersecting) void fetchCustomersPageRef.current(false);
+    });
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [customersHasMore]);
+
   const productLookup = useMemo(() => {
     return Object.fromEntries(products.map((product) => [product.id, product])) as Record<
       number,
       ProductRecord
     >;
   }, [products]);
+
   const productCategoryOptions = useMemo(() => {
     return buildProductCategoryOptions({
       includeInactive: true,
@@ -967,6 +1079,9 @@ export function AdminDashboard() {
       records: productCategories,
     });
   }, [productCategories, products]);
+
+ 
+
   const productCategorySummaryLabel = useMemo(() => {
     if (productCategoriesSelection.length === 0) {
       return "Select categories";
@@ -1032,15 +1147,15 @@ export function AdminDashboard() {
     [newsletterCampaigns],
   );
   const getAdminAccessToken = useCallback(async () => {
-    if (session?.access_token) {
-      return session.access_token;
-    }
-
     const {
       data: { session: currentSession },
     } = await supabase.auth.getSession();
 
-    return currentSession?.access_token ?? null;
+    if (currentSession?.access_token) {
+      return currentSession.access_token;
+    }
+
+    return session?.access_token ?? null;
   }, [session]);
 
   const verifyAdminAccess = useCallback(async () => {
@@ -2258,6 +2373,9 @@ export function AdminDashboard() {
 
   const handleSaveProduct = async (event: React.FormEvent) => {
     event.preventDefault();
+    setSavingProduct(true);
+
+    try {
 
     const sellingPrice = Number(productSellingPrice) / 1000;
     const costPrice = Number(productCostPrice) / 1000;
@@ -2545,6 +2663,10 @@ export function AdminDashboard() {
     resetProductForm();
     await revalidatePublicTags(["products"]);
     void loadAdminData();
+
+    } finally {
+      setSavingProduct(false);
+    }
   };
 
   const handleDeleteProduct = async (productId: number) => {
@@ -2991,10 +3113,8 @@ export function AdminDashboard() {
         <TabsContent value="customers">
           <Card>
             <CardHeader className="space-y-4">
-              <div className="space-y-1">
+              <div className="space-y-1 flex items-center justify-between">
                 <CardTitle>Customers</CardTitle>
-              </div>
-              <div className="flex flex-wrap gap-2">
                 <Button
                   onClick={() => {
                     resetCustomerForm();
@@ -3007,6 +3127,12 @@ export function AdminDashboard() {
               </div>
             </CardHeader>
             <CardContent>
+              <Input
+                placeholder="Search customers by name, email, or phone..."
+                value={customerSearchInput}
+                onChange={(event) => setCustomerSearchInput(event.target.value)}
+                className="max-w-sm"
+              />
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -3058,6 +3184,11 @@ export function AdminDashboard() {
                   ))}
                 </TableBody>
               </Table>
+              {customersHasMore ? (
+                <div ref={customersSentinelRef} className="py-4 text-center text-sm text-gray-400">
+                  {customersLoadingMore ? "Loading more..." : ""}
+                </div>
+              ) : null}
             </CardContent>
           </Card>
         </TabsContent>
@@ -3202,13 +3333,10 @@ export function AdminDashboard() {
         <TabsContent value="products">
           <Card>
             <CardHeader className="space-y-4">
-              <div className="space-y-1">
-                <CardTitle>Products</CardTitle>
-                <p className="text-sm text-gray-500">
-                  Choose from your admin-managed categories when adding or editing products.
-                </p>
-              </div>
-              <div className="flex flex-wrap gap-2">
+              <div className="flex items-center justify-between gap-3">
+                <div className="space-y-1">
+                  <CardTitle>Products</CardTitle>
+                </div>
                 <Button
                   onClick={() => {
                     resetProductForm();
@@ -3218,6 +3346,25 @@ export function AdminDashboard() {
                   <Plus className="mr-2 h-4 w-4" />
                   Add Product
                 </Button>
+              </div>
+              <div className="flex flex-wrap gap-3">
+                <Input
+                  placeholder="Search products by name..."
+                  value={productSearchInput}
+                  onChange={(event) => setProductSearchInput(event.target.value)}
+                  className="max-w-xs"
+                />
+                <Select value={productCategoryFilter} onValueChange={setProductCategoryFilter}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="All categories" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All categories</SelectItem>
+                    {productCategoryOptions.map((category) => (
+                      <SelectItem key={category} value={category}>{category}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
             </CardHeader>
             <CardContent>
@@ -3235,7 +3382,11 @@ export function AdminDashboard() {
                 </TableHeader>
                 <TableBody>
                   {products.map((product) => (
-                    <TableRow key={product.id}>
+                    <TableRow
+                      key={product.id}
+                      className="cursor-pointer hover:bg-gray-50"
+                      onClick={() => void handleEditProduct(product)}
+                    >
                       <TableCell>
                         <div className="font-medium">{product.name}</div>
                         <div className="text-xs text-gray-500">
@@ -3266,14 +3417,20 @@ export function AdminDashboard() {
                           <Button
                             variant="outline"
                             size="sm"
-                            onClick={() => void handleEditProduct(product)}
+                            onClick={(event) => {
+                            event.stopPropagation();
+                            handleEditProduct(product);
+                          }}
                           >
                             <Edit className="h-4 w-4" />
                           </Button>
                           <Button
                             variant="destructive"
                             size="sm"
-                            onClick={() => handleDeleteProduct(product.id)}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              handleDeleteProduct(product.id);
+                            }}
                           >
                             <Trash2 className="h-4 w-4" />
                           </Button>
@@ -3283,6 +3440,11 @@ export function AdminDashboard() {
                   ))}
                 </TableBody>
               </Table>
+              {productsHasMore ? (
+                <div ref={productsSentinelRef} className="py-4 text-center text-sm text-gray-400">
+                  {productsLoadingMore ? "Loading more..." : ""}
+                </div>
+              ) : null}
             </CardContent>
           </Card>
         </TabsContent>
@@ -3301,14 +3463,9 @@ export function AdminDashboard() {
         <TabsContent value="deals">
           <Card>
             <CardHeader className="space-y-4">
-              <div className="space-y-1">
+              <div className="space-y-1 flex items-center justify-between">
                 <CardTitle>Homepage Deals</CardTitle>
-                <p className="text-sm text-gray-500">
-                  Lower sort-order values appear earlier on the storefront. Deals can be edited or deleted here.
-                </p>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <Button
+                 <Button
                   onClick={() => {
                     resetDealForm();
                     setShowDealModal(true);
@@ -3384,13 +3541,8 @@ export function AdminDashboard() {
         <TabsContent value="packages">
           <Card>
             <CardHeader className="space-y-4">
-              <div className="space-y-1">
+              <div className="space-y-1 flex items-center justify-between">
                 <CardTitle>Special Packages</CardTitle>
-                <p className="text-sm text-gray-500">
-                  Manage the gift bundles and swoop packages shown above deals on the homepage and registry page.
-                </p>
-              </div>
-              <div className="flex flex-wrap gap-2">
                 <Button
                   onClick={() => {
                     resetPackageForm();
@@ -3778,13 +3930,8 @@ export function AdminDashboard() {
 
             <Card>
               <CardHeader className="space-y-4">
-                <div className="space-y-1">
+                <div className="space-y-1 flex items-center justify-between">
                   <CardTitle>Registry Reviews</CardTitle>
-                  <p className="text-sm text-gray-500">
-                    Manage the testimonials shown on the registry landing page.
-                  </p>
-                </div>
-                <div className="flex flex-wrap gap-2">
                   <Button
                     onClick={() => {
                       resetRegistryReviewForm();
@@ -3794,6 +3941,9 @@ export function AdminDashboard() {
                     <MessageSquareQuote className="mr-2 h-4 w-4" />
                     Add Registry Review
                   </Button>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  
                 </div>
               </CardHeader>
               <CardContent>
@@ -3865,13 +4015,8 @@ export function AdminDashboard() {
         <TabsContent value="shipping">
           <Card>
             <CardHeader className="space-y-4">
-              <div className="space-y-1">
+              <div className="space-y-1 flex items-center justify-between">
                 <CardTitle>Shipping Tiers</CardTitle>
-                <p className="text-sm text-gray-500">
-                  Create the delivery and pickup options customers can choose at checkout. Put Lagos options first by giving them lower display order numbers.
-                </p>
-              </div>
-              <div className="flex flex-wrap gap-2">
                 <Button
                   onClick={() => {
                     resetShippingTierForm();
@@ -3938,10 +4083,8 @@ export function AdminDashboard() {
         <TabsContent value="blogs">
           <Card>
             <CardHeader className="space-y-4">
-              <div className="space-y-1">
+              <div className="space-y-1 flex items-center justify-between">
                 <CardTitle>Blog Posts</CardTitle>
-              </div>
-              <div className="flex flex-wrap gap-2">
                 <Button
                   onClick={() => {
                     resetBlogForm();
@@ -4705,7 +4848,7 @@ export function AdminDashboard() {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <div className="grid grid-cols-1 gap-4">
               <div className="space-y-2">
                 <Label>Categories</Label>
                 <DropdownMenu>
@@ -5042,8 +5185,10 @@ export function AdminDashboard() {
               In stock
             </label>
 
-            <Button type="submit" className="w-full">
-              {editingProduct ? "Update Product" : "Create Product"}
+            <Button type="submit" className="w-full" disabled={savingProduct}>
+              {savingProduct
+                ? "Saving..."
+                : editingProduct ? "Update Product" : "Create Product"}
             </Button>
           </form>
         </DialogContent>
@@ -5062,7 +5207,7 @@ export function AdminDashboard() {
                   <SelectValue placeholder="Choose a product" />
                 </SelectTrigger>
                 <SelectContent>
-                  {products.map((product) => (
+                  {allProductOptions.map((product) => (
                     <SelectItem key={product.id} value={String(product.id)}>
                       {product.name}
                     </SelectItem>

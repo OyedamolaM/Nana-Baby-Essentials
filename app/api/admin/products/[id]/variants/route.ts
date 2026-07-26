@@ -193,7 +193,7 @@ export async function PUT(request: Request, context: RouteProps) {
     normalizedVariants.push({
       color: normalizeText(variant.color),
       id: normalizeText(variant.id),
-      in_stock: variant.inStock !== false && stockQuantity > 0,
+      in_stock: variant.inStock !== false,
       price_override: priceOverride,
       size: normalizeText(variant.size),
       sku: normalizeText(variant.sku),
