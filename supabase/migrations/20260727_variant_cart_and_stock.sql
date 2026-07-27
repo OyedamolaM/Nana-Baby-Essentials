@@ -23,7 +23,7 @@ begin
         join pg_attribute as attribute_row
           on attribute_row.attrelid = constraint_row.conrelid
           and attribute_row.attnum = key_row.attnum
-      ) = array['cart_id', 'product_id']
+      ) = array['cart_id', 'product_id']::name[]
   loop
     execute format(
       'alter table public.shopping_cart_items drop constraint if exists %I',

@@ -22,7 +22,7 @@ import { FeaturedCategoryTabs } from "../components/featured/FeaturedCategoryTab
 import { RegistryCreateModal } from "../components/registry/RegistryCreateModal";
 import { useAuth } from "../contexts/AuthContext";
 import { useStoreCart } from "../contexts/StoreCartContext";
-import { type StoreProduct } from "../../lib/commerce";
+import { type StoreProduct, type StoreProductVariant } from "../../lib/commerce";
 import { type HomepageDeal } from "../../lib/content";
 import { type SpecialPackage } from "../../lib/specialPackages";
 import { type StoreLocationRecord } from "../../lib/storeLocations";
@@ -108,8 +108,8 @@ export function HomePage({
     setAuthOpen(true);
   };
 
-  const handleAddToCart = (product: Product, quantity = 1) => {
-    addItem(product, quantity);
+  const handleAddToCart = (product: Product, quantity = 1, variant?: StoreProductVariant) => {
+    addItem(product, quantity, variant);
     toast.success(
       quantity > 1
         ? `${quantity} ${product.name} items added to cart.`

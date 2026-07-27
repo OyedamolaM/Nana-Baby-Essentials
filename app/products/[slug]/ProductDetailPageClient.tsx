@@ -32,7 +32,11 @@ export function ProductDetailPageClient({
     () => (product.images ?? []).filter((image) => image.url.trim()),
     [product.images],
   );
-  const productVariants = useMemo(() => product.variants ?? [], [product.variants]);
+  const allProductVariants = useMemo(() => product.variants ?? [], [product.variants]);
+  const productVariants = useMemo(
+    () => allProductVariants.filter((variant) => variant.inStock),
+    [allProductVariants],
+  );
   const hasVariantChoices = Boolean(product.hasVariants);
   const hasSizePicker = productVariants.some((variant) => Boolean(variant.size));
   const hasColorPicker = productVariants.some((variant) => Boolean(variant.color));
@@ -162,7 +166,11 @@ export function ProductDetailPageClient({
 
   const handleAddToCart = () => {
     if (hasVariantChoices && productVariants.length === 0) {
-      toast.error("This product's options are being updated. Please try again shortly.");
+      toast.error(
+        allProductVariants.length > 0
+          ? "This product is currently out of stock."
+          : "This product's options are being updated. Please try again shortly.",
+      );
       return;
     }
 
@@ -207,12 +215,15 @@ export function ProductDetailPageClient({
     router.push(reopenContext?.originPath || "/products");
   };
 
+  const allVariantsOutOfStock = hasVariantChoices && allProductVariants.length > 0 && productVariants.length === 0;
   const availabilityLabel = hasVariantChoices
-    ? needsSelection
-      ? "Select an option"
-      : selectedVariantInStock
-        ? "In stock"
-        : "Currently unavailable"
+    ? allVariantsOutOfStock
+      ? "Out of stock"
+      : needsSelection
+        ? "Select an option"
+        : selectedVariantInStock
+          ? "In stock"
+          : "Currently unavailable"
     : product.inStock
       ? "In stock"
       : "Currently unavailable";
@@ -403,7 +414,9 @@ export function ProductDetailPageClient({
                   ) : null}
                   <p className="text-sm text-gray-600">
                     {productVariants.length === 0
-                      ? "Options are being updated. Please check back shortly."
+                      ? allProductVariants.length > 0
+                        ? "This product is currently out of stock."
+                        : "Options are being updated. Please check back shortly."
                       : needsSelection
                         ? "Select the available option before adding this product to cart."
                         : selectedVariantInStock

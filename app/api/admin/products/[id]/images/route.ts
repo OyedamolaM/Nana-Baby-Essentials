@@ -25,6 +25,7 @@ type ProductImageRow = {
 
 type AddProductImagePayload = {
   isPrimary?: boolean;
+  isVariantOnly?: boolean;
   mode?: "append" | "replace-primary";
   path?: string;
   thumbnailPath?: string;
@@ -67,6 +68,7 @@ async function readProductImages(
     .from("product_images")
     .select("id, sort_order, url, thumbnail_url, is_primary")
     .eq("product_id", productId)
+    .eq("is_variant_only", false)
     .order("sort_order", { ascending: true });
 }
 
@@ -159,8 +161,10 @@ export async function POST(request: Request, context: RouteProps) {
 
   const images = (existingImages ?? []) as ProductImageRow[];
   const existingPrimary = images.find((image) => image.is_primary);
+  const isVariantOnly = Boolean(payload?.isVariantOnly);
   const mode = payload?.mode === "append" ? "append" : "replace-primary";
-  const isPrimary = images.length === 0 || mode === "replace-primary" || Boolean(payload?.isPrimary);
+  const isPrimary =
+    !isVariantOnly && (images.length === 0 || mode === "replace-primary" || Boolean(payload?.isPrimary));
   const { data: publicImageUrl } = resolved.client.storage
     .from("product-images")
     .getPublicUrl(path);
@@ -169,7 +173,7 @@ export async function POST(request: Request, context: RouteProps) {
     .getPublicUrl(thumbnailPath);
 
   const saveResult =
-    mode === "replace-primary" && existingPrimary
+    mode === "replace-primary" && existingPrimary && !isVariantOnly
       ? await resolved.client
           .from("product_images")
           .update({
@@ -185,6 +189,7 @@ export async function POST(request: Request, context: RouteProps) {
           .from("product_images")
           .insert({
             is_primary: isPrimary,
+            is_variant_only: isVariantOnly,
             product_id: resolved.productId,
             sort_order:
               Math.max(-1, ...images.map((image) => Number(image.sort_order))) + 1,
@@ -202,7 +207,7 @@ export async function POST(request: Request, context: RouteProps) {
     );
   }
 
-  if (mode === "replace-primary" && existingPrimary) {
+  if (mode === "replace-primary" && existingPrimary && !isVariantOnly) {
     const cleanup = await deleteProductImageStorageObjects(
       resolved.client,
       [{ thumbnailUrl: existingPrimary.thumbnail_url, url: existingPrimary.url }],

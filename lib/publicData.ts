@@ -658,6 +658,7 @@ const getProductBySlugCached = unstable_cache(
           .from("product_images")
           .select("id, url, thumbnail_url, sort_order, is_primary")
           .eq("product_id", record.id)
+          .eq("is_variant_only", false)
           .order("sort_order", { ascending: true }),
         client
           .from("product_variants")

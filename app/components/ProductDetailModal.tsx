@@ -57,10 +57,14 @@ export function ProductDetailModal({
   const [selectedSize, setSelectedSize] = useState("");
   const [selectedColor, setSelectedColor] = useState("");
 
-  const productVariants = useMemo(() => {
+  const allProductVariants = useMemo(() => {
     const base = product?.variants ?? [];
     return base.length > 0 ? base : fetchedVariants;
   }, [product?.variants, fetchedVariants]);
+  const productVariants = useMemo(
+    () => allProductVariants.filter((variant) => variant.inStock),
+    [allProductVariants],
+  );
   const hasVariantChoices = Boolean(product?.hasVariants);
   const hasSizePicker = productVariants.some((variant) => Boolean(variant.size));
   const hasColorPicker = productVariants.some((variant) => Boolean(variant.color));
@@ -164,6 +168,8 @@ export function ProductDetailModal({
   };
 
   const canAddToCart = hasVariantChoices ? selectedVariantInStock : Boolean(product?.inStock);
+  const allVariantsOutOfStock =
+    hasVariantChoices && allProductVariants.length > 0 && productVariants.length === 0;
 
 
   const showImage = (nextIndex: number) => {
@@ -245,6 +251,7 @@ export function ProductDetailModal({
         .from("product_images")
         .select("id, url, thumbnail_url, is_primary, sort_order")
         .eq("product_id", product.id)
+        .eq("is_variant_only", false)
         .order("sort_order", { ascending: true });
 
       if (!isMounted || error || !data) {
@@ -290,7 +297,17 @@ export function ProductDetailModal({
   }
 
   const handleAddToCart = () => {
-    onAddToCart(product, quantity);
+    if (allVariantsOutOfStock) {
+      toast.error("This product is currently out of stock.");
+      return;
+    }
+
+    if (needsSelection) {
+      toast.error("Please select an available option before adding to cart.");
+      return;
+    }
+
+    onAddToCart(product, quantity, selectedVariant);
     onClose();
   };
 
@@ -394,6 +411,7 @@ export function ProductDetailModal({
             >
               <ImageWithFallback
                 src={
+                  selectedVariant?.imageUrl ||
                   galleryImages[selectedImageIndex]?.url ||
                   getFullProductImageUrl(product.image)
                 }
@@ -463,7 +481,7 @@ export function ProductDetailModal({
                   </h2>
 
                   <p className="mt-2 text-3xl font-bold text-pink-600">
-                    {formatNaira(product.price)}
+                    {formatNaira(selectedVariant?.priceOverride ?? product.price)}
                   </p>
 
                   <p className="mt-3 text-sm text-gray-600">
@@ -472,11 +490,85 @@ export function ProductDetailModal({
                 </div>
 
                 <Badge
-                  variant={product.inStock ? "secondary" : "destructive"}
+                  variant={
+                    (hasVariantChoices ? selectedVariantInStock : product.inStock)
+                      ? "secondary"
+                      : "destructive"
+                  }
                 >
-                  {product.inStock ? "In Stock" : "Out of Stock"}
+                  {hasVariantChoices
+                    ? allVariantsOutOfStock
+                      ? "Out of Stock"
+                      : needsSelection
+                        ? "Select an option"
+                        : selectedVariantInStock
+                          ? "In Stock"
+                          : "Out of Stock"
+                    : product.inStock
+                      ? "In Stock"
+                      : "Out of Stock"}
                 </Badge>
               </div>
+
+              {hasSizePicker ? (
+                <div className="space-y-2">
+                  <p className="text-sm font-semibold text-gray-900">Size</p>
+                  <div className="flex flex-wrap gap-2">
+                    {visibleSizeOptions.map((size) => (
+                      <Button
+                        key={size}
+                        type="button"
+                        variant={selectedSize === size ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => chooseSize(size)}
+                      >
+                        {size}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+
+              {hasColorPicker ? (
+                <div className="space-y-2">
+                  <p className="text-sm font-semibold text-gray-900">Color</p>
+                  <div className="flex flex-wrap gap-2">
+                    {visibleColorOptions.map((color) => {
+                      const colorImage = getVariantImageForColor(color);
+                      return colorImage ? (
+                        <button
+                          key={color}
+                          type="button"
+                          onClick={() => chooseColor(color)}
+                          aria-label={color}
+                          className={`flex flex-col items-center gap-1 rounded-lg border-2 p-1 ${
+                            selectedColor === color ? "border-pink-500" : "border-transparent"
+                          }`}
+                        >
+                          <span className="h-12 w-12 overflow-hidden rounded-md bg-gray-100">
+                            <ImageWithFallback
+                              src={colorImage}
+                              alt={color}
+                              className="h-full w-full object-cover"
+                            />
+                          </span>
+                          <span className="text-xs text-gray-700">{color}</span>
+                        </button>
+                      ) : (
+                        <Button
+                          key={color}
+                          type="button"
+                          variant={selectedColor === color ? "default" : "outline"}
+                          size="sm"
+                          onClick={() => chooseColor(color)}
+                        >
+                          {color}
+                        </Button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : null}
 
               <div className="flex items-center gap-2">
                 <span className="text-sm font-medium text-gray-700">
@@ -514,27 +606,25 @@ export function ProductDetailModal({
 
             {/* Actions */}
             <div className="flex gap-2">
-              {product.hasVariants ? (
-                <Button asChild type="button" className="flex-1">
-                  <Link
-                    href={`/products/${product.slug}`}
-                    onClick={handleOpenFullProductPage}
-                  >
-                    <ShoppingCart className="mr-2 h-4 w-4" />
-                    Choose Options
-                  </Link>
-                </Button>
-              ) : (
-                <Button
-                  type="button"
-                  className="flex-1"
-                  onClick={handleAddToCart}
-                  disabled={!product.inStock}
-                >
-                  <ShoppingCart className="mr-2 h-4 w-4" />
-                  {product.inStock ? addActionLabel : "Out of Stock"}
-                </Button>
-              )}
+              <Button
+                type="button"
+                className="flex-1"
+                onClick={handleAddToCart}
+                disabled={hasVariantChoices ? !canAddToCart : !product.inStock}
+              >
+                <ShoppingCart className="mr-2 h-4 w-4" />
+                {hasVariantChoices
+                  ? allVariantsOutOfStock
+                    ? "Out of Stock"
+                    : needsSelection
+                      ? "Select an option"
+                      : selectedVariantInStock
+                        ? addActionLabel
+                        : "Out of Stock"
+                  : product.inStock
+                    ? addActionLabel
+                    : "Out of Stock"}
+              </Button>
 
               <Button
                 type="button"
@@ -582,10 +672,22 @@ export function ProductDetailModal({
                 <span className="text-gray-600">Availability:</span>
                 <span
                   className={
-                    product.inStock ? "text-green-600" : "text-red-600"
+                    (hasVariantChoices ? selectedVariantInStock : product.inStock)
+                      ? "text-green-600"
+                      : "text-red-600"
                   }
                 >
-                  {product.inStock ? "In Stock" : "Out of Stock"}
+                  {hasVariantChoices
+                    ? allVariantsOutOfStock
+                      ? "Out of Stock"
+                      : needsSelection
+                        ? "Select an option"
+                        : selectedVariantInStock
+                          ? "In Stock"
+                          : "Out of Stock"
+                    : product.inStock
+                      ? "In Stock"
+                      : "Out of Stock"}
                 </span>
               </div>
 

@@ -15,7 +15,7 @@ import { CheckoutModal } from "../components/checkout/CheckoutModal";
 import { useAuth } from "../contexts/AuthContext";
 import { useStoreCart } from "../contexts/StoreCartContext";
 import { usePaginatedProducts } from "../hooks/usePaginatedProducts";
-import { type StoreProduct } from "../../lib/commerce";
+import { type StoreProduct, type StoreProductVariant } from "../../lib/commerce";
 import {
   clearProductDetailReturnContext,
   getCurrentProductReturnPath,
@@ -178,8 +178,8 @@ export function ProductsPage({
     setAuthOpen(true);
   };
 
-  const handleAddToCart = (product: Product, quantity = 1) => {
-    addItem(product, quantity);
+  const handleAddToCart = (product: Product, quantity = 1, variant?: StoreProductVariant) => {
+    addItem(product, quantity, variant);
     toast.success(
       quantity > 1
         ? `${quantity} ${product.name} items added to cart.`
