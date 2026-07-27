@@ -121,6 +121,52 @@ function invalidGalleryTableResponse() {
   );
 }
 
+async function insertProductImageWithRetry(
+  client: NonNullable<ReturnType<typeof createSupabaseServiceRoleClient>>,
+  productId: number,
+  payload: {
+    is_primary: boolean;
+    is_variant_only: boolean;
+    thumbnail_url: string;
+    url: string;
+  },
+  maxAttempts = 5,
+) {
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    const { data: currentImages } = await client
+      .from("product_images")
+      .select("sort_order")
+      .eq("product_id", productId)
+      .eq("is_variant_only", payload.is_variant_only);
+
+    const nextSortOrder =
+      Math.max(-1, ...((currentImages ?? []) as { sort_order: number }[]).map((image) => Number(image.sort_order))) + 1;
+
+    const result = await client
+      .from("product_images")
+      .insert({
+        ...payload,
+        product_id: productId,
+        sort_order: nextSortOrder,
+      })
+      .select("id, sort_order, url, thumbnail_url, is_primary")
+      .single();
+
+    if (!result.error) {
+      return result;
+    }
+
+    if (result.error.code !== "23505") {
+      return result;
+    }
+  }
+
+  return {
+    data: null,
+    error: { message: "Could not assign a gallery position after several attempts." },
+  };
+}
+
 export async function POST(request: Request, context: RouteProps) {
   const resolved = await resolveRequestContext(request, context);
   if ("response" in resolved) {
@@ -185,19 +231,12 @@ export async function POST(request: Request, context: RouteProps) {
           .eq("product_id", resolved.productId)
           .select("id, sort_order, url, thumbnail_url, is_primary")
           .single()
-      : await resolved.client
-          .from("product_images")
-          .insert({
-            is_primary: isPrimary,
-            is_variant_only: isVariantOnly,
-            product_id: resolved.productId,
-            sort_order:
-              Math.max(-1, ...images.map((image) => Number(image.sort_order))) + 1,
-            thumbnail_url: publicThumbnailUrl.publicUrl,
-            url: publicImageUrl.publicUrl,
-          })
-          .select("id, sort_order, url, thumbnail_url, is_primary")
-          .single();
+      : await insertProductImageWithRetry(resolved.client, resolved.productId, {
+          is_primary: isPrimary,
+          is_variant_only: isVariantOnly,
+          thumbnail_url: publicThumbnailUrl.publicUrl,
+          url: publicImageUrl.publicUrl,
+  });
 
   if (saveResult.error || !saveResult.data) {
     console.error("Failed to save product gallery image.", saveResult.error);
