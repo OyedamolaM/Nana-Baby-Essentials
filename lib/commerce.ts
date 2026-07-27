@@ -90,8 +90,8 @@ export interface ProductRecord {
 
 /** Fields required by product cards, deals, registries, and cart summaries. */
 export const PRODUCT_LIST_SELECT =
-  "id,name,slug,price,cost_price,selling_price,category,image,description,in_stock,is_featured,featured_sort_order,created_at";
-
+  "id,name,slug,price,cost_price,selling_price,category,image,description,in_stock,is_featured,featured_sort_order,created_at,has_variants";
+  
 export const SEED_PRODUCTS: StoreProduct[] = [
   {
     id: 1,

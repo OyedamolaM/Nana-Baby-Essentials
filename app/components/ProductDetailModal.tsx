@@ -148,20 +148,34 @@ export function ProductDetailModal({
     )?.imageUrl;
 
   const chooseSize = (size: string) => {
+    if (selectedSize === size) {
+      setSelectedSize("");
+      return;
+    }
+
     setSelectedSize(size);
     if (
       selectedColor &&
-      !productVariants.some((variant) => variant.size === size && variant.color === selectedColor)
+      !productVariants.some(
+        (variant) => variant.size === size && variant.color === selectedColor,
+      )
     ) {
       setSelectedColor("");
     }
   };
 
   const chooseColor = (color: string) => {
+    if (selectedColor === color) {
+      setSelectedColor("");
+      return;
+    }
+
     setSelectedColor(color);
     if (
       selectedSize &&
-      !productVariants.some((variant) => variant.color === color && variant.size === selectedSize)
+      !productVariants.some(
+        (variant) => variant.color === color && variant.size === selectedSize,
+      )
     ) {
       setSelectedSize("");
     }

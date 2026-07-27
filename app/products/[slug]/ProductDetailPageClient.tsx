@@ -133,6 +133,11 @@ export function ProductDetailPageClient({
   );
 
   const chooseSize = (size: string) => {
+    if (selectedSize === size) {
+      setSelectedSize("");
+      return;
+    }
+
     setSelectedSize(size);
     if (
       selectedColor &&
@@ -145,6 +150,11 @@ export function ProductDetailPageClient({
   };
 
   const chooseColor = (color: string) => {
+    if (selectedColor === color) {
+      setSelectedColor("");
+      return;
+    }
+
     setSelectedColor(color);
     if (
       selectedSize &&
@@ -229,7 +239,7 @@ export function ProductDetailPageClient({
       : "Currently unavailable";
 
   return (
-    <div className="min-h-screen bg-white">
+    <div className="min-h-screen overflow-x-hidden bg-white">
       <main className="bg-gradient-to-br from-white via-pink-50/40 to-blue-50/40 py-12">
         <div className="container mx-auto px-4">
           <div className="mb-8 flex flex-wrap items-center gap-3 text-sm text-gray-600">
@@ -248,9 +258,9 @@ export function ProductDetailPageClient({
             </Link>
           </div>
 
-          <div className="grid gap-10 rounded-[32px] border bg-white p-6 shadow-xl lg:grid-cols-[1.05fr_0.95fr] lg:p-10">
+          <div className="grid min-w-0 gap-10 rounded-[32px] border bg-white p-6 shadow-xl lg:grid-cols-[1.05fr_0.95fr] lg:p-10">            
             {galleryImages.length > 0 ? (
-              <div className="space-y-3">
+              <div className="min-w-0 space-y-3">
                 <div
                   className="relative flex aspect-square items-center justify-center overflow-hidden rounded-[28px] bg-gray-100"
                   onTouchEnd={(event) => {
@@ -325,7 +335,7 @@ export function ProductDetailPageClient({
                 ) : null}
               </div>
             ) : (
-              <div className="flex aspect-square items-center justify-center overflow-hidden rounded-[28px] bg-gray-100">
+              <div className="flex aspect-square min-w-0 items-center justify-center overflow-hidden rounded-[28px] bg-gray-100">
                 <ImageWithFallback
                   src={getFullProductImageUrl(product.image)}
                   alt={product.name}
@@ -335,14 +345,14 @@ export function ProductDetailPageClient({
               </div>
             )}
 
-            <div className="space-y-6">
+            <div className="min-w-0 space-y-6">
               <div>
                 <div className="flex flex-wrap gap-2">
                   <Badge variant="secondary">{product.category}</Badge>
                   {product.brand ? <Badge variant="outline">{product.brand}</Badge> : null}
                   {product.ageRange ? <Badge variant="outline">{product.ageRange}</Badge> : null}
                 </div>
-                <h1 className="mt-4 text-4xl font-bold text-gray-900">
+                <h1 className="mt-4 break-words text-4xl font-bold text-gray-900">
                   {product.name}
                 </h1>
                 <p className="mt-4 text-3xl font-bold text-pink-600">

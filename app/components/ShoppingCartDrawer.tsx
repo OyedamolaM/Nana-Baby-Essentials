@@ -80,7 +80,12 @@ export function ShoppingCartDrawer({
                   />
                   <div className="flex-1">
                     <h4 className="font-semibold text-sm">{item.name}</h4>
-                    <p className="text-sm text-gray-600">{formatNaira(item.price)}</p>
+                    <p className="text-sm text-gray-600">
+                      {formatNaira(item.price)} &times; {item.quantity} ={" "}
+                      <span className="font-semibold text-gray-900">
+                        {formatNairaAmount(toNairaAmount(item.price) * item.quantity)}
+                      </span>
+                    </p>
                     {optionLabel ? (
                       <p className="mt-0.5 text-xs text-gray-500">{optionLabel}</p>
                     ) : null}
