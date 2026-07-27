@@ -328,6 +328,8 @@ export function ProductDetailPageClient({
                           src={image.thumbnailUrl || image.url}
                           alt={`${product.name} thumbnail ${index + 1}`}
                           className="h-full w-full object-cover"
+                          loading="lazy"
+                          decoding="async"
                         />
                       </button>
                     ))}
@@ -340,6 +342,7 @@ export function ProductDetailPageClient({
                   src={getFullProductImageUrl(product.image)}
                   alt={product.name}
                   className="max-h-full max-w-full object-contain"
+                  loading="lazy"
                   decoding="async"
                 />
               </div>
@@ -404,6 +407,8 @@ export function ProductDetailPageClient({
                                   src={colorImage}
                                   alt={color}
                                   className="h-full w-full object-cover"
+                                  loading="lazy"
+                                  decoding="async"
                                 />
                               </span>
                               <span className="text-xs text-gray-700">{color}</span>
