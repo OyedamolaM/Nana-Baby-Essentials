@@ -429,10 +429,8 @@ export function ProductDetailPageClient({
                         : "Options are being updated. Please check back shortly."
                       : needsSelection
                         ? "Select the available option before adding this product to cart."
-                        : selectedVariantInStock
-                          ? selectedVariant && selectedVariant.stockQuantity > 0
-                            ? `${selectedVariant.stockQuantity} available`
-                            : "In stock"
+                        : selectedVariantInStock ?
+                            "In stock"
                           : "This selected option is currently unavailable."}
                   </p>
                 </div>
