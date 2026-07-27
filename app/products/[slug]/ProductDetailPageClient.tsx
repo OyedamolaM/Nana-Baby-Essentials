@@ -240,7 +240,7 @@ export function ProductDetailPageClient({
 
   return (
     <div className="min-h-screen overflow-x-hidden bg-white">
-      <main className="bg-gradient-to-br from-white via-pink-50/40 to-blue-50/40 py-12">
+      <main className="bg-gray-50/50 py-12">
         <div className="container mx-auto px-4">
           <div className="mb-8 flex flex-wrap items-center gap-3 text-sm text-gray-600">
             <Button type="button" variant="outline" size="sm" onClick={handleBackToPreviousProductView}>
