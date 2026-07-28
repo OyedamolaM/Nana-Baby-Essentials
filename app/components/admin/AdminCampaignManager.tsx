@@ -270,6 +270,24 @@ export function AdminCampaignManager({
     toast.success(nextActive ? "Contact reactivated." : "Contact removed from active campaigns.");
     await onReload();
   };
+  const handleDeleteContact = async (contact: CampaignContactRecord) => {
+    if (!window.confirm(`Permanently delete ${contact.email} from campaign contacts?`)) {
+      return;
+    }
+
+    const { error } = await supabase
+      .from("campaign_contacts")
+      .delete()
+      .eq("id", contact.id);
+
+    if (error) {
+      toast.error("Could not delete this contact.");
+      return;
+    }
+
+    toast.success("Contact deleted.");
+    await onReload();
+  };
 
   return (
     <>
@@ -365,25 +383,36 @@ export function AdminCampaignManager({
                           <TableCell>{contact.is_active ? "Active" : "Inactive"}</TableCell>
                           <TableCell>{formatDateTime(contact.last_sent_at ?? contact.created_at)}</TableCell>
                           <TableCell>
-                            {contact.is_active ? (
+                            <div className="flex gap-2">
+                              {contact.is_active ? (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => void handleToggleContact(contact, false)}
+                                >
+                                  <RefreshCcw className="mr-2 h-4 w-4" />
+                                  Remove
+                                </Button>
+                              ) : (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => void handleToggleContact(contact, true)}
+                                >
+                                  <RefreshCcw className="mr-2 h-4 w-4" />
+                                  Reactivate
+                                </Button>
+                              )}
                               <Button
                                 variant="ghost"
                                 size="sm"
-                                onClick={() => void handleToggleContact(contact, false)}
+                                className="text-red-600"
+                                onClick={() => void handleDeleteContact(contact)}
                               >
                                 <Trash2 className="mr-2 h-4 w-4" />
-                                Remove
+                                Delete
                               </Button>
-                            ) : (
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => void handleToggleContact(contact, true)}
-                              >
-                                <RefreshCcw className="mr-2 h-4 w-4" />
-                                Reactivate
-                              </Button>
-                            )}
+                            </div>
                           </TableCell>
                         </TableRow>
                       ))}

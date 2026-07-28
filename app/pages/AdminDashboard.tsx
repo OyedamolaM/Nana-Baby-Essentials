@@ -447,6 +447,9 @@ export function AdminDashboard() {
   const [newsletterCampaigns, setNewsletterCampaigns] = useState<
     NewsletterCampaign[]
   >(cachedAdminEntry?.newsletterCampaigns ?? []);
+  const [showAddSubscriberModal, setShowAddSubscriberModal] = useState(false);
+  const [newSubscriberEmail, setNewSubscriberEmail] = useState("");
+  const [savingSubscriber, setSavingSubscriber] = useState(false);
   const [campaignContacts, setCampaignContacts] = useState<CampaignContactRecord[]>(
     cachedAdminEntry?.campaignContacts ?? [],
   );
@@ -3016,6 +3019,50 @@ useEffect(() => {
     void loadAdminData();
   };
 
+  const handleAddSubscriber = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const email = newSubscriberEmail.trim().toLowerCase();
+    if (!email) {
+      toast.error("Enter an email address.");
+      return;
+    }
+
+    setSavingSubscriber(true);
+    const { error } = await supabase.from("newsletter_subscribers").upsert(
+      { email, is_active: true, source: "admin" },
+      { onConflict: "email" },
+    );
+    setSavingSubscriber(false);
+
+    if (error) {
+      toast.error("Could not add this subscriber.");
+      return;
+    }
+
+    toast.success("Subscriber added.");
+    setNewSubscriberEmail("");
+    setShowAddSubscriberModal(false);
+    void loadAdminData();
+  };
+
+  const handleDeleteSubscriber = async (subscriberId: string) => {
+    if (!window.confirm("Remove this subscriber from the newsletter list?")) {
+      return;
+    }
+
+    const { error } = await supabase
+      .from("newsletter_subscribers")
+      .delete()
+      .eq("id", subscriberId);
+
+    if (error) {
+      toast.error("Could not remove this subscriber.");
+      return;
+    }
+
+    toast.success("Subscriber removed.");
+    void loadAdminData();
+  };
   const handleDeleteBlog = async (blogId: string) => {
     if (!window.confirm("Delete this blog post?")) {
       return;
@@ -3390,8 +3437,12 @@ useEffect(() => {
 
             <div className="min-w-0 space-y-6">
               <Card>
-                <CardHeader>
+                <CardHeader className="flex flex-row items-center justify-between">
                   <CardTitle>Recent Subscribers</CardTitle>
+                  <Button type="button" variant="outline" size="sm" onClick={() => setShowAddSubscriberModal(true)}>
+                    <Plus className="mr-2 h-4 w-4" />
+                    Add
+                  </Button>
                 </CardHeader>
                 <CardContent>
                   {newsletterSubscribers.length === 0 ? (
@@ -3404,6 +3455,7 @@ useEffect(() => {
                             <TableHead>Email</TableHead>
                             <TableHead>Source</TableHead>
                             <TableHead>Subscribed</TableHead>
+                            <TableHead>Actions</TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
@@ -3412,6 +3464,15 @@ useEffect(() => {
                               <TableCell>{subscriber.email}</TableCell>
                               <TableCell>{subscriber.source ?? "Website"}</TableCell>
                               <TableCell>{formatDate(subscriber.created_at)}</TableCell>
+                              <TableCell>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => void handleDeleteSubscriber(subscriber.id)}
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </TableCell>
                             </TableRow>
                           ))}
                         </TableBody>
@@ -4430,6 +4491,30 @@ useEffect(() => {
                 : editingCustomer
                   ? "Update Customer"
                   : "Create Customer and Send Invite"}
+            </Button>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showAddSubscriberModal} onOpenChange={setShowAddSubscriberModal}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Add Newsletter Subscriber</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleAddSubscriber} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="new-subscriber-email">Email</Label>
+              <Input
+                id="new-subscriber-email"
+                type="email"
+                value={newSubscriberEmail}
+                onChange={(event) => setNewSubscriberEmail(event.target.value)}
+                placeholder="subscriber@example.com"
+                required
+              />
+            </div>
+            <Button type="submit" className="w-full" disabled={savingSubscriber}>
+              {savingSubscriber ? "Adding..." : "Add Subscriber"}
             </Button>
           </form>
         </DialogContent>
