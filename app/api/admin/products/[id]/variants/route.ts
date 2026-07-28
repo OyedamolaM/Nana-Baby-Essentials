@@ -237,7 +237,11 @@ export async function PUT(request: Request, context: RouteProps) {
   if (existingError) {
     console.error("Failed to read product variants before saving.", existingError);
     return NextResponse.json(
-      { message: "Could not save product variants." },
+      {
+        message:
+          existingError.message ||
+          `Could not read existing product variants (code: ${existingError.code ?? "unknown"}).`,
+      },
       { status: 500 },
     );
   }
@@ -279,7 +283,13 @@ export async function PUT(request: Request, context: RouteProps) {
     if (deleteError) {
       console.error("Failed to delete removed product variants.", deleteError);
       return NextResponse.json(
-        { message: deleteError.message || "Could not remove old product variants." },
+        {
+          message:
+            deleteError.message ||
+            `Could not remove old product variants (code: ${deleteError.code ?? "unknown"}).`,
+          details: deleteError.details ?? null,
+          hint: deleteError.hint ?? null,
+        },
         { status: 500 },
       );
     }
@@ -314,7 +324,13 @@ export async function PUT(request: Request, context: RouteProps) {
       if (saveResult.error) {
         console.error("Failed to save product variant.", saveResult.error);
         return NextResponse.json(
-          { message: saveResult.error.message || "Could not save a product variant." },
+          {
+            message:
+              saveResult.error.message ||
+              `Could not save a product variant (code: ${saveResult.error.code ?? "unknown"}).`,
+            details: saveResult.error.details ?? null,
+            hint: saveResult.error.hint ?? null,
+          },
           { status: 500 },
         );
       }
