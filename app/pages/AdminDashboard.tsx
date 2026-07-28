@@ -1138,6 +1138,7 @@ const loadAdminData = useCallback(async (showSpinner = false) => {
       ((specialPackagesResult.error ? [] : specialPackagesResult.data) ?? []) as SpecialPackageRecord[],
     registries: ((registriesResult.error ? [] : registriesResult.data) ?? []) as RegistryRecord[],
     registryItemsByRegistry: registryItemsById,
+    orders: orders,
     registryOrderItemsByOrder: registryOrderItemsMap,
     registryOrders,
     registryPaymentActivities: registryPaymentsMap,
