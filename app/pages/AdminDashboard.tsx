@@ -3207,7 +3207,7 @@ useEffect(() => {
             <TabsTrigger value="categories" className="h-10 px-4 py-3 whitespace-nowrap">Categories</TabsTrigger>
             <TabsTrigger value="deals" className="h-10 px-4 py-3 whitespace-nowrap">Deals</TabsTrigger>
             <TabsTrigger value="packages" className="h-10 px-4 py-3 whitespace-nowrap">Packages</TabsTrigger>
-            <TabsTrigger value="content" className="h-10 px-4 py-3 whitespace-nowrap">Content</TabsTrigger>
+            <TabsTrigger value="content" className="h-10 px-4 py-3 whitespace-nowrap">Webpage Editor</TabsTrigger>
             <TabsTrigger value="reviews" className="h-10 px-4 py-3 whitespace-nowrap">Reviews</TabsTrigger>
             <TabsTrigger value="shipping" className="h-10 px-4 py-3 whitespace-nowrap">Shipping Tiers</TabsTrigger>
             <TabsTrigger value="blogs" className="h-10 px-4 py-3 whitespace-nowrap">Blogs</TabsTrigger>
