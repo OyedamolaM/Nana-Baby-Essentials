@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, type FormEvent } from "react";
+import { useMemo, useState } from "react";
 import { Download, Edit, Package, Plus, Trash2, CalendarIcon } from "lucide-react";
 import { toast } from "sonner";
 import { Calendar } from "../ui/calendar";
@@ -147,118 +147,6 @@ function formatDateTime(value?: string | null) {
   });
 }
 
-function getLocalDateKey(value?: string | null) {
-  if (!value) {
-    return "";
-  }
-
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return "";
-  }
-
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
-
-function getLocalMonthKey(value?: string | null) {
-  return getLocalDateKey(value).slice(0, 7);
-}
-
-function getPresetRange(filter: string): DateRange | undefined {
-  const today = new Date();
-
-  const startOfToday = new Date(
-    today.getFullYear(),
-    today.getMonth(),
-    today.getDate()
-  );
-
-  switch (filter) {
-    case "today":
-      return {
-        from: startOfToday,
-        to: startOfToday,
-      };
-
-    case "yesterday": {
-      const yesterday = new Date(startOfToday);
-      yesterday.setDate(yesterday.getDate() - 1);
-
-      return {
-        from: yesterday,
-        to: yesterday,
-      };
-    }
-
-    case "last7": {
-      const from = new Date(startOfToday);
-      from.setDate(from.getDate() - 6);
-
-      return {
-        from,
-        to: startOfToday,
-      };
-    }
-
-    case "thisMonth":
-      return {
-        from: new Date(today.getFullYear(), today.getMonth(), 1),
-        to: new Date(today.getFullYear(), today.getMonth() + 1, 0),
-      };
-
-    case "lastMonth":
-      return {
-        from: new Date(today.getFullYear(), today.getMonth() - 1, 1),
-        to: new Date(today.getFullYear(), today.getMonth(), 0),
-      };
-
-    default:
-      return undefined;
-  }
-}
-
-function filterOrdersByDate<T extends { created_at?: string | null }>(
-  items: T[],
-  range?: DateRange
-) {
-  if (!range?.from) return items;
-
-  const { from, to } = range;
-
-  return items.filter((item) => {
-    const created = new Date(item.created_at ?? "");
-
-    if (Number.isNaN(created.getTime())) {
-      return false;
-    }
-
-    const orderDate = new Date(
-      created.getFullYear(),
-      created.getMonth(),
-      created.getDate()
-    );
-
-    const fromDate = new Date(
-      from.getFullYear(),
-      from.getMonth(),
-      from.getDate()
-    );
-
-    const toDate = to
-      ? new Date(
-          to.getFullYear(),
-          to.getMonth(),
-          to.getDate()
-        )
-      : fromDate;
-
-    return orderDate >= fromDate && orderDate <= toDate;
-  });
-}
-
 export function AdminOrdersManager({
   customers,
   getAdminAccessToken,
@@ -266,6 +154,19 @@ export function AdminOrdersManager({
   orders,
   products,
   shippingTiers,
+  statusTab,
+  onStatusTabChange,
+  dateFilter,
+  onDateFilterChange,
+  dateRange,
+  onDateRangeChange,
+  searchInput,
+  onSearchInputChange,
+  paidCount,
+  unpaidCount,
+  hasMore,
+  loadingMore,
+  sentinelRef,
 }: {
   customers: CustomerRecord[];
   getAdminAccessToken: () => Promise<string | null>;
@@ -273,6 +174,19 @@ export function AdminOrdersManager({
   orders: AdminOrderRecord[];
   products: ProductRecord[];
   shippingTiers: ShippingTierRecord[];
+  statusTab: "paid" | "unpaid";
+  onStatusTabChange: (tab: "paid" | "unpaid") => void;
+  dateFilter: "today" | "yesterday" | "last7" | "thisMonth" | "lastMonth" | "custom";
+  onDateFilterChange: (filter: "today" | "yesterday" | "last7" | "thisMonth" | "lastMonth" | "custom") => void;
+  dateRange: DateRange | undefined;
+  onDateRangeChange: (range: DateRange | undefined) => void;
+  searchInput: string;
+  onSearchInputChange: (value: string) => void;
+  paidCount: number;
+  unpaidCount: number;
+  hasMore: boolean;
+  loadingMore: boolean;
+  sentinelRef: React.RefObject<HTMLDivElement | null>;
 }) {
   const [showOrderModal, setShowOrderModal] = useState(false);
   const [editingOrder, setEditingOrder] = useState<AdminOrderRecord | null>(null);
@@ -290,18 +204,8 @@ export function AdminOrdersManager({
   const [shippingAddress, setShippingAddress] = useState("");
   const [shippingCity, setShippingCity] = useState("");
   const [shippingState, setShippingState] = useState("");
-  const [dateRange, setDateRange] = useState<DateRange | undefined>();
   const [calendarOpen, setCalendarOpen] = useState(false);
   const [draftItems, setDraftItems] = useState<DraftOrderItem[]>([createEmptyDraftItem()]);
-
-  const [dateFilter, setDateFilter] = useState<
-    | "today"
-    | "yesterday"
-    | "last7"
-    | "thisMonth"
-    | "lastMonth"
-    | "custom"
-  >("today");
 
   const activeShippingTiers = useMemo(() => {
     return shippingTiers.filter((tier) => tier.is_active);
@@ -339,25 +243,6 @@ export function AdminOrdersManager({
     return shippingTiers.find((tier) => tier.code === shippingTier) ?? null;
   }, [shippingTier, shippingTiers]);
   const isPickupOrder = selectedShippingTierRecord?.fulfillment_type === "pickup";
-  const paidOrders = useMemo(() => {
-    return orders.filter((order) => order.status === "paid");
-  }, [orders]);
-  const unpaidOrders = useMemo(() => {
-    return orders.filter((order) => order.status !== "paid");
-  }, [orders]);
-
-  const activeRange =
-  dateFilter === "custom"
-    ? dateRange
-    : getPresetRange(dateFilter);
-
-  const filteredPaidOrders = useMemo(() => {
-    return filterOrdersByDate(paidOrders, activeRange);
-  }, [paidOrders, activeRange]);
-
-  const filteredUnpaidOrders = useMemo(() => {
-    return filterOrdersByDate(unpaidOrders, activeRange);
-  }, [unpaidOrders, activeRange]);
 
   const applyCustomerSnapshot = (customerId: string) => {
     setSelectedCustomerId(customerId);
@@ -580,6 +465,143 @@ export function AdminOrdersManager({
     }
   };
 
+  const renderOrdersTable = (emptyMessage: string) => {
+    if (orders.length === 0) {
+      return <p className="text-sm text-gray-500">{emptyMessage}</p>;
+    }
+
+    return (
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Order</TableHead>
+            <TableHead>Customer</TableHead>
+            <TableHead>Shipping</TableHead>
+            <TableHead>Total</TableHead>
+            <TableHead>Payment</TableHead>
+            <TableHead>Status</TableHead>
+            <TableHead>Created</TableHead>
+            <TableHead>Actions</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {orders.map((order) => {
+            const savedAddress = normalizeShippingAddress(order.shipping_address);
+            const selectedTier = shippingTiers.find(
+              (tier) => tier.code === order.shipping_tier,
+            );
+            const isPickupTier = selectedTier?.fulfillment_type === "pickup";
+            return (
+              <TableRow
+                key={order.id}
+                className="cursor-pointer hover:bg-gray-50"
+                onClick={() => handleEditOrder(order)}
+              >
+                <TableCell>
+                  <div className="font-mono text-sm">{order.id.slice(0, 8)}</div>
+                  <div className="text-xs text-gray-500">
+                    {order.shipping_tier || "No shipping tier"}
+                  </div>
+                  {order.customer_pickup_code || order.rider_pickup_code ? (
+                    <div className="mt-1 space-y-1 text-xs text-gray-500">
+                      {order.customer_pickup_code ? (
+                        <div>Customer pickup code: {order.customer_pickup_code}</div>
+                      ) : null}
+                      {order.rider_pickup_code ? (
+                        <div>Rider pickup code: {order.rider_pickup_code}</div>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </TableCell>
+                <TableCell>
+                  <div className="font-medium">
+                    {order.customer_name ?? savedAddress.name ?? "N/A"}
+                  </div>
+                  <div className="text-xs text-gray-500">
+                    {order.customer_email ?? "No email"}
+                  </div>
+                  <div className="text-xs text-gray-500">
+                    {order.customer_phone ?? savedAddress.phone ?? "No phone"}
+                  </div>
+                </TableCell>
+                <TableCell className="text-sm text-gray-600">
+                  {savedAddress.address
+                    ? `${savedAddress.address}, ${savedAddress.city}, ${savedAddress.state}`
+                    : isPickupTier
+                      ? "Pickup"
+                      : "N/A"}
+                </TableCell>
+                <TableCell>{formatNairaAmount(Number(order.total ?? 0))}</TableCell>
+                <TableCell>
+                  <div className="font-medium">
+                    {formatPaymentMethodLabel(order.payment_method, order.payment_reference)}
+                  </div>
+                  <div className="text-xs text-gray-500">
+                    {order.payment_reference
+                      ? `Ref: ${formatPaymentReferenceDisplay(order.payment_reference)}`
+                      : "No reference"}
+                  </div>
+                </TableCell>
+                <TableCell>{order.status}</TableCell>
+                <TableCell>{formatDateTime(order.created_at)}</TableCell>
+                <TableCell>
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        downloadOrderReceipt({
+                          createdAt: order.created_at,
+                          customerEmail: order.customer_email,
+                          customerName: order.customer_name,
+                          customerPhone: order.customer_phone,
+                          customerPickupCode: order.customer_pickup_code,
+                          id: order.id,
+                          items: order.items,
+                          paymentMethod: order.payment_method,
+                          paymentReference: order.payment_reference,
+                          riderPickupCode: order.rider_pickup_code,
+                          shippingAddress: normalizeShippingAddress(order.shipping_address),
+                          shippingTier: order.shipping_tier,
+                          status: order.status,
+                          total: Number(order.total ?? 0),
+                        });
+                      }}
+                    >
+                      <Download className="h-4 w-4" />
+                      Receipt
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        handleEditOrder(order);
+                      }}
+                    >
+                      <Edit className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        handleDeleteOrder(order.id);
+                      }}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </TableCell>
+              </TableRow>
+            );
+          })}
+        </TableBody>
+      </Table>
+    );
+  };
+
   return (
     <>
       <Card>
@@ -598,254 +620,118 @@ export function AdminOrdersManager({
           </div>
         </CardHeader>
         <CardContent>
-          {orders.length === 0 ? (
-            <p className="text-sm text-gray-500">No store orders yet.</p>
-          ) : (
-            <Tabs
-              defaultValue={filteredPaidOrders.length > 0 ? "paid" : "unpaid"}
-              className="space-y-4"
-            >
-             <div className="flex flex-col gap-4 rounded-2xl border border-gray-100 bg-gray-50 p-4 md:flex-row md:items-end">
-
-                <div className="w-full md:w-64">
-                  <Label>Filter</Label>
-
-                  <Select
-                    value={dateFilter}
-                    onValueChange={(value) =>
-                      setDateFilter(value as typeof dateFilter)
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-
-                    <SelectContent>
-                      <SelectItem value="today">Today</SelectItem>
-                      <SelectItem value="yesterday">Yesterday</SelectItem>
-                      <SelectItem value="last7">Last 7 Days</SelectItem>
-                      <SelectItem value="thisMonth">This Month</SelectItem>
-                      <SelectItem value="lastMonth">Last Month</SelectItem>
-                      <SelectItem value="custom">Custom Range</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                {dateFilter === "custom" && (
-                  <div className="flex-1">
-                    <Label>Custom Range</Label>
-
-                    <Popover
-                      open={calendarOpen}
-                      onOpenChange={setCalendarOpen}
-                    >
-                      <PopoverTrigger asChild>
-                        <Button
-                          variant="outline"
-                          className="w-full justify-start"
-                        >
-                          <CalendarIcon className="mr-2 h-4 w-4" />
-
-                          {dateRange?.from ? (
-                            dateRange.to ? (
-                              <>
-                                {format(dateRange.from, "PPP")} -{" "}
-                                {format(dateRange.to, "PPP")}
-                              </>
-                            ) : (
-                              format(dateRange.from, "PPP")
-                            )
-                          ) : (
-                            "Select dates"
-                          )}
-                        </Button>
-                      </PopoverTrigger>
-
-                      <PopoverContent className="w-auto p-0">
-                        <Calendar
-                          mode="range"
-                          selected={dateRange}
-                          onSelect={(range) => {
-                            setDateRange(range);
-                            if (range?.from && range?.to) {
-                              setCalendarOpen(false);
-                            }
-                          }}
-                        />
-                      </PopoverContent>
-                    </Popover>
-                  </div>
-                )}
-
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    setDateFilter("today");
-                    setDateRange(undefined);
-                  }}
+          <Tabs
+            value={statusTab}
+            onValueChange={(value) => onStatusTabChange(value as "paid" | "unpaid")}
+            className="space-y-4"
+          >
+            <div className="flex flex-col gap-4 rounded-2xl border border-gray-100 bg-gray-50 p-4 md:flex-row md:items-end">
+              <div className="w-full md:w-64">
+                <Label>Filter</Label>
+                <Select
+                  value={dateFilter}
+                  onValueChange={(value) => onDateFilterChange(value as typeof dateFilter)}
                 >
-                  Reset
-                </Button>
-
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="today">Today</SelectItem>
+                    <SelectItem value="yesterday">Yesterday</SelectItem>
+                    <SelectItem value="last7">Last 7 Days</SelectItem>
+                    <SelectItem value="thisMonth">This Month</SelectItem>
+                    <SelectItem value="lastMonth">Last Month</SelectItem>
+                    <SelectItem value="custom">Custom Range</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
-              <TabsList className="grid w-full grid-cols-2">
-                <TabsTrigger value="paid" className="min-w-0 cursor-pointer whitespace-normal px-3 py-2 text-center text-xs leading-tight sm:text-sm">
-                  Paid Orders ({filteredPaidOrders.length})
-                </TabsTrigger>
-                <TabsTrigger value="unpaid" className="min-w-0 cursor-pointer whitespace-normal px-3 py-2 text-center text-xs leading-tight sm:text-sm">
-                  Unpaid Orders ({filteredUnpaidOrders.length})
-                </TabsTrigger>
-              </TabsList>
 
-              {[
-                { emptyMessage: "No paid store orders yet.", value: "paid", rows: filteredPaidOrders },
-                {
-                  emptyMessage: "No unpaid store orders right now.",
-                  value: "unpaid",
-                  rows: filteredUnpaidOrders,
-                },
-              ].map((group) => (
-                <TabsContent key={group.value} value={group.value}>
-                  {group.rows.length === 0 ? (
-                    <p className="text-sm text-gray-500">{group.emptyMessage}</p>
-                  ) : (
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Order</TableHead>
-                          <TableHead>Customer</TableHead>
-                          <TableHead>Shipping</TableHead>
-                          <TableHead>Total</TableHead>
-                          <TableHead>Payment</TableHead>
-                          <TableHead>Status</TableHead>
-                          <TableHead>Created</TableHead>
-                          <TableHead>Actions</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {group.rows.map((order) => {
-                          const savedAddress = normalizeShippingAddress(order.shipping_address);
-                          const selectedTier = shippingTiers.find(
-                            (tier) => tier.code === order.shipping_tier,
-                          );
-                          const isPickupTier =
-                            selectedTier?.fulfillment_type === "pickup";
-                          return (
-                            <TableRow
-                              key={order.id}
-                              className="cursor-pointer hover:bg-gray-50"
-                              onClick={() => handleEditOrder(order)}
-                            >
-                              <TableCell>
-                                <div className="font-mono text-sm">{order.id.slice(0, 8)}</div>
-                                <div className="text-xs text-gray-500">
-                                  {order.shipping_tier || "No shipping tier"}
-                                </div>
-                                {order.customer_pickup_code || order.rider_pickup_code ? (
-                                  <div className="mt-1 space-y-1 text-xs text-gray-500">
-                                    {order.customer_pickup_code ? (
-                                      <div>Customer pickup code: {order.customer_pickup_code}</div>
-                                    ) : null}
-                                    {order.rider_pickup_code ? (
-                                      <div>Rider pickup code: {order.rider_pickup_code}</div>
-                                    ) : null}
-                                  </div>
-                                ) : null}
-                              </TableCell>
-                              <TableCell>
-                                <div className="font-medium">
-                                  {order.customer_name ?? savedAddress.name ?? "N/A"}
-                                </div>
-                                <div className="text-xs text-gray-500">
-                                  {order.customer_email ?? "No email"}
-                                </div>
-                                <div className="text-xs text-gray-500">
-                                  {order.customer_phone ?? savedAddress.phone ?? "No phone"}
-                                </div>
-                              </TableCell>
-                              <TableCell className="text-sm text-gray-600">
-                                {savedAddress.address
-                                  ? `${savedAddress.address}, ${savedAddress.city}, ${savedAddress.state}`
-                                  : isPickupTier
-                                    ? "Pickup"
-                                    : "N/A"}
-                              </TableCell>
-                              <TableCell>{formatNairaAmount(Number(order.total ?? 0))}</TableCell>
-                              <TableCell>
-                                <div className="font-medium">
-                                  {formatPaymentMethodLabel(
-                                    order.payment_method,
-                                    order.payment_reference,
-                                  )}
-                                </div>
-                                <div className="text-xs text-gray-500">
-                                  {order.payment_reference
-                                    ? `Ref: ${formatPaymentReferenceDisplay(order.payment_reference)}`
-                                    : "No reference"}
-                                </div>
-                              </TableCell>
-                              <TableCell>{order.status}</TableCell>
-                              <TableCell>{formatDateTime(order.created_at)}</TableCell>
-                              <TableCell>
-                                <div className="flex flex-wrap gap-2">
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={(event) => {
-                                      event.stopPropagation();
-                                      downloadOrderReceipt({
-                                        createdAt: order.created_at,
-                                        customerEmail: order.customer_email,
-                                        customerName: order.customer_name,
-                                        customerPhone: order.customer_phone,
-                                        customerPickupCode: order.customer_pickup_code,
-                                        id: order.id,
-                                        items: order.items,
-                                        paymentMethod: order.payment_method,
-                                        paymentReference: order.payment_reference,
-                                        riderPickupCode: order.rider_pickup_code,
-                                        shippingAddress: normalizeShippingAddress(order.shipping_address),
-                                        shippingTier: order.shipping_tier,
-                                        status: order.status,
-                                        total: Number(order.total ?? 0),
-                                      });
-                                    }}
-                                  >
-                                    <Download className="h-4 w-4" />
-                                    Receipt
-                                  </Button>
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={(event) => {
-                                      event.stopPropagation();
-                                      handleEditOrder(order);
-                                    }}
-                                  >
-                                    <Edit className="h-4 w-4" />
-                                  </Button>
-                                  <Button
-                                    variant="destructive"
-                                    size="sm"
-                                    onClick={(event) => {
-                                      event.stopPropagation();
-                                      handleDeleteOrder(order.id);
-                                    }}
-                                  >
-                                    <Trash2 className="h-4 w-4" />
-                                  </Button>
-                                </div>
-                              </TableCell>
-                            </TableRow>
-                          );
-                        })}
-                      </TableBody>
-                    </Table>
-                  )}
-                </TabsContent>
-              ))}
-            </Tabs>
-          )}
+              {dateFilter === "custom" && (
+                <div className="flex-1">
+                  <Label>Custom Range</Label>
+                  <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
+                    <PopoverTrigger asChild>
+                      <Button variant="outline" className="w-full justify-start">
+                        <CalendarIcon className="mr-2 h-4 w-4" />
+                        {dateRange?.from ? (
+                          dateRange.to ? (
+                            <>
+                              {format(dateRange.from, "PPP")} - {format(dateRange.to, "PPP")}
+                            </>
+                          ) : (
+                            format(dateRange.from, "PPP")
+                          )
+                        ) : (
+                          "Select dates"
+                        )}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0">
+                      <Calendar
+                        mode="range"
+                        selected={dateRange}
+                        onSelect={(range) => {
+                          onDateRangeChange(range);
+                          if (range?.from && range?.to) {
+                            setCalendarOpen(false);
+                          }
+                        }}
+                      />
+                    </PopoverContent>
+                  </Popover>
+                </div>
+              )}
+
+              <Button
+                variant="outline"
+                onClick={() => {
+                  onDateFilterChange("today");
+                  onDateRangeChange(undefined);
+                }}
+              >
+                Reset
+              </Button>
+            </div>
+
+            {/* Search sits after the date filter row, applied on top of it */}
+            <div>
+              <Label htmlFor="order-search">Search</Label>
+              <Input
+                id="order-search"
+                placeholder="Search by customer name, email, or phone..."
+                value={searchInput}
+                onChange={(event) => onSearchInputChange(event.target.value)}
+              />
+            </div>
+
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger
+                value="paid"
+                className="min-w-0 cursor-pointer whitespace-normal px-3 py-2 text-center text-xs leading-tight sm:text-sm"
+              >
+                Paid Orders ({paidCount})
+              </TabsTrigger>
+              <TabsTrigger
+                value="unpaid"
+                className="min-w-0 cursor-pointer whitespace-normal px-3 py-2 text-center text-xs leading-tight sm:text-sm"
+              >
+                Unpaid Orders ({unpaidCount})
+              </TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="paid">
+              {renderOrdersTable("No paid store orders yet.")}
+            </TabsContent>
+            <TabsContent value="unpaid">
+              {renderOrdersTable("No unpaid store orders right now.")}
+            </TabsContent>
+          </Tabs>
+
+          {hasMore ? (
+            <div ref={sentinelRef} className="py-4 text-center text-sm text-gray-400">
+              {loadingMore ? "Loading more..." : ""}
+            </div>
+          ) : null}
         </CardContent>
       </Card>
 

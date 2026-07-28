@@ -12,7 +12,7 @@ import { buildPageMetadata } from "../../lib/site";
 export const metadata = buildPageMetadata({
   title: "Baby Registry",
   description:
-    "Create a baby registry, share your registry link, and add baby essentials without leaving the page.",
+    "Create a baby registry, share your registry link, and add baby essentials.",
   path: "/registry",
 });
 

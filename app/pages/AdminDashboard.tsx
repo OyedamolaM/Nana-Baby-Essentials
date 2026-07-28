@@ -231,12 +231,12 @@ type AdminDashboardCacheEntry = {
   homepageReviews: HomepageReviewRecord[];
   newsletterCampaigns: NewsletterCampaign[];
   newsletterSubscribers: NewsletterSubscriber[];
-  orders: AdminOrderRecord[];
   productCategories: ProductCategoryRecord[];
   registryReviews: HomepageReviewRecord[];
   specialPackages: SpecialPackageRecord[];
   registries: RegistryRecord[];
   registryItemsByRegistry: Record<string, RegistryItem[]>;
+  orders: AdminOrderRecord[];
   registryOrderItemsByOrder: Record<string, RegistryOrderItemRecord[]>;
   registryOrders: RegistryOrderRecord[];
   registryPaymentActivities: Record<string, RegistryPaymentActivity[]>;
@@ -406,7 +406,31 @@ export function AdminDashboard() {
     "checking" | "allowed" | "denied"
   >(cachedAdminEntry ? "allowed" : "checking");
   const initialAdminLoadKeyRef = useRef<string | null>(null);
-  const [orders, setOrders] = useState<AdminOrderRecord[]>(cachedAdminEntry?.orders ?? []);
+  const ORDERS_PAGE_SIZE = 30;
+  const [orders, setOrders] = useState<AdminOrderRecord[]>([]);
+  const [ordersLoadingMore, setOrdersLoadingMore] = useState(false);
+  const [ordersHasMore, setOrdersHasMore] = useState(true);
+  const ordersPageRef = useRef(0);
+  const ordersSentinelRef = useRef<HTMLDivElement | null>(null);
+
+  const [totalProductCount, setTotalProductCount] = useState(0);
+  const [totalCustomerCount, setTotalCustomerCount] = useState(0);
+  const [orderStats, setOrderStats] = useState({
+    totalPaidOrders: 0,
+    totalRevenue: 0,
+    monthlyPaidOrders: 0,
+    monthlyRevenue: 0,
+  });
+
+  const [orderStatusTab, setOrderStatusTab] = useState<"paid" | "unpaid">("paid");
+  const [orderDateFilter, setOrderDateFilter] = useState<
+    "today" | "yesterday" | "last7" | "thisMonth" | "lastMonth" | "custom"
+  >("today");
+  const [orderDateRange, setOrderDateRange] = useState<{ from: Date; to: Date }>({ from: new Date(), to: new Date() });
+  const [orderSearchInput, setOrderSearchInput] = useState("");
+  const orderSearchQuery = useDebouncedValue(orderSearchInput, 400);
+  const [orderCounts, setOrderCounts] = useState({ paid: 0, unpaid: 0 });
+
   const [customers, setCustomers] = useState<Customer[]>([]);
   const PRODUCTS_PAGE_SIZE = 200;
   const [products, setProducts] = useState<ProductRecord[]>([]);
@@ -539,7 +563,6 @@ export function AdminDashboard() {
     );
 
     const frameId = window.requestAnimationFrame(() => {
-      setOrders(cachedAdminEntry.orders);
       setSpecialPackages(cachedSpecialPackages);
       setRegistries(cachedAdminEntry.registries);
       setRegistryItemsByRegistry(cachedAdminEntry.registryItemsByRegistry);
@@ -745,281 +768,428 @@ export function AdminDashboard() {
     [customerSearchQuery, customersLoadingMore],
   );
 
-  const loadAdminData = useCallback(async (showSpinner = false) => {
-    if (!userId) {
-      return;
+function resolveOrderDateRange(): { from?: Date; to?: Date } {
+  const today = new Date();
+  const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+
+  switch (orderDateFilter) {
+    case "today":
+      return { from: startOfToday, to: startOfToday };
+    case "yesterday": {
+      const yesterday = new Date(startOfToday);
+      yesterday.setDate(yesterday.getDate() - 1);
+      return { from: yesterday, to: yesterday };
+    }
+    case "last7": {
+      const from = new Date(startOfToday);
+      from.setDate(from.getDate() - 6);
+      return { from, to: startOfToday };
+    }
+    case "thisMonth":
+      return {
+        from: new Date(today.getFullYear(), today.getMonth(), 1),
+        to: new Date(today.getFullYear(), today.getMonth() + 1, 0),
+      };
+    case "lastMonth":
+      return {
+        from: new Date(today.getFullYear(), today.getMonth() - 1, 1),
+        to: new Date(today.getFullYear(), today.getMonth(), 0),
+      };
+    case "custom":
+      return orderDateRange;
+    default:
+      return {};
+  }
+}
+
+type QueryWithDateFilters<T> = {
+  gte: (col: string, val: string) => T;
+  lte: (col: string, val: string) => T;
+};
+
+const applyOrderDateRangeToQuery = <T extends QueryWithDateFilters<T>>(query: T): T => {
+  const range = resolveOrderDateRange();
+  if (range.from) {
+    query = query.gte("created_at", range.from.toISOString());
+  }
+  if (range.to) {
+    const endOfDay = new Date(range.to);
+    endOfDay.setHours(23, 59, 59, 999);
+    query = query.lte("created_at", endOfDay.toISOString());
+  }
+  return query;
+};
+
+const fetchOrdersPage = useCallback(
+  async (reset: boolean) => {
+    if (ordersLoadingMore) return;
+    setOrdersLoadingMore(true);
+
+    const page = reset ? 0 : ordersPageRef.current;
+    const from = page * ORDERS_PAGE_SIZE;
+    const to = from + ORDERS_PAGE_SIZE - 1;
+
+    let query = supabase.from("orders").select("*");
+    query = orderStatusTab === "paid" ? query.eq("status", "paid") : query.neq("status", "paid");
+    query = applyOrderDateRangeToQuery(query);
+
+    const trimmedSearch = orderSearchQuery.trim();
+    if (trimmedSearch) {
+      query = query.or(
+        `customer_name.ilike.%${trimmedSearch}%,customer_email.ilike.%${trimmedSearch}%,customer_phone.ilike.%${trimmedSearch}%`,
+      );
     }
 
-    if (showSpinner) {
-      setLoading(true);
-    }
+    query = query.order("created_at", { ascending: false }).range(from, to);
 
-    const [
-      ordersResult,
-      registriesResult,
-      registryItemsResult,
-      registryOrdersResult,
-      registryContributionsResult,
-      dealsResult,
-      blogPostsResult,
-      newsletterSubscribersResult,
-      newsletterCampaignsResult,
-      campaignContactsResult,
-      productCategoriesResult,
-      specialPackagesResult,
-      shippingTiersResult,
-      siteContentSettingsResult,
-      storeLocationsResult,
-      homepageReviewsResult,
-      registryReviewsResult,
-    ] = await Promise.all([
-      supabase.from("orders").select("*").order("created_at", { ascending: false }),
-      supabase.from("registries").select("*").order("created_at", { ascending: false }),
-      supabase
-        .from("registry_items")
-        .select(`*, products(${PRODUCT_LIST_SELECT})`)
-        .order("created_at", { ascending: false }),
-      supabase
-        .from("registry_orders")
-        .select("*")
-        .order("created_at", { ascending: false }),
-      supabase
-        .from("registry_contributions")
-        .select("*")
-        .order("created_at", { ascending: false }),
-      supabase
-        .from("homepage_deals")
-        .select("*")
-        .order("sort_order", { ascending: true }),
-      supabase
-        .from("blog_posts")
-        .select("*")
-        .order("created_at", { ascending: false }),
-      supabase
-        .from("newsletter_subscribers")
-        .select("*")
-        .order("created_at", { ascending: false }),
-      supabase
-        .from("newsletter_campaigns")
-        .select("*")
-        .order("created_at", { ascending: false }),
-      supabase
-        .from("campaign_contacts")
-        .select("*")
-        .order("created_at", { ascending: false }),
-      supabase
-        .from("product_categories")
-        .select("*")
-        .order("sort_order", { ascending: true }),
-      supabase
-        .from("special_packages")
-        .select(`*, products(${PRODUCT_LIST_SELECT})`)
-        .order("package_type", { ascending: false })
-        .order("sort_order", { ascending: true }),
-      supabase
-        .from("shipping_tiers")
-        .select("*")
-        .order("sort_order", { ascending: true }),
-      supabase
-        .from("site_content_settings")
-        .select("*")
-        .in("key", ["hero_image", "about_images"]),
-      supabase
-        .from("store_locations")
-        .select("*")
-        .order("sort_order", { ascending: true })
-        .order("created_at", { ascending: false }),
-      supabase
-        .from("homepage_reviews")
-        .select("*")
-        .order("sort_order", { ascending: true }),
-      supabase
-        .from("registry_reviews")
-        .select("*")
-        .order("sort_order", { ascending: true }),
+    const { data, error } = await query;
+    const rows = ((error ? [] : data) ?? []) as AdminOrderRecord[];
+
+    setOrders((current) => (reset ? rows : [...current, ...rows]));
+    setOrdersHasMore(rows.length === ORDERS_PAGE_SIZE);
+    ordersPageRef.current = page + 1;
+    setOrdersLoadingMore(false);
+  },
+  [ordersLoadingMore, orderStatusTab, orderDateFilter, orderDateRange, orderSearchQuery],
+);
+
+  const fetchOrderCounts = useCallback(async () => {
+    let paidQuery = supabase.from("orders").select("id", { count: "exact", head: true }).eq("status", "paid");
+    let unpaidQuery = supabase.from("orders").select("id", { count: "exact", head: true }).neq("status", "paid");
+    paidQuery = applyOrderDateRangeToQuery(paidQuery);
+    unpaidQuery = applyOrderDateRangeToQuery(unpaidQuery);
+
+    const [paidResult, unpaidResult] = await Promise.all([paidQuery, unpaidQuery]);
+    setOrderCounts({
+      paid: paidResult.count ?? 0,
+      unpaid: unpaidResult.count ?? 0,
+    });
+  }, [applyOrderDateRangeToQuery, orderDateFilter, orderDateRange, orderSearchQuery]);
+
+  const fetchDashboardCounts = useCallback(async () => {
+    const [productCountResult, customerCountResult, orderStatsResult] = await Promise.all([
+      supabase.from("products").select("id", { count: "exact", head: true }).eq("product_kind", "standard"),
+      supabase.from("user_profiles").select("id", { count: "exact", head: true }).or("is_admin.eq.false,is_admin.is.null"),
+      supabase.rpc("admin_order_stats").single(),
     ]);
 
-    setOrders(((ordersResult.error ? [] : ordersResult.data) ?? []) as AdminOrderRecord[]);
-    setSpecialPackages(
-      ((specialPackagesResult.error ? [] : specialPackagesResult.data) ?? []) as SpecialPackageRecord[],
-    );
-    setRegistries(
-      ((registriesResult.error ? [] : registriesResult.data) ?? []) as RegistryRecord[],
-    );
-    setDeals(((dealsResult.error ? [] : dealsResult.data) ?? []) as HomeDealRecord[]);
-    setBlogPosts(
-      ((blogPostsResult.error ? [] : blogPostsResult.data) ?? []) as BlogPostRecord[],
-    );
-    setNewsletterSubscribers(
-      ((newsletterSubscribersResult.error
-        ? []
-        : newsletterSubscribersResult.data) ?? []) as NewsletterSubscriber[],
-    );
-    setNewsletterCampaigns(
-      ((newsletterCampaignsResult.error
-        ? []
-        : newsletterCampaignsResult.data) ?? []) as NewsletterCampaign[],
-    );
-    setCampaignContacts(
+    setTotalProductCount(productCountResult.count ?? 0);
+    setTotalCustomerCount(customerCountResult.count ?? 0);
+
+    const rawStats = orderStatsResult.data as {
+      total_paid_orders: number;
+      total_revenue: number;
+      monthly_paid_orders: number;
+      monthly_revenue: number;
+    } | null;
+
+    if (rawStats) {
+      setOrderStats({
+        totalPaidOrders: Number(rawStats.total_paid_orders ?? 0),
+        totalRevenue: Number(rawStats.total_revenue ?? 0),
+        monthlyPaidOrders: Number(rawStats.monthly_paid_orders ?? 0),
+        monthlyRevenue: Number(rawStats.monthly_revenue ?? 0),
+      });
+    }
+  }, []);
+
+const loadAdminData = useCallback(async (showSpinner = false) => {
+  if (!userId) {
+    return;
+  }
+
+  if (showSpinner) {
+    setLoading(true);
+  }
+
+  const [
+    registriesResult,
+    registryItemsResult,
+    registryOrdersResult,
+    registryContributionsResult,
+    dealsResult,
+    blogPostsResult,
+    newsletterSubscribersResult,
+    newsletterCampaignsResult,
+    campaignContactsResult,
+    productCategoriesResult,
+    specialPackagesResult,
+    shippingTiersResult,
+    siteContentSettingsResult,
+    storeLocationsResult,
+    homepageReviewsResult,
+    registryReviewsResult,
+  ] = await Promise.all([
+    supabase.from("registries").select("*").order("created_at", { ascending: false }),
+    supabase
+      .from("registry_items")
+      .select(`*, products(${PRODUCT_LIST_SELECT})`)
+      .order("created_at", { ascending: false }),
+    supabase
+      .from("registry_orders")
+      .select("*")
+      .order("created_at", { ascending: false }),
+    supabase
+      .from("registry_contributions")
+      .select("*")
+      .order("created_at", { ascending: false }),
+    supabase
+      .from("homepage_deals")
+      .select("*")
+      .order("sort_order", { ascending: true }),
+    supabase
+      .from("blog_posts")
+      .select("*")
+      .order("created_at", { ascending: false }),
+    supabase
+      .from("newsletter_subscribers")
+      .select("*")
+      .order("created_at", { ascending: false }),
+    supabase
+      .from("newsletter_campaigns")
+      .select("*")
+      .order("created_at", { ascending: false }),
+    supabase
+      .from("campaign_contacts")
+      .select("*")
+      .order("created_at", { ascending: false }),
+    supabase
+      .from("product_categories")
+      .select("*")
+      .order("sort_order", { ascending: true }),
+    supabase
+      .from("special_packages")
+      .select(`*, products(${PRODUCT_LIST_SELECT})`)
+      .order("package_type", { ascending: false })
+      .order("sort_order", { ascending: true }),
+    supabase
+      .from("shipping_tiers")
+      .select("*")
+      .order("sort_order", { ascending: true }),
+    supabase
+      .from("site_content_settings")
+      .select("*")
+      .in("key", ["hero_image", "about_images"]),
+    supabase
+      .from("store_locations")
+      .select("*")
+      .order("sort_order", { ascending: true })
+      .order("created_at", { ascending: false }),
+    supabase
+      .from("homepage_reviews")
+      .select("*")
+      .order("sort_order", { ascending: true }),
+    supabase
+      .from("registry_reviews")
+      .select("*")
+      .order("sort_order", { ascending: true }),
+  ]);
+
+  setSpecialPackages(
+    ((specialPackagesResult.error ? [] : specialPackagesResult.data) ?? []) as SpecialPackageRecord[],
+  );
+  setRegistries(
+    ((registriesResult.error ? [] : registriesResult.data) ?? []) as RegistryRecord[],
+  );
+  setDeals(((dealsResult.error ? [] : dealsResult.data) ?? []) as HomeDealRecord[]);
+  setBlogPosts(
+    ((blogPostsResult.error ? [] : blogPostsResult.data) ?? []) as BlogPostRecord[],
+  );
+  setNewsletterSubscribers(
+    ((newsletterSubscribersResult.error
+      ? []
+      : newsletterSubscribersResult.data) ?? []) as NewsletterSubscriber[],
+  );
+  setNewsletterCampaigns(
+    ((newsletterCampaignsResult.error
+      ? []
+      : newsletterCampaignsResult.data) ?? []) as NewsletterCampaign[],
+  );
+  setCampaignContacts(
+    campaignContactsResult.error?.code === "42P01"
+      ? []
+      : ((campaignContactsResult.error ? [] : campaignContactsResult.data) ?? []) as CampaignContactRecord[],
+  );
+  setProductCategories(
+    productCategoriesResult.error?.code === "42P01"
+      ? []
+      : ((productCategoriesResult.error ? [] : productCategoriesResult.data) ?? []) as ProductCategoryRecord[],
+  );
+  setShippingTiers(
+    ((shippingTiersResult.error ? [] : shippingTiersResult.data) ?? []) as ShippingTier[],
+  );
+  const nextSiteContentSettings =
+    siteContentSettingsResult.error?.code === "42P01"
+      ? []
+      : ((siteContentSettingsResult.error ? [] : siteContentSettingsResult.data) ?? []) as SiteContentSettingRecord[];
+  const nextHomepageSiteContent = buildHomepageSiteContent(nextSiteContentSettings);
+  setSiteContentSettings(nextSiteContentSettings);
+  setStoreLocations(
+    ((storeLocationsResult.error ? [] : storeLocationsResult.data) ?? []) as StoreLocationRecord[],
+  );
+  setHomepageReviews(
+    homepageReviewsResult.error?.code === "42P01"
+      ? []
+      : ((homepageReviewsResult.error ? [] : homepageReviewsResult.data) ?? []) as HomepageReviewRecord[],
+  );
+  setRegistryReviews(
+    registryReviewsResult.error?.code === "42P01"
+      ? []
+      : ((registryReviewsResult.error ? [] : registryReviewsResult.data) ?? []) as HomepageReviewRecord[],
+  );
+  setHeroImageDraft(nextHomepageSiteContent.heroImage);
+  setHeroImageFile(null);
+  setAboutImageDrafts(buildAboutImageDrafts(nextHomepageSiteContent.aboutImages));
+
+  const registryItems = ((registryItemsResult.error
+    ? []
+    : registryItemsResult.data) ?? []) as RegistryItemRecord[];
+  const mappedRegistryItems = registryItems.map(mapRegistryItemRecord);
+  const registryItemsById = mappedRegistryItems.reduce<Record<string, RegistryItem[]>>(
+    (accumulator, item) => {
+      const existing = accumulator[item.registryId] ?? [];
+      existing.push(item);
+      accumulator[item.registryId] = existing;
+      return accumulator;
+    },
+    {},
+  );
+  setRegistryItemsByRegistry(registryItemsById);
+
+  const registrySummaryMap = Object.fromEntries(
+    Object.entries(registryItemsById).map(([registryId, items]) => [
+      registryId,
+      summarizeRegistryItems(items),
+    ]),
+  ) as Record<string, RegistrySummary>;
+  setRegistrySummaries(registrySummaryMap);
+
+  const registryOrders =
+    ((registryOrdersResult.error ? [] : registryOrdersResult.data) ?? []) as RegistryOrderRecord[];
+  const registryContributions =
+    ((registryContributionsResult.error
+      ? []
+      : registryContributionsResult.data) ?? []) as RegistryContributionRecord[];
+  let registryOrderItems: RegistryOrderItemRecord[] = [];
+
+  if (registryOrders.length > 0) {
+    const { data: registryOrderItemsData, error: registryOrderItemsError } = await supabase
+      .from("registry_order_items")
+      .select("*")
+      .in(
+        "registry_order_id",
+        registryOrders.map((registryOrder) => registryOrder.id),
+      );
+
+    registryOrderItems = ((registryOrderItemsError ? [] : registryOrderItemsData) ?? []) as
+      RegistryOrderItemRecord[];
+  }
+
+  const registryOrderItemsMap = registryOrderItems.reduce<Record<string, RegistryOrderItemRecord[]>>(
+    (accumulator, item) => {
+      const existing = accumulator[item.registry_order_id] ?? [];
+      existing.push(item);
+      accumulator[item.registry_order_id] = existing;
+      return accumulator;
+    },
+    {},
+  );
+
+  const registryPaymentsMap = (((registriesResult.error ? [] : registriesResult.data) ?? []) as
+    RegistryRecord[]).reduce<Record<string, RegistryPaymentActivity[]>>(
+    (accumulator, registry) => {
+      const registryOrdersForRegistry = registryOrders.filter(
+        (registryOrder) => registryOrder.registry_id === registry.id,
+      );
+      accumulator[registry.id] = buildRegistryPaymentActivities({
+        contributions: registryContributions.filter(
+          (contribution) => contribution.registry_id === registry.id,
+        ),
+        orderItems: registryOrderItems.filter((orderItem) =>
+          registryOrdersForRegistry.some(
+            (registryOrder) => registryOrder.id === orderItem.registry_order_id,
+          ),
+        ),
+        orders: registryOrdersForRegistry,
+        registryItems: registryItemsById[registry.id] ?? [],
+      });
+      return accumulator;
+    },
+    {},
+  );
+  setRegistryPaymentActivities(registryPaymentsMap);
+
+  persistAdminDashboardCacheEntry(userId, {
+    blogPosts: ((blogPostsResult.error ? [] : blogPostsResult.data) ?? []) as BlogPostRecord[],
+    campaignContacts:
       campaignContactsResult.error?.code === "42P01"
         ? []
-        : ((campaignContactsResult.error ? [] : campaignContactsResult.data) ?? []) as CampaignContactRecord[],
-    );
-    setProductCategories(
+        : (((campaignContactsResult.error ? [] : campaignContactsResult.data) ?? []) as CampaignContactRecord[]),
+    deals: ((dealsResult.error ? [] : dealsResult.data) ?? []) as HomeDealRecord[],
+    newsletterCampaigns:
+      ((newsletterCampaignsResult.error ? [] : newsletterCampaignsResult.data) ?? []) as NewsletterCampaign[],
+    newsletterSubscribers:
+      ((newsletterSubscribersResult.error ? [] : newsletterSubscribersResult.data) ?? []) as NewsletterSubscriber[],
+    productCategories:
       productCategoriesResult.error?.code === "42P01"
         ? []
-        : ((productCategoriesResult.error ? [] : productCategoriesResult.data) ?? []) as ProductCategoryRecord[],
-    );
-    setShippingTiers(
+        : (((productCategoriesResult.error ? [] : productCategoriesResult.data) ?? []) as ProductCategoryRecord[]),
+    specialPackages:
+      ((specialPackagesResult.error ? [] : specialPackagesResult.data) ?? []) as SpecialPackageRecord[],
+    registries: ((registriesResult.error ? [] : registriesResult.data) ?? []) as RegistryRecord[],
+    registryItemsByRegistry: registryItemsById,
+    registryOrderItemsByOrder: registryOrderItemsMap,
+    registryOrders,
+    registryPaymentActivities: registryPaymentsMap,
+    registrySummaries: registrySummaryMap,
+    shippingTiers:
       ((shippingTiersResult.error ? [] : shippingTiersResult.data) ?? []) as ShippingTier[],
-    );
-    const nextSiteContentSettings =
+    siteContentSettings:
       siteContentSettingsResult.error?.code === "42P01"
         ? []
-        : ((siteContentSettingsResult.error ? [] : siteContentSettingsResult.data) ?? []) as SiteContentSettingRecord[];
-    const nextHomepageSiteContent = buildHomepageSiteContent(nextSiteContentSettings);
-    setSiteContentSettings(nextSiteContentSettings);
-    setStoreLocations(
+        : (((siteContentSettingsResult.error ? [] : siteContentSettingsResult.data) ?? []) as SiteContentSettingRecord[]),
+    storeLocations:
       ((storeLocationsResult.error ? [] : storeLocationsResult.data) ?? []) as StoreLocationRecord[],
-    );
-    setHomepageReviews(
+    homepageReviews:
       homepageReviewsResult.error?.code === "42P01"
         ? []
-        : ((homepageReviewsResult.error ? [] : homepageReviewsResult.data) ?? []) as HomepageReviewRecord[],
-    );
-    setRegistryReviews(
+        : (((homepageReviewsResult.error ? [] : homepageReviewsResult.data) ?? []) as HomepageReviewRecord[]),
+    registryReviews:
       registryReviewsResult.error?.code === "42P01"
         ? []
-        : ((registryReviewsResult.error ? [] : registryReviewsResult.data) ?? []) as HomepageReviewRecord[],
-    );
-    setHeroImageDraft(nextHomepageSiteContent.heroImage);
-    setHeroImageFile(null);
-    setAboutImageDrafts(buildAboutImageDrafts(nextHomepageSiteContent.aboutImages));
+        : (((registryReviewsResult.error ? [] : registryReviewsResult.data) ?? []) as HomepageReviewRecord[]),
+  });
 
-    const registryItems = ((registryItemsResult.error
-      ? []
-      : registryItemsResult.data) ?? []) as RegistryItemRecord[];
-    const mappedRegistryItems = registryItems.map(mapRegistryItemRecord);
-    const registryItemsById = mappedRegistryItems.reduce<Record<string, RegistryItem[]>>(
-      (accumulator, item) => {
-        const existing = accumulator[item.registryId] ?? [];
-        existing.push(item);
-        accumulator[item.registryId] = existing;
-        return accumulator;
-      },
-      {},
-    );
-    setRegistryItemsByRegistry(registryItemsById);
+  if (showSpinner) {
+    setLoading(false);
+  }
+}, [userId]);
 
-    const registrySummaryMap = Object.fromEntries(
-      Object.entries(registryItemsById).map(([registryId, items]) => [
-        registryId,
-        summarizeRegistryItems(items),
-      ]),
-    ) as Record<string, RegistrySummary>;
-    setRegistrySummaries(registrySummaryMap);
+useEffect(() => {
+  if (adminAccessStatus !== "allowed") return;
+  
+  const timeoutId = window.setTimeout(() => {
+    void fetchDashboardCounts();
+  }, 0);
 
-    const registryOrders =
-      ((registryOrdersResult.error ? [] : registryOrdersResult.data) ?? []) as RegistryOrderRecord[];
-    const registryContributions =
-      ((registryContributionsResult.error
-        ? []
-        : registryContributionsResult.data) ?? []) as RegistryContributionRecord[];
-    let registryOrderItems: RegistryOrderItemRecord[] = [];
+  return () => {
+    window.clearTimeout(timeoutId);
+  };
+}, [adminAccessStatus, fetchDashboardCounts]);
 
-    if (registryOrders.length > 0) {
-      const { data: registryOrderItemsData, error: registryOrderItemsError } = await supabase
-        .from("registry_order_items")
-        .select("*")
-        .in(
-          "registry_order_id",
-          registryOrders.map((registryOrder) => registryOrder.id),
-        );
+  useEffect(() => {
+    if (adminAccessStatus !== "allowed") return;
+    ordersPageRef.current = 0;
 
-      registryOrderItems = ((registryOrderItemsError ? [] : registryOrderItemsData) ?? []) as
-        RegistryOrderItemRecord[];
-    }
+    const timeoutId = window.setTimeout(() => {
+      void fetchOrdersPage(true);
+      void fetchOrderCounts();
+    }, 0);
 
-    const registryOrderItemsMap = registryOrderItems.reduce<Record<string, RegistryOrderItemRecord[]>>(
-      (accumulator, item) => {
-        const existing = accumulator[item.registry_order_id] ?? [];
-        existing.push(item);
-        accumulator[item.registry_order_id] = existing;
-        return accumulator;
-      },
-      {},
-    );
-
-    const registryPaymentsMap = (((registriesResult.error ? [] : registriesResult.data) ?? []) as
-      RegistryRecord[]).reduce<Record<string, RegistryPaymentActivity[]>>(
-      (accumulator, registry) => {
-        const registryOrdersForRegistry = registryOrders.filter(
-          (registryOrder) => registryOrder.registry_id === registry.id,
-        );
-        accumulator[registry.id] = buildRegistryPaymentActivities({
-          contributions: registryContributions.filter(
-            (contribution) => contribution.registry_id === registry.id,
-          ),
-          orderItems: registryOrderItems.filter((orderItem) =>
-            registryOrdersForRegistry.some(
-              (registryOrder) => registryOrder.id === orderItem.registry_order_id,
-            ),
-          ),
-          orders: registryOrdersForRegistry,
-          registryItems: registryItemsById[registry.id] ?? [],
-        });
-        return accumulator;
-      },
-      {},
-    );
-    setRegistryPaymentActivities(registryPaymentsMap);
-
-    persistAdminDashboardCacheEntry(userId, {
-      blogPosts: ((blogPostsResult.error ? [] : blogPostsResult.data) ?? []) as BlogPostRecord[],
-      campaignContacts:
-        campaignContactsResult.error?.code === "42P01"
-          ? []
-          : (((campaignContactsResult.error ? [] : campaignContactsResult.data) ?? []) as CampaignContactRecord[]),
-      deals: ((dealsResult.error ? [] : dealsResult.data) ?? []) as HomeDealRecord[],
-      newsletterCampaigns:
-        ((newsletterCampaignsResult.error ? [] : newsletterCampaignsResult.data) ?? []) as NewsletterCampaign[],
-      newsletterSubscribers:
-        ((newsletterSubscribersResult.error ? [] : newsletterSubscribersResult.data) ?? []) as NewsletterSubscriber[],
-      orders: ((ordersResult.error ? [] : ordersResult.data) ?? []) as AdminOrderRecord[],
-      productCategories:
-        productCategoriesResult.error?.code === "42P01"
-          ? []
-          : (((productCategoriesResult.error ? [] : productCategoriesResult.data) ?? []) as ProductCategoryRecord[]),
-      specialPackages:
-        ((specialPackagesResult.error ? [] : specialPackagesResult.data) ?? []) as SpecialPackageRecord[],
-      registries: ((registriesResult.error ? [] : registriesResult.data) ?? []) as RegistryRecord[],
-      registryItemsByRegistry: registryItemsById,
-      registryOrderItemsByOrder: registryOrderItemsMap,
-      registryOrders,
-      registryPaymentActivities: registryPaymentsMap,
-      registrySummaries: registrySummaryMap,
-      shippingTiers:
-        ((shippingTiersResult.error ? [] : shippingTiersResult.data) ?? []) as ShippingTier[],
-      siteContentSettings:
-        siteContentSettingsResult.error?.code === "42P01"
-          ? []
-          : (((siteContentSettingsResult.error ? [] : siteContentSettingsResult.data) ?? []) as SiteContentSettingRecord[]),
-      storeLocations:
-        ((storeLocationsResult.error ? [] : storeLocationsResult.data) ?? []) as StoreLocationRecord[],
-      homepageReviews:
-        homepageReviewsResult.error?.code === "42P01"
-          ? []
-          : (((homepageReviewsResult.error ? [] : homepageReviewsResult.data) ?? []) as HomepageReviewRecord[]),
-      registryReviews:
-        registryReviewsResult.error?.code === "42P01"
-          ? []
-          : (((registryReviewsResult.error ? [] : registryReviewsResult.data) ?? []) as HomepageReviewRecord[]),
-    });
-
-    if (showSpinner) {
-      setLoading(false);
-    }
-  }, [userId]);
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [adminAccessStatus, orderStatusTab, orderDateFilter, orderDateRange, orderSearchQuery]);
 
   useEffect(() => {
     if (adminAccessStatus !== "allowed") return;
@@ -1122,20 +1292,9 @@ useEffect(() => {
     });
   };
 
-  const stats = useMemo(() => {
-    const paidOrders = orders.filter((order) => order.status === "paid");
-
-    return {
-      totalOrders: orders.length,
-      totalRevenue: paidOrders.reduce((sum, order) => sum + Number(order.total), 0),
-      totalCustomers: customers.length,
-      totalProducts: products.length,
-    };
-  }, [customers.length, orders, products.length]);
-
   const currentMonth = new Date().getMonth();
   const currentYear = new Date().getFullYear();
-  const monthlyOrders = orders.filter((order) => {
+  const monthlyOrders = (orders ?? []).filter((order) => {
     const orderDate = new Date(order.created_at);
     return (
       orderDate.getMonth() === currentMonth &&
@@ -1146,7 +1305,7 @@ useEffect(() => {
     .filter((order) => order.status === "paid")
     .reduce((sum, order) => sum + Number(order.total), 0);
   const paidOrders = useMemo(
-    () => orders.filter((order) => order.status === "paid"),
+    () => (orders ?? []).filter((order) => order.status === "paid"),
     [orders],
   );
   const activeSubscribers = useMemo(
@@ -3199,8 +3358,8 @@ useEffect(() => {
                 <Package className="h-4 w-4 text-gray-500" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">{paidOrders.length}</div>
-                <p className="text-xs text-gray-500">{monthlyOrders.length} this month</p>
+                <div className="text-2xl font-bold">{orderStats.totalPaidOrders}</div>
+                <p className="text-xs text-gray-500">{orderStats.monthlyPaidOrders} this month</p>
               </CardContent>
             </Card>
 
@@ -3211,10 +3370,10 @@ useEffect(() => {
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">
-                  {formatNairaAmount(stats.totalRevenue)}
+                  {formatNairaAmount(orderStats.totalRevenue)}
                 </div>
                 <p className="text-xs text-gray-500">
-                  {formatNairaAmount(monthlyRevenue)} this month
+                  {formatNairaAmount(orderStats.monthlyRevenue)} this month
                 </p>
               </CardContent>
             </Card>
@@ -3225,7 +3384,7 @@ useEffect(() => {
                 <Users className="h-4 w-4 text-gray-500" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">{stats.totalCustomers}</div>
+                <div className="text-2xl font-bold">{totalCustomerCount}</div>
                 <p className="text-xs text-gray-500">Registered users</p>
               </CardContent>
             </Card>
@@ -3236,10 +3395,7 @@ useEffect(() => {
                 <ShoppingBag className="h-4 w-4 text-gray-500" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">{stats.totalProducts}</div>
-                <p className="text-xs text-gray-500">
-                  {products.filter((product) => product.in_stock).length} in stock
-                </p>
+                <div className="text-2xl font-bold">{totalProductCount}</div>
               </CardContent>
             </Card>
           </div>
@@ -3267,10 +3423,30 @@ useEffect(() => {
             <AdminOrdersManager
               customers={customers}
               getAdminAccessToken={getAdminAccessToken}
-              onReload={loadAdminData}
+              onReload={() => {
+                ordersPageRef.current = 0;
+                return Promise.all([fetchOrdersPage(true), fetchOrderCounts()]).then(() => undefined);
+              }}
               orders={orders}
               products={products}
               shippingTiers={shippingTiers}
+              statusTab={orderStatusTab}
+              onStatusTabChange={setOrderStatusTab}
+              dateFilter={orderDateFilter}
+              onDateFilterChange={setOrderDateFilter}
+              dateRange={orderDateRange}
+              onDateRangeChange={(range) => {
+                if (!range) return;
+                // range may have optional fields; ensure non-null before setting state
+                setOrderDateRange({ from: range.from as Date, to: range.to as Date });
+              }}
+              searchInput={orderSearchInput}
+              onSearchInputChange={setOrderSearchInput}
+              paidCount={orderCounts.paid}
+              unpaidCount={orderCounts.unpaid}
+              hasMore={ordersHasMore}
+              loadingMore={ordersLoadingMore}
+              sentinelRef={ordersSentinelRef}
             />
           </div>
         </TabsContent>
@@ -3765,7 +3941,7 @@ useEffect(() => {
             </CardHeader>
             <CardContent>
               {specialPackages.length === 0 ? (
-                <p className="text-sm text-gray-500">No packages yet.</p>
+                <p className="text-sm text-gray-500">No packages added yet.</p>
               ) : (
                 <Table>
                   <TableHeader>
@@ -5490,8 +5666,7 @@ useEffect(() => {
                           </label>
                         </div>
                         <p className="text-xs text-gray-500">
-                          Add one or more photos for this option to let people slide through them. Leave empty to use
-                          the main product photos.
+                          Add one or more photos for a variant gallery.
                         </p>
                       </div>
                     </div>

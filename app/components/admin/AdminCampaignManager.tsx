@@ -342,9 +342,6 @@ export function AdminCampaignManager({
                 <Mail className="mr-2 h-4 w-4" />
                 {sendingCampaign ? "Sending..." : "Send Campaign"}
               </Button>
-              <p className="text-sm text-gray-500">
-                Customers can opt out by clicking the unsubscribe link in the email or by turning off campaign emails in the dashboard security tab.
-              </p>
             </form>
           </CardContent>
         </Card>

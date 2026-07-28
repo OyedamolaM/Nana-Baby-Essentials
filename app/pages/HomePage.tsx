@@ -249,7 +249,7 @@ export function HomePage({
           onViewAll={() => router.push("/products")}
           onViewProduct={handleViewProduct}
           sectionTitle="Products"
-          sectionSubtitle="Browse all baby essentials by category, search within the section, and move through the catalog without leaving the homepage."
+          sectionSubtitle="Browse all baby essentials by category, search within the section, and move through the catalog."
         />
 
         <section id="about">
