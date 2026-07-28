@@ -248,28 +248,6 @@ export async function POST(request: Request) {
       ],
     });
 
-    const adminEmail = process.env.ORDER_NOTIFICATION_EMAIL;
-    if (adminEmail) {
-      await sendBrevoEmail({
-        senderProfile: "order",
-        subject: `New Order #${order.id}`,
-        htmlContent: `
-          <h2>New Order Received</h2>
-          <p><strong>Customer:</strong> ${order.customer_name}</p>
-          <p><strong>Email:</strong> ${order.customer_email}</p>
-          <p><strong>Phone:</strong> ${order.customer_phone}</p>
-          <p><strong>Total:</strong> ₦${Number(order.total).toLocaleString()}</p>
-          <p><strong>Status:</strong> ${order.status}</p>
-          <p><strong>Payment Ref:</strong> ${order.payment_reference}</p>
-        `,
-        textContent: `New order received.`,
-        to: [
-          {
-            email: adminEmail,
-          },
-        ],
-      });
-    }
     return NextResponse.json({
       message: "Order confirmation email sent.",
       sandbox: result.sandbox,

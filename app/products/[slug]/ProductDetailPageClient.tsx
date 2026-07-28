@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
   ChevronLeft,
@@ -28,7 +28,7 @@ export function ProductDetailPageClient({
 }) {
   const router = useRouter();
   const { addItem } = useStoreCart();
-  const galleryImages = useMemo(
+  const baseGalleryImages = useMemo(
     () => (product.images ?? []).filter((image) => image.url.trim()),
     [product.images],
   );
@@ -65,6 +65,15 @@ export function ProductDetailPageClient({
     );
   }, [hasColorPicker, hasSizePicker, hasVariantChoices, productVariants, selectedColor, selectedSize]);
 
+  // Slide through the selected variant's own photos when it has any;
+  // otherwise fall back to the product's general gallery.
+  const galleryImages =
+    selectedVariant?.images && selectedVariant.images.length > 0
+      ? selectedVariant.images
+      : baseGalleryImages;
+
+  const resetSelectedImageIndex = () => setSelectedImageIndex(0);
+
   const sizeOptions = useMemo(
     () =>
       Array.from(
@@ -90,16 +99,15 @@ export function ProductDetailPageClient({
 
   const displayedPrice = selectedVariant?.priceOverride ?? product.price;
   const selectedVariantInStock = Boolean(selectedVariant && selectedVariant.inStock);
-  const needsSelection =
-    hasVariantChoices &&
-    (!selectedVariant || (hasSizePicker && !selectedSize) || (hasColorPicker && !selectedColor));
-  const canAddToCart = hasVariantChoices
+  const hasStartedSelecting =
+    (hasSizePicker && Boolean(selectedSize)) || (hasColorPicker && Boolean(selectedColor));
+  const needsSelection = hasVariantChoices && hasStartedSelecting && !selectedVariant;
+  const canAddToCart = selectedVariant
     ? selectedVariantInStock
-    : product.inStock;
-  const mainImage =
-    selectedVariant?.imageUrl ||
-    galleryImages[selectedImageIndex]?.url ||
-    getFullProductImageUrl(product.image);
+    : needsSelection
+      ? false
+      : product.inStock;
+  const mainImage = galleryImages[selectedImageIndex]?.url || getFullProductImageUrl(product.image);
 
   const getVariantImageForColor = (color: string) =>
     productVariants.find(
@@ -175,22 +183,17 @@ export function ProductDetailPageClient({
   };
 
   const handleAddToCart = () => {
-    if (hasVariantChoices && productVariants.length === 0) {
-      toast.error(
-        allProductVariants.length > 0
-          ? "This product is currently out of stock."
-          : "This product's options are being updated. Please try again shortly.",
-      );
-      return;
-    }
-
-    if (needsSelection || (hasVariantChoices && !selectedVariant)) {
-      toast.error("Choose the available product options before adding it to cart.");
+    if (needsSelection) {
+      toast.error("Finish selecting an option, or clear your selection to add the standard product.");
       return;
     }
 
     if (!canAddToCart) {
-      toast.error("This product option is currently out of stock.");
+      toast.error(
+        selectedVariant
+          ? "This product option is currently out of stock."
+          : "This product is currently out of stock.",
+      );
       return;
     }
 
@@ -225,18 +228,15 @@ export function ProductDetailPageClient({
     router.push(reopenContext?.originPath || "/products");
   };
 
-  const allVariantsOutOfStock = hasVariantChoices && allProductVariants.length > 0 && productVariants.length === 0;
-  const availabilityLabel = hasVariantChoices
-    ? allVariantsOutOfStock
-      ? "Out of stock"
-      : needsSelection
-        ? "Select an option"
-        : selectedVariantInStock
-          ? "In stock"
-          : "Currently unavailable"
-    : product.inStock
+  const availabilityLabel = selectedVariant
+    ? selectedVariantInStock
       ? "In stock"
-      : "Currently unavailable";
+      : "Currently unavailable"
+    : needsSelection
+      ? "Select an option"
+      : product.inStock
+        ? "In stock"
+        : "Currently unavailable";
 
   return (
     <div className="min-h-screen overflow-x-hidden bg-white">
@@ -428,15 +428,17 @@ export function ProductDetailPageClient({
                     </div>
                   ) : null}
                   <p className="text-sm text-gray-600">
-                    {productVariants.length === 0
-                      ? allProductVariants.length > 0
-                        ? "This product is currently out of stock."
-                        : "Options are being updated. Please check back shortly."
-                      : needsSelection
-                        ? "Select the available option before adding this product to cart."
-                        : selectedVariantInStock ?
-                            "In stock"
-                          : "This selected option is currently unavailable."}
+                    {needsSelection
+                      ? "Finish selecting an option, or leave it unselected to add the standard product."
+                      : selectedVariant
+                        ? selectedVariantInStock
+                          ? selectedVariant.stockQuantity > 0
+                            ? `${selectedVariant.stockQuantity} available`
+                            : "In stock"
+                          : "This selected option is currently unavailable."
+                        : product.inStock
+                          ? "In stock"
+                          : "Currently unavailable"}
                   </p>
                 </div>
               ) : null}
@@ -460,8 +462,8 @@ export function ProductDetailPageClient({
                   disabled={!canAddToCart}
                 >
                   <ShoppingCart className="mr-2 h-4 w-4" />
-                  {hasVariantChoices && needsSelection
-                    ? "Select Options"
+                  {needsSelection
+                    ? "Finish Selecting"
                     : canAddToCart
                       ? "Add to Cart"
                       : "Out of Stock"}

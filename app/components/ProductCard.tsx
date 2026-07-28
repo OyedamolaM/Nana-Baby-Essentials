@@ -68,9 +68,7 @@ export function ProductCard({
   onViewDetails,
   addLabel = "Add to Cart",
 }: ProductCardProps) {
-  const needsVariantSelection = Boolean(product.hasVariants);
-  const resolvedAddLabel = needsVariantSelection ? "Choose Options" : addLabel;
-  const useCompactAddButton = resolvedAddLabel.length > 12;
+  const useCompactAddButton = addLabel.length > 12;
   const productCategories =
     product.categories && product.categories.length > 0
       ? product.categories
@@ -120,24 +118,13 @@ export function ProductCard({
             useCompactAddButton &&
               "gap-1 px-2 text-[13px] sm:gap-2 sm:px-4 sm:text-sm",
           )}
-          onClick={() => {
-            if (needsVariantSelection) {
-              onViewDetails?.(product);
-              return;
-            }
-
-            onAddToCart(product);
-          }}
-          disabled={needsVariantSelection ? !onViewDetails : !product.inStock}
+          onClick={() => onAddToCart(product)}
+          disabled={!product.inStock}
         >
           <ShoppingCart
             className={cn("h-4 w-4", useCompactAddButton && "h-3.5 w-3.5 sm:h-4 sm:w-4")}
           />
-           {needsVariantSelection
-             ? resolvedAddLabel
-             : product.inStock
-               ? resolvedAddLabel
-               : "Out of Stock"}
+           {product.inStock ? addLabel : "Out of Stock"}
         </Button>
         <Button
           type="button"

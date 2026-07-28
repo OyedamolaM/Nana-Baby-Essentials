@@ -29,6 +29,7 @@ type AddProductImagePayload = {
   mode?: "append" | "replace-primary";
   path?: string;
   thumbnailPath?: string;
+  variantId?: string;
 };
 
 type UpdateProductImagesPayload = {
@@ -129,15 +130,22 @@ async function insertProductImageWithRetry(
     is_variant_only: boolean;
     thumbnail_url: string;
     url: string;
+    variant_id?: string | null;
   },
   maxAttempts = 5,
 ) {
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-    const { data: currentImages } = await client
+    let currentImagesQuery = client
       .from("product_images")
       .select("sort_order")
       .eq("product_id", productId)
       .eq("is_variant_only", payload.is_variant_only);
+
+    currentImagesQuery = payload.variant_id
+      ? currentImagesQuery.eq("variant_id", payload.variant_id)
+      : currentImagesQuery.is("variant_id", null);
+
+    const { data: currentImages } = await currentImagesQuery;
 
     const nextSortOrder =
       Math.max(-1, ...((currentImages ?? []) as { sort_order: number }[]).map((image) => Number(image.sort_order))) + 1;
@@ -236,6 +244,7 @@ export async function POST(request: Request, context: RouteProps) {
           is_variant_only: isVariantOnly,
           thumbnail_url: publicThumbnailUrl.publicUrl,
           url: publicImageUrl.publicUrl,
+          variant_id: payload?.variantId || null,
   });
 
   if (saveResult.error || !saveResult.data) {

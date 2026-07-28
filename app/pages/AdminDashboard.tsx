@@ -198,12 +198,18 @@ type AdminProductImage = {
   url: string;
 };
 
+type VariantImageDraft = {
+  id: string;
+  url: string;
+  thumbnailUrl?: string;
+};
+
 type ProductVariantDraft = {
   color: string;
   id?: string;
-  imageFile?: File | null;
-  imageId: string;
-  imagePreviewUrl?: string;
+  images: VariantImageDraft[];
+  pendingImageFiles: File[];
+  pendingImagePreviews: string[];
   inStock: boolean;
   priceOverride: string;
   size: string;
@@ -582,9 +588,6 @@ export function AdminDashboard() {
   const [productImageFiles, setProductImageFiles] = useState<File[]>([]);
   const [pendingImagePreviews, setPendingImagePreviews] = useState<{ file: File; url: string }[]>([]);
   const [productGalleryImages, setProductGalleryImages] = useState<AdminProductImage[]>([]);
-  const [variantImagePreviews, setVariantImagePreviews] = useState<
-    Record<string, { url: string; thumbnail_url?: string | null }>
-  >({});
   const [productGalleryAction, setProductGalleryAction] = useState<string | null>(null);
   const [productBrand, setProductBrand] = useState("");
   const [productAgeRange, setProductAgeRange] = useState("");
@@ -680,9 +683,9 @@ export function AdminDashboard() {
 
       let query = supabase
         .from("products")
-        .select(`${PRODUCT_LIST_SELECT},brand,age_range,has_variants`)
+        .select(`${PRODUCT_LIST_SELECT},brand,age_range,has_variants`, { count: "exact" })
         .eq("product_kind", "standard")
-        .order("created_at", { ascending: false })
+        .order("name", { ascending: true })
         .range(from, to);
 
       if (productSearchQuery.trim()) {
@@ -692,11 +695,13 @@ export function AdminDashboard() {
         query = query.eq("category", productCategoryFilter);
       }
 
-      const { data, error } = await query;
+      const { data, error, count } = await query;
       const rows = ((error ? [] : data) ?? []) as ProductRecord[];
 
       setProducts((current) => (reset ? rows : [...current, ...rows]));
-      setProductsHasMore(rows.length === PRODUCTS_PAGE_SIZE);
+      setProductsHasMore(
+        typeof count === "number" ? from + rows.length < count : rows.length === PRODUCTS_PAGE_SIZE,
+      );
       productsPageRef.current = page + 1;
       setProductsLoadingMore(false);
     },
@@ -2136,7 +2141,6 @@ useEffect(() => {
     setProductImage("");
     setProductImageFiles([]);
     setProductGalleryImages([]);
-    setVariantImagePreviews({});
     setProductGalleryAction(null);
     setProductBrand("");
     setProductAgeRange("");
@@ -2181,7 +2185,9 @@ useEffect(() => {
         .order("sort_order", { ascending: true }),
       supabase
         .from("product_variants")
-        .select("id, size, color, sku, price_override, stock_quantity, in_stock, image_id, variant_image:product_images(id, url, thumbnail_url)")
+        .select(
+          "id, size, color, sku, price_override, stock_quantity, in_stock, variant_images:product_images(id, url, thumbnail_url, sort_order)",
+        )
         .eq("product_id", product.id)
         .order("created_at", { ascending: true }),
     ]);
@@ -2199,34 +2205,32 @@ useEffect(() => {
 
     if (!variantsResult.error) {
       setProductVariantDrafts(
-        (variantsResult.data ?? []).map((variant) => ({
-          color: variant.color ?? "",
-          id: variant.id,
-          imageId: variant.image_id ?? "",
-          imageFile: null,
-          inStock: Boolean(variant.in_stock),
-          priceOverride:
-            variant.price_override === null || variant.price_override === undefined
-              ? ""
-              : String(toNairaAmount(Number(variant.price_override))),
-          size: variant.size ?? "",
-          sku: variant.sku ?? "",
-          stockQuantity: String(variant.stock_quantity ?? 0),
-        })),
-      );
-      setVariantImagePreviews(
-        Object.fromEntries(
-          (variantsResult.data ?? [])
-            .map((variant) => {
-              const variantImageRow = Array.isArray(variant.variant_image)
-                ? variant.variant_image[0]
-                : variant.variant_image;
-              return variant.image_id && variantImageRow
-                ? [variant.image_id, { url: variantImageRow.url, thumbnail_url: variantImageRow.thumbnail_url }]
-                : null;
-            })
-            .filter((entry): entry is [string, { url: string; thumbnail_url?: string | null }] => Boolean(entry)),
-        ),
+        (variantsResult.data ?? []).map((variant) => {
+          const variantImages = (Array.isArray(variant.variant_images) ? variant.variant_images : [])
+            .slice()
+            .sort((left, right) => Number(left.sort_order ?? 0) - Number(right.sort_order ?? 0))
+            .map((image) => ({
+              id: String(image.id),
+              url: image.url,
+              thumbnailUrl: image.thumbnail_url ?? undefined,
+            }));
+
+          return {
+            color: variant.color ?? "",
+            id: variant.id,
+            images: variantImages,
+            pendingImageFiles: [],
+            pendingImagePreviews: [],
+            inStock: Boolean(variant.in_stock),
+            priceOverride:
+              variant.price_override === null || variant.price_override === undefined
+                ? ""
+                : String(toNairaAmount(Number(variant.price_override))),
+            size: variant.size ?? "",
+            sku: variant.sku ?? "",
+            stockQuantity: String(variant.stock_quantity ?? 0),
+          };
+        }),
       );
     } else if (variantsResult.error.code !== "42P01") {
       toast.error("Could not load product variants.");
@@ -2370,6 +2374,46 @@ useEffect(() => {
       toast.error("Could not delete the product image.");
     } finally {
       setProductGalleryAction(null);
+    }
+  };
+
+  const handleDeleteVariantImage = async (variantIndex: number, imageId: string) => {
+    if (!editingProduct || !window.confirm("Remove this photo from the option?")) {
+      return;
+    }
+
+    const accessToken = await getAdminAccessToken();
+    if (!accessToken) {
+      toast.error("Sign in again to delete variant photos.");
+      return;
+    }
+
+    try {
+      const response = await fetch(
+        `/api/admin/products/${editingProduct.id}/images?imageId=${encodeURIComponent(imageId)}`,
+        {
+          method: "DELETE",
+          headers: { Authorization: `Bearer ${accessToken}` },
+        },
+      );
+      const result = (await response.json().catch(() => null)) as { message?: string } | null;
+      if (!response.ok) {
+        toast.error(result?.message ?? "Could not delete the variant photo.");
+        return;
+      }
+
+      setProductVariantDrafts((currentVariants) =>
+        currentVariants.map((variant, index) =>
+          index === variantIndex
+            ? { ...variant, images: variant.images.filter((image) => image.id !== imageId) }
+            : variant,
+        ),
+      );
+      await revalidatePublicTags(["products"]);
+      toast.success("Variant photo deleted.");
+    } catch (error) {
+      console.error("Failed to delete variant photo.", error);
+      toast.error("Could not delete the variant photo.");
     }
   };
 
@@ -2647,66 +2691,6 @@ useEffect(() => {
       return;
     }
 
-    const variantsWithResolvedImages = [...productVariantDrafts];
-    for (let variantIndex = 0; variantIndex < variantsWithResolvedImages.length; variantIndex += 1) {
-      const variant = variantsWithResolvedImages[variantIndex];
-      if (!variant.imageFile) {
-        continue;
-      }
-
-      const variantUploadFormData = new FormData();
-      variantUploadFormData.append("images", variant.imageFile);
-      variantUploadFormData.append("productId", String(savedProduct.id));
-
-      const variantUploadResponse = await fetch("/api/admin/products/upload", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${variantAccessToken}`,
-        },
-        body: variantUploadFormData,
-      });
-      const variantUploadResult = (await variantUploadResponse.json().catch(() => null)) as
-        | { images?: UploadedProductImage[]; message?: string }
-        | null;
-      const uploadedVariantImage = variantUploadResult?.images?.[0];
-
-      if (!variantUploadResponse.ok || !uploadedVariantImage) {
-        toast.error(
-          variantUploadResult?.message ?? "Product saved, but one of the variant photos could not be uploaded.",
-        );
-        return;
-      }
-
-      const attachResponse = await fetch(`/api/admin/products/${savedProduct.id}/images`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${variantAccessToken}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          isVariantOnly: true,
-          mode: "append",
-          path: uploadedVariantImage.path,
-          thumbnailPath: uploadedVariantImage.thumbnailPath,
-        }),
-      });
-      const attachResult = (await attachResponse.json().catch(() => null)) as
-        | { image?: { id: string }; message?: string }
-        | null;
-
-      if (!attachResponse.ok || !attachResult?.image?.id) {
-        toast.error(
-          attachResult?.message ?? "Product saved, but one of the variant photos could not be attached.",
-        );
-        return;
-      }
-
-      variantsWithResolvedImages[variantIndex] = {
-        ...variant,
-        imageId: attachResult.image.id,
-      };
-    }
-
     const variantsResponse = await fetch(
       `/api/admin/products/${savedProduct.id}/variants`,
       {
@@ -2718,10 +2702,9 @@ useEffect(() => {
         body: JSON.stringify({
           deleteExistingVariants: !productHasVariants,
           hasVariants: productHasVariants,
-          variants: variantsWithResolvedImages.map((variant) => ({
+          variants: productVariantDrafts.map((variant) => ({
             color: variant.color,
             id: variant.id,
-            imageId: variant.imageId || null,
             inStock: variant.inStock,
             priceOverride: variant.priceOverride
               ? Number(variant.priceOverride) / 1000
@@ -2734,13 +2717,73 @@ useEffect(() => {
       },
     );
     const variantsResult = (await variantsResponse.json().catch(() => null)) as
-      | { message?: string }
+      | { message?: string; savedVariantIds?: (string | null)[] }
       | null;
     if (!variantsResponse.ok && variantsResponse.status !== 409) {
       toast.error(
         variantsResult?.message ?? "Product saved, but its variants could not be synchronized.",
       );
       return;
+    }
+
+    // Now that every variant has a real id, upload each one's pending photos
+    // and tag them to that variant so they can slide through on the storefront.
+    const savedVariantIds = variantsResult?.savedVariantIds ?? [];
+    for (let variantIndex = 0; variantIndex < productVariantDrafts.length; variantIndex += 1) {
+      const variant = productVariantDrafts[variantIndex];
+      const variantId = savedVariantIds[variantIndex];
+      if (!variantId || variant.pendingImageFiles.length === 0) {
+        continue;
+      }
+
+      for (const file of variant.pendingImageFiles) {
+        const variantUploadFormData = new FormData();
+        variantUploadFormData.append("images", file);
+        variantUploadFormData.append("productId", String(savedProduct.id));
+
+        const variantUploadResponse = await fetch("/api/admin/products/upload", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${variantAccessToken}`,
+          },
+          body: variantUploadFormData,
+        });
+        const variantUploadResult = (await variantUploadResponse.json().catch(() => null)) as
+          | { images?: UploadedProductImage[]; message?: string }
+          | null;
+        const uploadedVariantImage = variantUploadResult?.images?.[0];
+
+        if (!variantUploadResponse.ok || !uploadedVariantImage) {
+          toast.error(
+            variantUploadResult?.message ?? "Product saved, but one of the variant photos could not be uploaded.",
+          );
+          continue;
+        }
+
+        const attachResponse = await fetch(`/api/admin/products/${savedProduct.id}/images`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${variantAccessToken}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            isVariantOnly: true,
+            mode: "append",
+            path: uploadedVariantImage.path,
+            thumbnailPath: uploadedVariantImage.thumbnailPath,
+            variantId,
+          }),
+        });
+        const attachResult = (await attachResponse.json().catch(() => null)) as
+          | { message?: string }
+          | null;
+
+        if (!attachResponse.ok) {
+          toast.error(
+            attachResult?.message ?? "Product saved, but one of the variant photos could not be attached.",
+          );
+        }
+      }
     }
 
     toast.success(editingProduct ? "Product updated." : "Product created.");
@@ -5225,12 +5268,6 @@ useEffect(() => {
               {productHasVariants ? (
                 <div className="space-y-3">
                   {productVariantDrafts.map((variant, index) => {
-                    const savedVariantImage = variant.imageId
-                      ? variantImagePreviews[variant.imageId]
-                      : undefined;
-                    const variantThumbnail =
-                      variant.imagePreviewUrl || savedVariantImage?.thumbnail_url || savedVariantImage?.url;
-
                     return (
                     <div
                       key={variant.id ?? `new-variant-${index}`}
@@ -5297,58 +5334,80 @@ useEffect(() => {
                         </Button>
                       </div>
                       </div>
-                      <div className="flex items-center gap-3">
-                        <div className="h-14 w-14 shrink-0 overflow-hidden rounded-md border bg-gray-50">
-                          {variantThumbnail ? (
-                            <img
-                              src={variantThumbnail}
-                              alt={`Variant ${index + 1} thumbnail`}
-                              className="h-full w-full object-cover"
-                            />
-                          ) : null}
-                        </div>
-                        <div className="flex flex-1 flex-wrap items-center gap-2">
-                          <label className="cursor-pointer rounded-md border border-dashed px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50">
-                            {variantThumbnail ? "Replace photo" : "Upload photo for this variant"}
+                      <div className="space-y-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                          {variant.images.map((image) => (
+                            <div key={image.id} className="group relative h-14 w-14 shrink-0">
+                              <img
+                                src={image.thumbnailUrl || image.url}
+                                alt={`Variant ${index + 1} photo`}
+                                className="h-full w-full rounded-md border object-cover"
+                              />
+                              <button
+                                type="button"
+                                className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full border bg-white text-red-600 shadow-sm"
+                                title="Remove photo"
+                                aria-label="Remove photo"
+                                onClick={() => void handleDeleteVariantImage(index, image.id)}
+                              >
+                                <Trash2 className="h-3 w-3" />
+                              </button>
+                            </div>
+                          ))}
+                          {variant.pendingImagePreviews.map((previewUrl, previewIndex) => (
+                            <div key={previewUrl} className="group relative h-14 w-14 shrink-0">
+                              <img
+                                src={previewUrl}
+                                alt={`Variant ${index + 1} pending photo`}
+                                className="h-full w-full rounded-md border-2 border-dashed object-cover opacity-80"
+                              />
+                              <button
+                                type="button"
+                                className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full border bg-white text-red-600 shadow-sm"
+                                title="Remove photo"
+                                aria-label="Remove photo"
+                                onClick={() => {
+                                  URL.revokeObjectURL(previewUrl);
+                                  updateProductVariantDraft(index, {
+                                    pendingImageFiles: variant.pendingImageFiles.filter(
+                                      (_, fileIndex) => fileIndex !== previewIndex,
+                                    ),
+                                    pendingImagePreviews: variant.pendingImagePreviews.filter(
+                                      (_, fileIndex) => fileIndex !== previewIndex,
+                                    ),
+                                  });
+                                }}
+                              >
+                                <Trash2 className="h-3 w-3" />
+                              </button>
+                            </div>
+                          ))}
+                          <label className="flex h-14 w-14 shrink-0 cursor-pointer flex-col items-center justify-center gap-1 rounded-md border border-dashed text-gray-500 hover:bg-gray-50">
+                            <Plus className="h-4 w-4" />
                             <input
                               type="file"
                               accept="image/*"
+                              multiple
                               className="hidden"
                               onChange={(event) => {
-                                const file = event.target.files?.[0];
+                                const files = Array.from(event.target.files ?? []);
                                 event.target.value = "";
-                                if (!file) return;
-                                if (variant.imagePreviewUrl) {
-                                  URL.revokeObjectURL(variant.imagePreviewUrl);
-                                }
+                                if (files.length === 0) return;
                                 updateProductVariantDraft(index, {
-                                  imageFile: file,
-                                  imagePreviewUrl: URL.createObjectURL(file),
+                                  pendingImageFiles: [...variant.pendingImageFiles, ...files],
+                                  pendingImagePreviews: [
+                                    ...variant.pendingImagePreviews,
+                                    ...files.map((file) => URL.createObjectURL(file)),
+                                  ],
                                 });
                               }}
                             />
                           </label>
-                          {variantThumbnail ? (
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="sm"
-                              className="text-xs text-red-600"
-                              onClick={() => {
-                                if (variant.imagePreviewUrl) {
-                                  URL.revokeObjectURL(variant.imagePreviewUrl);
-                                }
-                                updateProductVariantDraft(index, {
-                                  imageFile: null,
-                                  imageId: "",
-                                  imagePreviewUrl: undefined,
-                                });
-                              }}
-                            >
-                              Remove
-                            </Button>
-                          ) : null}
                         </div>
+                        <p className="text-xs text-gray-500">
+                          Add one or more photos for this option to let people slide through them. Leave empty to use
+                          the main product photos.
+                        </p>
                       </div>
                     </div>
                     );
@@ -5361,8 +5420,9 @@ useEffect(() => {
                         ...currentVariants,
                         {
                           color: "",
-                          imageFile: null,
-                          imageId: "",
+                          images: [],
+                          pendingImageFiles: [],
+                          pendingImagePreviews: [],
                           inStock: true,
                           priceOverride: "",
                           size: "",

@@ -48,7 +48,7 @@ export function ProductDetailModal({
     }>
   >([]);
 
-  const galleryImages = useMemo(() => {
+  const baseGalleryImages = useMemo(() => {
     const base = product?.images ?? [];
     return (base.length > 0 ? base : fetchedGalleryImages).filter((image) => image.url.trim());
   }, [product?.images, fetchedGalleryImages]);
@@ -89,10 +89,27 @@ export function ProductDetailModal({
     );
   }, [hasColorPicker, hasSizePicker, hasVariantChoices, productVariants, selectedColor, selectedSize]);
 
-  const needsSelection =
-    hasVariantChoices &&
-    (!selectedVariant || (hasSizePicker && !selectedSize) || (hasColorPicker && !selectedColor));
+  const hasStartedSelecting =
+    (hasSizePicker && Boolean(selectedSize)) || (hasColorPicker && Boolean(selectedColor));
+  const needsSelection = hasVariantChoices && hasStartedSelecting && !selectedVariant;
   const selectedVariantInStock = Boolean(selectedVariant && selectedVariant.inStock);
+
+  // Slide through the selected variant's own photos when it has any;
+  // otherwise fall back to the product's general gallery.
+  const galleryImages =
+    selectedVariant?.images && selectedVariant.images.length > 0
+      ? selectedVariant.images
+      : baseGalleryImages;
+
+  useEffect(() => {
+    const resetIndex = window.setTimeout(() => {
+      setSelectedImageIndex(0);
+    }, 0);
+
+    return () => {
+      window.clearTimeout(resetIndex);
+    };
+  }, [selectedVariant?.id]);
 
   const sizeOptions = useMemo(
     () =>
@@ -181,9 +198,11 @@ export function ProductDetailModal({
     }
   };
 
-  const canAddToCart = hasVariantChoices ? selectedVariantInStock : Boolean(product?.inStock);
-  const allVariantsOutOfStock =
-    hasVariantChoices && allProductVariants.length > 0 && productVariants.length === 0;
+  const canAddToCart = selectedVariant
+    ? selectedVariantInStock
+    : needsSelection
+      ? false
+      : Boolean(product?.inStock);
 
 
   const showImage = (nextIndex: number) => {
@@ -208,7 +227,7 @@ export function ProductDetailModal({
       const { data, error } = await supabase
         .from("product_variants")
         .select(
-          "id, size, color, sku, price_override, stock_quantity, in_stock, image_id, variant_image:product_images(url, thumbnail_url)",
+          "id, size, color, sku, price_override, stock_quantity, in_stock, variant_images:product_images(id, url, thumbnail_url, sort_order, is_primary)",
         )
         .eq("product_id", product.id)
         .order("created_at", { ascending: true });
@@ -219,9 +238,16 @@ export function ProductDetailModal({
 
       setFetchedVariants(
         data.map((row) => {
-          const variantImageRow = Array.isArray(row.variant_image)
-            ? row.variant_image[0]
-            : row.variant_image;
+          const variantImages = (Array.isArray(row.variant_images) ? row.variant_images : [])
+            .filter((image): image is NonNullable<typeof image> => Boolean(image?.id && image?.url))
+            .sort((left, right) => Number(left.sort_order ?? 0) - Number(right.sort_order ?? 0))
+            .map((image) => ({
+              id: String(image.id),
+              url: image.url,
+              thumbnailUrl: image.thumbnail_url ?? undefined,
+              isPrimary: Boolean(image.is_primary),
+              sortOrder: Number(image.sort_order ?? 0),
+            }));
 
           return {
             id: String(row.id),
@@ -234,9 +260,9 @@ export function ProductDetailModal({
                 : Number(row.price_override),
             stockQuantity: Math.max(0, Math.floor(Number(row.stock_quantity ?? 0))),
             inStock: Boolean(row.in_stock),
-            imageId: row.image_id ?? undefined,
-            imageUrl: variantImageRow?.url ?? undefined,
-            imageThumbnailUrl: variantImageRow?.thumbnail_url ?? undefined,
+            images: variantImages,
+            imageUrl: variantImages[0]?.url,
+            imageThumbnailUrl: variantImages[0]?.thumbnailUrl,
           };
         }),
       );
@@ -311,13 +337,17 @@ export function ProductDetailModal({
   }
 
   const handleAddToCart = () => {
-    if (allVariantsOutOfStock) {
-      toast.error("This product is currently out of stock.");
+    if (needsSelection) {
+      toast.error("Finish selecting an option, or clear your selection to add the standard product.");
       return;
     }
 
-    if (needsSelection) {
-      toast.error("Please select an available option before adding to cart.");
+    if (!canAddToCart) {
+      toast.error(
+        selectedVariant
+          ? "This product option is currently out of stock."
+          : "This product is currently out of stock.",
+      );
       return;
     }
 
@@ -424,11 +454,7 @@ export function ProductDetailModal({
               }}
             >
               <ImageWithFallback
-                src={
-                  selectedVariant?.imageUrl ||
-                  galleryImages[selectedImageIndex]?.url ||
-                  getFullProductImageUrl(product.image)
-                }
+                src={galleryImages[selectedImageIndex]?.url || getFullProductImageUrl(product.image)}
                 alt={product.name}
                 className="max-h-full max-w-full object-contain"
                 decoding="async"
@@ -503,24 +529,16 @@ export function ProductDetailModal({
                   </p>
                 </div>
 
-                <Badge
-                  variant={
-                    (hasVariantChoices ? selectedVariantInStock : product.inStock)
-                      ? "secondary"
-                      : "destructive"
-                  }
-                >
-                  {hasVariantChoices
-                    ? allVariantsOutOfStock
-                      ? "Out of Stock"
-                      : needsSelection
-                        ? "Select an option"
-                        : selectedVariantInStock
-                          ? "In Stock"
-                          : "Out of Stock"
-                    : product.inStock
+                <Badge variant={canAddToCart ? "secondary" : "destructive"}>
+                  {selectedVariant
+                    ? selectedVariantInStock
                       ? "In Stock"
-                      : "Out of Stock"}
+                      : "Out of Stock"
+                    : needsSelection
+                      ? "Select an option"
+                      : product.inStock
+                        ? "In Stock"
+                        : "Out of Stock"}
                 </Badge>
               </div>
 
@@ -624,18 +642,12 @@ export function ProductDetailModal({
                 type="button"
                 className="flex-1"
                 onClick={handleAddToCart}
-                disabled={hasVariantChoices ? !canAddToCart : !product.inStock}
+                disabled={!canAddToCart}
               >
                 <ShoppingCart className="mr-2 h-4 w-4" />
-                {hasVariantChoices
-                  ? allVariantsOutOfStock
-                    ? "Out of Stock"
-                    : needsSelection
-                      ? "Select an option"
-                      : selectedVariantInStock
-                        ? addActionLabel
-                        : "Out of Stock"
-                  : product.inStock
+                {needsSelection
+                  ? "Finish Selecting"
+                  : canAddToCart
                     ? addActionLabel
                     : "Out of Stock"}
               </Button>
@@ -684,24 +696,16 @@ export function ProductDetailModal({
 
               <div className="flex justify-between text-sm">
                 <span className="text-gray-600">Availability:</span>
-                <span
-                  className={
-                    (hasVariantChoices ? selectedVariantInStock : product.inStock)
-                      ? "text-green-600"
-                      : "text-red-600"
-                  }
-                >
-                  {hasVariantChoices
-                    ? allVariantsOutOfStock
-                      ? "Out of Stock"
-                      : needsSelection
-                        ? "Select an option"
-                        : selectedVariantInStock
-                          ? "In Stock"
-                          : "Out of Stock"
-                    : product.inStock
+                <span className={canAddToCart ? "text-green-600" : "text-red-600"}>
+                  {selectedVariant
+                    ? selectedVariantInStock
                       ? "In Stock"
-                      : "Out of Stock"}
+                      : "Out of Stock"
+                    : needsSelection
+                      ? "Select an option"
+                      : product.inStock
+                        ? "In Stock"
+                        : "Out of Stock"}
                 </span>
               </div>
 

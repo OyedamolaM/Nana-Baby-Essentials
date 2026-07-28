@@ -261,6 +261,7 @@ export async function PUT(request: Request, context: RouteProps) {
     );
   }
 
+  const savedVariantIds: (string | null)[] = [];
   if (hasVariants) {
     for (const variant of normalizedVariants) {
       const variantPayload = {
@@ -273,13 +274,18 @@ export async function PUT(request: Request, context: RouteProps) {
         sku: variant.sku,
         stock_quantity: variant.stock_quantity,
       };
-      const saveResult = variant.id && existingIds.has(variant.id)
+      const isExisting = Boolean(variant.id && existingIds.has(variant.id));
+      const saveResult = isExisting
         ? await resolved.client
             .from("product_variants")
             .update(variantPayload)
             .eq("id", variant.id)
             .eq("product_id", resolved.productId)
-        : await resolved.client.from("product_variants").insert(variantPayload);
+        : await resolved.client
+            .from("product_variants")
+            .insert(variantPayload)
+            .select("id")
+            .single();
 
       if (saveResult.error) {
         console.error("Failed to save product variant.", saveResult.error);
@@ -287,6 +293,13 @@ export async function PUT(request: Request, context: RouteProps) {
           { message: saveResult.error.message || "Could not save a product variant." },
           { status: 500 },
         );
+      }
+
+      if (isExisting) {
+        savedVariantIds.push(variant.id ?? null);
+      } else {
+        const insertedRow = (saveResult as { data: { id: string } | null }).data;
+        savedVariantIds.push(insertedRow?.id ?? null);
       }
     }
   }
@@ -329,6 +342,7 @@ export async function PUT(request: Request, context: RouteProps) {
 
   return NextResponse.json({
     variants: variants ?? [],
+    savedVariantIds,
     message: "Product variants saved successfully.",
   });
 }
