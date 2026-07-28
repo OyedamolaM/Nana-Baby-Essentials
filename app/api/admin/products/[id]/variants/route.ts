@@ -261,6 +261,30 @@ export async function PUT(request: Request, context: RouteProps) {
     );
   }
 
+  // Delete removed variants FIRST. product_variants has a unique index on
+  // (product_id, size, color), so if a deletion frees up a size/color combo
+  // that another (kept or edited) variant now wants to use, that combo must
+  // already be gone before we insert/update below — otherwise the save
+  // below can fail with a spurious "duplicate key" / "could not save
+  // product variant" error even though the end state is perfectly valid.
+  const idsToDeleteFirst = hasVariants
+    ? Array.from(existingIds).filter((id) => !submittedExistingIds.has(id))
+    : Array.from(existingIds);
+  if (idsToDeleteFirst.length > 0) {
+    const { error: deleteError } = await resolved.client
+      .from("product_variants")
+      .delete()
+      .eq("product_id", resolved.productId)
+      .in("id", idsToDeleteFirst);
+    if (deleteError) {
+      console.error("Failed to delete removed product variants.", deleteError);
+      return NextResponse.json(
+        { message: deleteError.message || "Could not remove old product variants." },
+        { status: 500 },
+      );
+    }
+  }
+
   const savedVariantIds: (string | null)[] = [];
   if (hasVariants) {
     for (const variant of normalizedVariants) {
@@ -301,24 +325,6 @@ export async function PUT(request: Request, context: RouteProps) {
         const insertedRow = (saveResult as { data: { id: string } | null }).data;
         savedVariantIds.push(insertedRow?.id ?? null);
       }
-    }
-  }
-
-  const idsToDelete = hasVariants
-    ? Array.from(existingIds).filter((id) => !submittedExistingIds.has(id))
-    : Array.from(existingIds);
-  if (idsToDelete.length > 0) {
-    const { error: deleteError } = await resolved.client
-      .from("product_variants")
-      .delete()
-      .eq("product_id", resolved.productId)
-      .in("id", idsToDelete);
-    if (deleteError) {
-      console.error("Failed to delete removed product variants.", deleteError);
-      return NextResponse.json(
-        { message: "Could not remove old product variants." },
-        { status: 500 },
-      );
     }
   }
 
