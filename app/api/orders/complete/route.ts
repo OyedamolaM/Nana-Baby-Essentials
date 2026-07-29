@@ -7,6 +7,7 @@ import {
   matchesPaystackOrderAmount,
   verifyPaystackTransaction,
 } from "@/lib/paystackServer";
+import { notifyOrderSupport } from "@/lib/orderSupportNotification";
 import {
   createSupabaseServiceRoleClient,
   hasSupabaseServiceRoleEnv,
@@ -18,8 +19,14 @@ type CompleteOrderPayload = {
 };
 
 type StoreOrderRow = {
+  customer_email?: string | null;
+  customer_name?: string | null;
+  customer_phone?: string | null;
   id: string;
+  items?: unknown;
   payment_reference?: string | null;
+  shipping_address?: unknown;
+  shipping_tier?: string | null;
   status?: string | null;
   total: number | string;
   user_id: string;
@@ -61,7 +68,7 @@ export async function POST(request: Request) {
 
   const { data: order, error: orderError } = await serviceRoleClient
     .from("orders")
-    .select("id, user_id, status, payment_reference, total")
+    .select("id, user_id, status, payment_reference, total, items, shipping_address, shipping_tier, customer_name, customer_email, customer_phone")
     .eq("id", orderId)
     .maybeSingle<StoreOrderRow>();
 
@@ -163,6 +170,18 @@ export async function POST(request: Request) {
       { status: 409 },
     );
   }
+
+  await notifyOrderSupport({
+    customerEmail: order.customer_email,
+    customerName: order.customer_name,
+    customerPhone: order.customer_phone,
+    id: order.id,
+    items: order.items,
+    paymentReference: paystackReference,
+    shippingAddress: order.shipping_address,
+    shippingTier: order.shipping_tier,
+    total: order.total,
+  }).catch((error) => console.error("Failed to notify order support.", error));
 
   return NextResponse.json({ orderId: order.id, status: "paid" });
 }

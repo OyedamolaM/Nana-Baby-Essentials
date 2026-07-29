@@ -57,12 +57,13 @@ BREVO_REPLY_TO=your-verified-sender@example.com
 BREVO_ORDER_SENDER_EMAIL=orders@yourdomain.example
 BREVO_ORDER_SENDER_NAME=Nana's Orders
 BREVO_ORDER_REPLY_TO=orders@yourdomain.example
+BREVO_ORDER_SUPPORT_EMAIL=support@yourdomain.example
 BREVO_SANDBOX_MODE=true
 ```
 
 Set `BREVO_SANDBOX_MODE=true` to test registry-created emails, order confirmation emails, and newsletter sends without delivering real messages. Set it to `false` or remove it when you are ready for live delivery.
 
-`BREVO_SENDER_*` is the default sender used by registry-created emails and newsletters. `BREVO_ORDER_*` is an optional separate sender just for order confirmations.
+`BREVO_SENDER_*` is the default sender used by registry-created emails and newsletters. `BREVO_ORDER_*` is an optional separate sender for order emails. Set `BREVO_ORDER_SUPPORT_EMAIL` so support receives one idempotent notification for each paid store order.
 
 ### 6. Deploy Edge Function for Payment Verification (Optional but Recommended)
 

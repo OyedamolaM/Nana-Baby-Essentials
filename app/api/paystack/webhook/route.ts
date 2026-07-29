@@ -8,6 +8,7 @@ import {
   verifyPaystackTransaction,
 } from "@/lib/paystackServer";
 import { createSupabaseServiceRoleClient, hasSupabaseServiceRoleEnv } from "@/lib/supabaseServer";
+import { notifyOrderSupport } from "@/lib/orderSupportNotification";
 
 export const runtime = "nodejs";
 
@@ -30,11 +31,12 @@ export async function POST(request: Request) {
 
   const client = createSupabaseServiceRoleClient();
   if (!client) return new NextResponse("Server configuration error", { status: 500 });
-  const { data: order, error } = await client.from("orders").select("id, total, status, payment_reference").eq("id", orderId).maybeSingle();
+  const { data: order, error } = await client.from("orders").select("id, total, status, payment_reference, items, shipping_address, shipping_tier, customer_name, customer_email, customer_phone").eq("id", orderId).maybeSingle();
   if (error) return new NextResponse("Order lookup failed", { status: 500 });
   if (!order || (order.status === "paid" && order.payment_reference !== reference) || !["pending", "awaiting_payment", "paid"].includes(order.status ?? "") || !matchesPaystackOrderAmount(payment, order.total)) return NextResponse.json({ received: true });
 
   const { error: completionError } = await client.rpc("complete_store_order_payment", { p_order_id: order.id, p_paystack_reference: reference });
   if (completionError) return new NextResponse("Payment completion failed", { status: 500 });
+  await notifyOrderSupport({ customerEmail: order.customer_email, customerName: order.customer_name, customerPhone: order.customer_phone, id: order.id, items: order.items, paymentReference: reference, shippingAddress: order.shipping_address, shippingTier: order.shipping_tier, total: order.total }).catch((error) => console.error("Failed to notify order support.", error));
   return NextResponse.json({ received: true });
 }

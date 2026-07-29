@@ -13,10 +13,17 @@ const brevoOrderSenderName =
   process.env.BREVO_ORDER_SENDER_NAME?.trim() ?? brevoSenderName;
 const brevoOrderReplyTo =
   process.env.BREVO_ORDER_REPLY_TO?.trim() ?? brevoReplyTo;
+const brevoOrderSupportEmail =
+  process.env.BREVO_ORDER_SUPPORT_EMAIL?.trim() ?? "";
 const brevoSandboxMode = process.env.BREVO_SANDBOX_MODE?.trim() === "true";
 
 export const hasBrevoEnv = Boolean(brevoApiKey && brevoSenderEmail);
 export const isBrevoSandboxMode = brevoSandboxMode;
+export const hasBrevoOrderSupportRecipient = Boolean(brevoOrderSupportEmail);
+
+export function getBrevoOrderSupportRecipient() {
+  return brevoOrderSupportEmail;
+}
 
 type BrevoSenderProfile = "default" | "order";
 
