@@ -80,12 +80,23 @@ export async function POST(request: Request) {
   const fullName = payload?.fullName?.trim() || metadataFullName;
   const phone = payload?.phone?.trim() || metadataPhone;
 
-  const baseProfile = {
+  const baseProfile: {
+    email: string;
+    full_name?: string | null;
+    id: string;
+    phone?: string;
+  } = {
     email,
-    full_name: fullName || null,
     id: routeUser.user.id,
-    phone: phone || null,
   };
+
+  if (fullName) {
+    baseProfile.full_name = fullName;
+  }
+
+  if (phone) {
+    baseProfile.phone = phone;
+  }
 
   let { error } = await mutationClient.from("user_profiles").upsert(
     {
@@ -141,7 +152,14 @@ export async function PATCH(request: Request) {
   }
 
   if (typeof payload?.phone === "string") {
-    updateData.phone = payload.phone.trim();
+    const phone = payload.phone.trim();
+    if (!phone) {
+      return NextResponse.json(
+        { message: "Phone number cannot be empty." },
+        { status: 400 },
+      );
+    }
+    updateData.phone = phone;
   }
 
   if (typeof payload?.campaign_opt_out === "boolean") {
