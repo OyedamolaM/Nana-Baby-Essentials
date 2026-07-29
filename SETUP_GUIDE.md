@@ -33,10 +33,9 @@ You now have a fully functional e-commerce baby store with:
 ### 3. Set up Paystack
 
 1. Create a Paystack account at: https://paystack.com
-2. Get your public key from your Paystack dashboard
-3. Open `/src/components/checkout/CheckoutModal.tsx`
-4. Replace `'pk_test_xxxx'` with your actual Paystack public key (line ~99)
-5. For production, use your live key instead of test key
+2. Add `NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY` and `PAYSTACK_SECRET_KEY` to the environment where Next.js runs
+3. In the Paystack dashboard, register `https://your-domain.example/api/paystack/webhook` as the webhook URL
+4. For production, use your live keys instead of test keys
 
 ### 4. Configure Email Templates (Optional)
 

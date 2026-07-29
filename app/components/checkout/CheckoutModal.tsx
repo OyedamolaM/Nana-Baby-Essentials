@@ -278,7 +278,6 @@ export function CheckoutModal({
       const { data: orderId, error } = await supabase.rpc(
         "create_store_order",
         {
-          p_total: totalAmount,
           p_shipping_address: shippingAddressData,
           p_billing_address: shippingAddressData,
           p_items: orderItems,
@@ -292,6 +291,16 @@ export function CheckoutModal({
 
       activeOrderIdRef.current = orderId;
       void refreshProfile();
+
+      const { data: createdOrder, error: createdOrderError } = await supabase
+        .from("orders")
+        .select("total")
+        .eq("id", orderId)
+        .single<{ total: number | string }>();
+      const paymentTotalAmount = Number(createdOrder?.total);
+      if (createdOrderError || !Number.isFinite(paymentTotalAmount) || paymentTotalAmount <= 0) {
+        throw createdOrderError ?? new Error("Failed to calculate the secure checkout total.");
+      }
 
       const onPaymentSuccess = async (response: { reference: string }) => {
         if (!session?.access_token) {
@@ -364,7 +373,7 @@ export function CheckoutModal({
       const handler = window.PaystackPop.setup({
         key: paystackKey,
         email: user.email || shippingName,
-        amount: Math.round(totalAmount * 100),
+        amount: Math.round(paymentTotalAmount * 100),
         currency: "NGN",
         ref: `NBE-${orderId}-${Date.now()}`,
         metadata: {

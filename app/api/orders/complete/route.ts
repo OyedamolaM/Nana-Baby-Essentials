@@ -3,8 +3,9 @@ import { NextResponse } from "next/server";
 import { requireRouteUser } from "@/lib/authServer";
 import {
   hasPaystackServerEnv,
+  getPaystackMetadataValue,
+  matchesPaystackOrderAmount,
   verifyPaystackTransaction,
-  type PaystackMetadata,
 } from "@/lib/paystackServer";
 import {
   createSupabaseServiceRoleClient,
@@ -23,35 +24,6 @@ type StoreOrderRow = {
   total: number | string;
   user_id: string;
 };
-
-function getMetadataValue(metadata: PaystackMetadata, name: string) {
-  const directValue = metadata[name];
-  if (typeof directValue === "string" || typeof directValue === "number") {
-    return String(directValue).trim();
-  }
-
-  const customFields = metadata.custom_fields;
-  if (!Array.isArray(customFields)) {
-    return "";
-  }
-
-  for (const field of customFields) {
-    if (!field || typeof field !== "object" || Array.isArray(field)) {
-      continue;
-    }
-
-    const value = field as Record<string, unknown>;
-    if (value.variable_name !== name) {
-      continue;
-    }
-
-    if (typeof value.value === "string" || typeof value.value === "number") {
-      return String(value.value).trim();
-    }
-  }
-
-  return "";
-}
 
 export async function POST(request: Request) {
   const routeUser = await requireRouteUser(request);
@@ -159,18 +131,14 @@ export async function POST(request: Request) {
     );
   }
 
-  if (getMetadataValue(verifiedPayment.metadata, "order_id") !== order.id) {
+  if (getPaystackMetadataValue(verifiedPayment.metadata, "order_id") !== order.id) {
     return NextResponse.json(
       { message: "Verified payment metadata does not match this order." },
       { status: 400 },
     );
   }
 
-  const expectedAmountKobo = Math.round(Number(order.total) * 100);
-  if (
-    !Number.isFinite(expectedAmountKobo) ||
-    verifiedPayment.amount !== expectedAmountKobo
-  ) {
+  if (!matchesPaystackOrderAmount(verifiedPayment, order.total)) {
     return NextResponse.json(
       { message: "Verified Paystack amount does not match this order." },
       { status: 400 },
