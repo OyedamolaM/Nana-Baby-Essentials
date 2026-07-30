@@ -5,7 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Calendar, Menu, Search, User } from "lucide-react";
 import { toast } from "sonner";
 import { usePublishedBlogPosts } from "../hooks/useContentData";
-import { type BlogPostRecord } from "../../lib/content";
+import { type BlogPostSummary } from "../../lib/content";
 import { ImageWithFallback } from "../components/figma/ImageWithFallback";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
@@ -31,7 +31,7 @@ function formatPublishedDate(value?: string | null) {
 }
 
 interface BlogPageProps {
-  initialPosts?: BlogPostRecord[];
+  initialPosts?: BlogPostSummary[];
 }
 
 export function BlogPage({ initialPosts }: BlogPageProps) {

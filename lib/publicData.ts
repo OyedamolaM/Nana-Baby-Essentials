@@ -2,6 +2,7 @@ import { unstable_cache } from "next/cache";
 
 import {
   type BlogPostRecord,
+  type BlogPostSummary,
   FALLBACK_BLOG_POSTS,
   type HomeDealRecord,
   type HomepageDeal,
@@ -55,6 +56,21 @@ import {
   type SpecialPackageRecord,
 } from "./specialPackages";
 import { type StoreLocationRecord } from "./storeLocations";
+
+const HOMEPAGE_DEAL_SELECT =
+  "id, product_id, title, subtitle, badge_text, override_image, sale_price, compare_at_price, starts_at, ends_at, is_active, sort_order";
+const HOMEPAGE_REVIEW_SELECT =
+  "id, reviewer_name, reviewer_role, review_text, rating, sort_order, is_active";
+const BLOG_SUMMARY_SELECT =
+  "id, title, slug, category, excerpt, cover_image, author_name, published_at, is_published, created_at, updated_at";
+const STORE_LOCATION_SELECT =
+  "id, name, slug, address, description, contact_phone, whatsapp_phone, contact_email, opening_hours, hero_image, is_active, sort_order, created_at, updated_at";
+const SPECIAL_PACKAGE_SELECT =
+  "id, product_id, package_type, slug, title, subtitle, badge_text, details, override_image, external_video_url, is_active, sort_order, created_at, updated_at";
+const REGISTRY_SELECT =
+  "id, user_id, share_code, name, status, closed_at, closed_note, partner_email, partner_name, whatsapp, due_month, baby_gender, additional_info, created_at";
+const REGISTRY_ITEM_SELECT =
+  "id, registry_id, product_id, requested_quantity, purchased_quantity, funded_amount, unit_price_snapshot, note, created_at";
 
 function buildProductLookup(records: ProductRecord[] | null | undefined) {
   return Object.fromEntries(
@@ -447,7 +463,7 @@ const getProductCategoriesCached = unstable_cache(
     const [categoryResult, productResult] = await Promise.all([
       client
         .from("product_categories")
-        .select("*")
+        .select("id, label, slug, is_active, sort_order, created_at")
         .order("sort_order", { ascending: true })
         .order("created_at", { ascending: false }),
       client
@@ -496,7 +512,7 @@ const getHomepageDealsCached = unstable_cache(
 
     const { data, error } = await client
       .from("homepage_deals")
-      .select("*")
+      .select(HOMEPAGE_DEAL_SELECT)
       .eq("is_active", true)
       .order("sort_order", { ascending: true });
 
@@ -545,7 +561,7 @@ const getHomepageSiteContentCached = unstable_cache(
 
     const { data, error } = await client
       .from("site_content_settings")
-      .select("*")
+      .select("key, value")
       .in("key", ["hero_image", "about_images"]);
 
     if (error?.code === "42P01" || error || !data) {
@@ -571,7 +587,7 @@ const getHomepageReviewsCached = unstable_cache(
 
     const { data, error } = await client
       .from("homepage_reviews")
-      .select("*")
+      .select(HOMEPAGE_REVIEW_SELECT)
       .eq("is_active", true)
       .order("sort_order", { ascending: true });
 
@@ -598,7 +614,7 @@ const getRegistryReviewsCached = unstable_cache(
 
     const { data, error } = await client
       .from("registry_reviews")
-      .select("*")
+      .select(HOMEPAGE_REVIEW_SELECT)
       .eq("is_active", true)
       .order("sort_order", { ascending: true });
 
@@ -625,7 +641,7 @@ const getPublishedBlogPostsCached = unstable_cache(
 
     const { data, error } = await client
       .from("blog_posts")
-      .select("*")
+      .select(BLOG_SUMMARY_SELECT)
       .eq("is_published", true)
       .order("published_at", { ascending: false });
 
@@ -633,7 +649,7 @@ const getPublishedBlogPostsCached = unstable_cache(
       return FALLBACK_BLOG_POSTS;
     }
 
-    return data as BlogPostRecord[];
+    return data as BlogPostSummary[];
   },
   ["public-blog-post-list"],
   { revalidate: 300, tags: ["blog"] },
@@ -684,7 +700,7 @@ const getProductBySlugCached = unstable_cache(
 
     const { data } = await client
       .from("products")
-      .select("*")
+      .select(`${PRODUCT_LIST_SELECT},brand,age_range`)
       .eq("product_kind", "standard")
       .eq("slug", slug)
       .maybeSingle();
@@ -726,7 +742,7 @@ const getSpecialPackagesCached = unstable_cache(
 
     const { data, error } = await client
       .from("special_packages")
-      .select(`*, products(${PRODUCT_LIST_SELECT})`)
+      .select(`${SPECIAL_PACKAGE_SELECT}, products(${PRODUCT_LIST_SELECT})`)
       .eq("is_active", true)
       .order("package_type", { ascending: false })
       .order("sort_order", { ascending: true });
@@ -764,7 +780,7 @@ const getStoreLocationsCached = unstable_cache(
 
     const { data, error } = await client
       .from("store_locations")
-      .select("*")
+      .select(STORE_LOCATION_SELECT)
       .eq("is_active", true)
       .order("sort_order", { ascending: true })
       .order("created_at", { ascending: false });
@@ -828,7 +844,7 @@ const getRegistryByShareCodeCached = unstable_cache(
 
     const { data: registryRow } = await client
       .from("registries")
-      .select("*")
+      .select(REGISTRY_SELECT)
       .eq("share_code", shareCode)
       .maybeSingle();
 
@@ -843,7 +859,7 @@ const getRegistryByShareCodeCached = unstable_cache(
 
     const { data: itemRows } = await client
       .from("registry_items")
-      .select(`*, products(${PRODUCT_LIST_SELECT})`)
+      .select(`${REGISTRY_ITEM_SELECT}, products(${PRODUCT_LIST_SELECT})`)
       .eq("registry_id", registry.id)
       .order("created_at", { ascending: false });
 

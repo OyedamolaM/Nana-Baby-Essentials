@@ -98,26 +98,72 @@ type RegistryRecord = {
   created_at: string;
 };
 
-type DashboardCacheEntry = {
+type TimedCacheEntry<T> = {
+  cachedAt: number;
+  data: T;
+};
+
+type ProfileDashboardData = {
   campaignOptOut: boolean;
   fullName: string;
-  hasRegistryData: boolean;
-  orders: UserOrder[];
   phone: string;
-  registries: RegistryRecord[];
-  registryItemsByRegistry: Record<string, RegistryItem[]>;
-  registryPaymentActivities: Record<string, RegistryPaymentActivity[]>;
-  registrySummaries: Record<string, RegistrySummary>;
   shippingAddress: string;
   shippingCity: string;
   shippingState: string;
 };
 
+type RegistryDetailData = {
+  registryItemsByRegistry: Record<string, RegistryItem[]>;
+  registryPaymentActivities: Record<string, RegistryPaymentActivity[]>;
+  registrySummaries: Record<string, RegistrySummary>;
+};
+
+type OrdersDashboardData = {
+  cursor: string | null;
+  hasMore: boolean;
+  orders: UserOrder[];
+  paidCount: number;
+  unpaidCount: number;
+};
+
+type DashboardCacheEntry = {
+  ordersByQuery?: Record<string, TimedCacheEntry<OrdersDashboardData>>;
+  profile?: TimedCacheEntry<ProfileDashboardData>;
+  registries?: TimedCacheEntry<RegistryRecord[]>;
+  registryDetails?: Record<string, TimedCacheEntry<RegistryDetailData>>;
+};
+
 const dashboardCache = new Map<string, DashboardCacheEntry>();
 const DASHBOARD_CACHE_STORAGE_PREFIX = "nbe:dashboard:";
+const DASHBOARD_CACHE_TTL_MS = 5 * 60 * 1000;
+const DASHBOARD_PAGE_SIZE = 20;
 
 function getDashboardCacheStorageKey(userId: string) {
   return `${DASHBOARD_CACHE_STORAGE_PREFIX}${userId}`;
+}
+
+function pruneDashboardCacheEntry(entry: DashboardCacheEntry) {
+  const isFresh = (cached?: TimedCacheEntry<unknown>) =>
+    Boolean(cached && Date.now() - Number(cached.cachedAt ?? 0) < DASHBOARD_CACHE_TTL_MS);
+  return {
+    profile: isFresh(entry.profile) ? entry.profile : undefined,
+    registries: isFresh(entry.registries) ? entry.registries : undefined,
+    ordersByQuery: Object.fromEntries(
+      Object.entries(entry.ordersByQuery ?? {}).filter(([, cached]) => isFresh(cached)),
+    ),
+    registryDetails: Object.fromEntries(
+      Object.entries(entry.registryDetails ?? {}).filter(([, cached]) => isFresh(cached)),
+    ),
+  } satisfies DashboardCacheEntry;
+}
+
+function hasDashboardCacheData(entry: DashboardCacheEntry) {
+  return Boolean(
+    entry.profile ||
+    entry.registries ||
+    Object.keys(entry.ordersByQuery ?? {}).length ||
+    Object.keys(entry.registryDetails ?? {}).length
+  );
 }
 
 function readDashboardCacheEntry(userId: string) {
@@ -127,7 +173,12 @@ function readDashboardCacheEntry(userId: string) {
 
   const memoryEntry = dashboardCache.get(userId);
   if (memoryEntry) {
-    return memoryEntry;
+    const normalized = pruneDashboardCacheEntry(memoryEntry);
+    if (hasDashboardCacheData(normalized)) {
+      dashboardCache.set(userId, normalized);
+      return normalized;
+    }
+    dashboardCache.delete(userId);
   }
 
   try {
@@ -137,14 +188,23 @@ function readDashboardCacheEntry(userId: string) {
     }
 
     const parsed = JSON.parse(rawValue) as DashboardCacheEntry;
-    dashboardCache.set(userId, parsed);
-    return parsed;
+    const normalized = pruneDashboardCacheEntry(parsed);
+    if (!hasDashboardCacheData(normalized)) {
+      window.sessionStorage.removeItem(getDashboardCacheStorageKey(userId));
+      return undefined;
+    }
+    dashboardCache.set(userId, normalized);
+    return normalized;
   } catch {
     return undefined;
   }
 }
 
-function persistDashboardCacheEntry(userId: string, entry: DashboardCacheEntry) {
+function persistDashboardCacheEntry(userId: string, patch: Partial<DashboardCacheEntry>) {
+  const entry = {
+    ...(dashboardCache.get(userId) ?? readDashboardCacheEntry(userId) ?? {}),
+    ...patch,
+  };
   dashboardCache.set(userId, entry);
 
   if (typeof window === "undefined") {
@@ -159,6 +219,14 @@ function persistDashboardCacheEntry(userId: string, entry: DashboardCacheEntry) 
   } catch {
     // Ignore cache write failures and keep the in-memory cache.
   }
+}
+
+function createOrderQueryKey(
+  status: "paid" | "unpaid",
+  selectedDay: string,
+  selectedMonth: string,
+) {
+  return `${status}:${selectedDay || "-"}:${selectedMonth || "-"}`;
 }
 
 function formatDueMonth(dueMonth?: string | null) {
@@ -206,44 +274,6 @@ function formatDateTime(value?: string | null) {
   });
 }
 
-function getLocalDateKey(value?: string | null) {
-  if (!value) {
-    return "";
-  }
-
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return "";
-  }
-
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
-
-function getLocalMonthKey(value?: string | null) {
-  return getLocalDateKey(value).slice(0, 7);
-}
-
-function filterOrdersByDate<T extends { created_at?: string | null }>(
-  items: T[],
-  selectedDay: string,
-  selectedMonth: string,
-) {
-  return items.filter((item) => {
-    if (selectedDay) {
-      return getLocalDateKey(item.created_at) === selectedDay;
-    }
-
-    if (selectedMonth) {
-      return getLocalMonthKey(item.created_at) === selectedMonth;
-    }
-
-    return true;
-  });
-}
-
 type DashboardTab = "orders" | "registries" | "profile" | "address" | "security";
 
 function getDashboardTabRoute(tab: DashboardTab) {
@@ -275,26 +305,36 @@ export function UserDashboard({
     () => (userId ? readDashboardCacheEntry(userId) : undefined),
     [userId],
   );
-  const [orders, setOrders] = useState<UserOrder[]>(cachedEntry?.orders ?? []);
-  const [registries, setRegistries] = useState<RegistryRecord[]>(cachedEntry?.registries ?? []);
+  const initialOrderQueryKey = createOrderQueryKey("paid", "", "");
+  const initialOrdersCache = cachedEntry?.ordersByQuery?.[initialOrderQueryKey]?.data;
+  const cachedProfile = cachedEntry?.profile?.data;
+  const [orders, setOrders] = useState<UserOrder[]>(initialOrdersCache?.orders ?? []);
+  const [ordersCursor, setOrdersCursor] = useState<string | null>(initialOrdersCache?.cursor ?? null);
+  const [ordersHasMore, setOrdersHasMore] = useState(initialOrdersCache?.hasMore ?? true);
+  const [ordersLoadingMore, setOrdersLoadingMore] = useState(false);
+  const [orderCounts, setOrderCounts] = useState({
+    paid: initialOrdersCache?.paidCount ?? 0,
+    unpaid: initialOrdersCache?.unpaidCount ?? 0,
+  });
+  const [registries, setRegistries] = useState<RegistryRecord[]>(cachedEntry?.registries?.data ?? []);
   const [registryItemsByRegistry, setRegistryItemsByRegistry] = useState<
     Record<string, RegistryItem[]>
-  >(cachedEntry?.registryItemsByRegistry ?? {});
+  >({});
   const [registrySummaries, setRegistrySummaries] = useState<Record<string, RegistrySummary>>(
-    cachedEntry?.registrySummaries ?? {},
+    {},
   );
   const [registryPaymentActivities, setRegistryPaymentActivities] = useState<
     Record<string, RegistryPaymentActivity[]>
-  >(cachedEntry?.registryPaymentActivities ?? {});
-  const [loading, setLoading] = useState(Boolean(user && hasSupabaseEnv && !cachedEntry));
+  >({});
+  const [loading, setLoading] = useState(Boolean(user && hasSupabaseEnv));
 
-  const [fullName, setFullName] = useState(cachedEntry?.fullName ?? "");
-  const [phone, setPhone] = useState(cachedEntry?.phone ?? "");
-  const [campaignOptOut, setCampaignOptOut] = useState(cachedEntry?.campaignOptOut ?? false);
+  const [fullName, setFullName] = useState(cachedProfile?.fullName ?? "");
+  const [phone, setPhone] = useState(cachedProfile?.phone ?? "");
+  const [campaignOptOut, setCampaignOptOut] = useState(cachedProfile?.campaignOptOut ?? false);
 
-  const [shippingAddress, setShippingAddress] = useState(cachedEntry?.shippingAddress ?? "");
-  const [shippingCity, setShippingCity] = useState(cachedEntry?.shippingCity ?? "");
-  const [shippingState, setShippingState] = useState(cachedEntry?.shippingState ?? "");
+  const [shippingAddress, setShippingAddress] = useState(cachedProfile?.shippingAddress ?? "");
+  const [shippingCity, setShippingCity] = useState(cachedProfile?.shippingCity ?? "");
+  const [shippingState, setShippingState] = useState(cachedProfile?.shippingState ?? "");
 
   const [oldPassword, setOldPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -307,289 +347,291 @@ export function UserDashboard({
   const [savingRegistryStatus, setSavingRegistryStatus] = useState(false);
   const [savingCampaignPreference, setSavingCampaignPreference] = useState(false);
   const [activeTab, setActiveTab] = useState<DashboardTab>(initialTab);
+  const [orderStatusTab, setOrderStatusTab] = useState<"paid" | "unpaid">("paid");
   const [orderFilterDay, setOrderFilterDay] = useState("");
   const [orderFilterMonth, setOrderFilterMonth] = useState("");
-  const loadRequestIdRef = useRef(0);
-  const initialLoadKeyRef = useRef<string | null>(null);
-  const registryItemsByRegistryRef = useRef(cachedEntry?.registryItemsByRegistry ?? {});
-  const registrySummariesRef = useRef(cachedEntry?.registrySummaries ?? {});
-  const registryPaymentActivitiesRef = useRef(
-    cachedEntry?.registryPaymentActivities ?? {},
-  );
+  const profileRequestIdRef = useRef(0);
+  const ordersRequestIdRef = useRef(0);
+  const registriesRequestIdRef = useRef(0);
+  const registryDetailRequestIdsRef = useRef<Record<string, number>>({});
+  const lastBackgroundRefreshRef = useRef(0);
+  const [expandedRegistryIds, setExpandedRegistryIds] = useState<Set<string>>(new Set());
+  const [loadingRegistryIds, setLoadingRegistryIds] = useState<Set<string>>(new Set());
 
-  useEffect(() => {
-    registryItemsByRegistryRef.current = registryItemsByRegistry;
-  }, [registryItemsByRegistry]);
 
-  useEffect(() => {
-    registrySummariesRef.current = registrySummaries;
-  }, [registrySummaries]);
+  const filteredPaidOrders = orderStatusTab === "paid" ? orders : [];
+  const filteredUnfinishedOrders = orderStatusTab === "unpaid" ? orders : [];
 
-  useEffect(() => {
-    registryPaymentActivitiesRef.current = registryPaymentActivities;
-  }, [registryPaymentActivities]);
-
-  useEffect(() => {
-    if (!cachedEntry) {
-      return;
-    }
-
-    const frameId = window.requestAnimationFrame(() => {
-      setOrders(cachedEntry.orders);
-      setRegistries(cachedEntry.registries);
-      setRegistryItemsByRegistry(cachedEntry.registryItemsByRegistry);
-      setRegistrySummaries(cachedEntry.registrySummaries);
-      setRegistryPaymentActivities(cachedEntry.registryPaymentActivities);
-      setFullName(cachedEntry.fullName);
-      setPhone(cachedEntry.phone);
-      setCampaignOptOut(cachedEntry.campaignOptOut);
-      setShippingAddress(cachedEntry.shippingAddress);
-      setShippingCity(cachedEntry.shippingCity);
-      setShippingState(cachedEntry.shippingState);
+  const loadProfile = useCallback(async (force = false) => {
+    if (!userId) return;
+    const cached = readDashboardCacheEntry(userId)?.profile;
+    if (!force && cached) {
+      const profile = cached.data;
+      setFullName(profile.fullName);
+      setPhone(profile.phone);
+      setCampaignOptOut(profile.campaignOptOut);
+      setShippingAddress(profile.shippingAddress);
+      setShippingCity(profile.shippingCity);
+      setShippingState(profile.shippingState);
       setLoading(false);
-    });
-
-    return () => {
-      window.cancelAnimationFrame(frameId);
-    };
-  }, [cachedEntry]);
-
-  const unfinishedOrders = useMemo(
-    () => orders.filter((order) => order.status !== "paid"),
-    [orders],
-  );
-  const paidOrders = useMemo(
-    () => orders.filter((order) => order.status === "paid"),
-    [orders],
-  );
-  const filteredUnfinishedOrders = useMemo(
-    () => filterOrdersByDate(unfinishedOrders, orderFilterDay, orderFilterMonth),
-    [orderFilterDay, orderFilterMonth, unfinishedOrders],
-  );
-  const filteredPaidOrders = useMemo(
-    () => filterOrdersByDate(paidOrders, orderFilterDay, orderFilterMonth),
-    [orderFilterDay, orderFilterMonth, paidOrders],
-  );
-  const shouldLoadRegistryData = activeTab === "registries" || activeTab === "profile";
-  const hasCurrentTabCache = Boolean(
-    cachedEntry && (!shouldLoadRegistryData || cachedEntry.hasRegistryData),
-  );
-  const loadUserData = useCallback(async (showSpinner = false) => {
-    if (!userId) {
       return;
     }
 
-    const requestId = loadRequestIdRef.current + 1;
-    loadRequestIdRef.current = requestId;
-
-    if (showSpinner) {
-      setLoading(true);
-    }
-
-    const [{ data: profileData }, { data: ordersData }, { data: registriesData }] = await Promise.all([
-      supabase.from("user_profiles").select("*").eq("id", userId).maybeSingle(),
-      supabase
-        .from("orders")
-        .select("*")
-        .eq("user_id", userId)
-        .order("created_at", { ascending: false }),
-      shouldLoadRegistryData
-        ? supabase
-            .from("registries")
-            .select("*")
-            .eq("user_id", userId)
-            .order("created_at", { ascending: false })
-        : Promise.resolve({ data: [] as RegistryRecord[] }),
-    ]);
-
-    if (loadRequestIdRef.current !== requestId) {
-      return;
-    }
-
-    const typedProfile = (profileData as UserProfile | null) ?? null;
-
-    if (typedProfile) {
-      setFullName(typedProfile.full_name ?? "");
-      setPhone(typedProfile.phone ?? "");
-      setCampaignOptOut(Boolean(typedProfile.campaign_opt_out));
-      if (typedProfile.shipping_address) {
-        setShippingAddress(typedProfile.shipping_address.address ?? "");
-        setShippingCity(typedProfile.shipping_address.city ?? "");
-        setShippingState(typedProfile.shipping_address.state ?? "");
-      }
-    }
-
-    const typedRegistries = (registriesData as RegistryRecord[] | null) ?? [];
-    setOrders((ordersData as UserOrder[] | null) ?? []);
-    setRegistries(typedRegistries);
-
-    let registryItemsById: Record<string, RegistryItem[]> =
-      registryItemsByRegistryRef.current;
-    let registrySummaryMap: Record<string, RegistrySummary> =
-      registrySummariesRef.current;
-    let registryPaymentsMap: Record<string, RegistryPaymentActivity[]> =
-      registryPaymentActivitiesRef.current;
-    if (shouldLoadRegistryData && typedRegistries.length > 0) {
-      const registryIds = typedRegistries.map((registry) => registry.id);
-      const [
-        { data: registryItemsData },
-        { data: registryOrdersData },
-        { data: registryContributionsData },
-      ] = await Promise.all([
-        supabase
-          .from("registry_items")
-          .select(`*, products(${PRODUCT_LIST_SELECT})`)
-          .in("registry_id", registryIds)
-          .order("created_at", { ascending: false }),
-        supabase
-          .from("registry_orders")
-          .select("*")
-          .in("registry_id", registryIds)
-          .order("created_at", { ascending: false }),
-        supabase
-          .from("registry_contributions")
-          .select("*")
-          .in("registry_id", registryIds)
-          .order("created_at", { ascending: false }),
-      ]);
-
-      if (loadRequestIdRef.current !== requestId) {
-        return;
-      }
-
-      const registryItems = ((registryItemsData as RegistryItemRecord[] | null) ?? []).map(
-        mapRegistryItemRecord,
-      );
-      registryItemsById = registryItems.reduce<Record<string, RegistryItem[]>>(
-        (accumulator, item) => {
-          const existing = accumulator[item.registryId] ?? [];
-          existing.push(item);
-          accumulator[item.registryId] = existing;
-          return accumulator;
-        },
-        {},
-      );
-
-      registrySummaryMap = Object.fromEntries(
-        Object.entries(registryItemsById).map(([registryId, items]) => [
-          registryId,
-          summarizeRegistryItems(items),
-        ]),
-      ) as Record<string, RegistrySummary>;
-
-      const registryOrders = (registryOrdersData as RegistryOrderRecord[] | null) ?? [];
-      const registryContributions =
-        (registryContributionsData as RegistryContributionRecord[] | null) ?? [];
-      let registryOrderItems: RegistryOrderItemRecord[] = [];
-
-      if (registryOrders.length > 0) {
-        const { data: registryOrderItemsData } = await supabase
-          .from("registry_order_items")
-          .select("*")
-          .in(
-            "registry_order_id",
-            registryOrders.map((registryOrder) => registryOrder.id),
-          );
-        registryOrderItems =
-          (registryOrderItemsData as RegistryOrderItemRecord[] | null) ?? [];
-      }
-
-      registryPaymentsMap = typedRegistries.reduce<Record<string, RegistryPaymentActivity[]>>(
-        (accumulator, registry) => {
-          accumulator[registry.id] = buildRegistryPaymentActivities({
-            contributions: registryContributions.filter(
-              (contribution) => contribution.registry_id === registry.id,
-            ),
-            orderItems: registryOrderItems.filter((orderItem) =>
-              registryOrders.some(
-                (registryOrder) =>
-                  registryOrder.id === orderItem.registry_order_id &&
-                  registryOrder.registry_id === registry.id,
-              ),
-            ),
-            orders: registryOrders.filter(
-              (registryOrder) => registryOrder.registry_id === registry.id,
-            ),
-            registryItems: registryItemsById[registry.id] ?? [],
-          });
-          return accumulator;
-        },
-        {},
-      );
-    }
-
-    setRegistryItemsByRegistry(registryItemsById);
-    setRegistrySummaries(registrySummaryMap);
-    setRegistryPaymentActivities(registryPaymentsMap);
-    persistDashboardCacheEntry(userId, {
+    const requestId = ++profileRequestIdRef.current;
+    const { data } = await supabase
+      .from("user_profiles")
+      .select("full_name, phone, campaign_opt_out, shipping_address")
+      .eq("id", userId)
+      .maybeSingle();
+    if (profileRequestIdRef.current !== requestId) return;
+    const typedProfile = (data as UserProfile | null) ?? null;
+    const profile: ProfileDashboardData = {
       campaignOptOut: Boolean(typedProfile?.campaign_opt_out),
       fullName: typedProfile?.full_name ?? "",
-      hasRegistryData: shouldLoadRegistryData,
-      orders: (ordersData as UserOrder[] | null) ?? [],
       phone: typedProfile?.phone ?? "",
-      registries: typedRegistries,
-      registryItemsByRegistry: registryItemsById,
-      registryPaymentActivities: registryPaymentsMap,
-      registrySummaries: registrySummaryMap,
       shippingAddress: typedProfile?.shipping_address?.address ?? "",
       shippingCity: typedProfile?.shipping_address?.city ?? "",
       shippingState: typedProfile?.shipping_address?.state ?? "",
+    };
+    setFullName(profile.fullName);
+    setPhone(profile.phone);
+    setCampaignOptOut(profile.campaignOptOut);
+    setShippingAddress(profile.shippingAddress);
+    setShippingCity(profile.shippingCity);
+    setShippingState(profile.shippingState);
+    persistDashboardCacheEntry(userId, { profile: { cachedAt: Date.now(), data: profile } });
+    setLoading(false);
+  }, [userId]);
+
+  const orderDateRange = useMemo(() => {
+    if (orderFilterDay) {
+      const from = new Date(`${orderFilterDay}T00:00:00`);
+      const to = new Date(from);
+      to.setDate(to.getDate() + 1);
+      return { from: from.toISOString(), to: to.toISOString() };
+    }
+    if (orderFilterMonth) {
+      const [year, month] = orderFilterMonth.split("-").map(Number);
+      const from = new Date(year, month - 1, 1);
+      const to = new Date(year, month, 1);
+      return { from: from.toISOString(), to: to.toISOString() };
+    }
+    return null;
+  }, [orderFilterDay, orderFilterMonth]);
+
+  const loadOrders = useCallback(async (reset = true, force = false) => {
+    if (!userId || (!reset && ordersLoadingMore)) return;
+    const queryKey = createOrderQueryKey(orderStatusTab, orderFilterDay, orderFilterMonth);
+    const cached = readDashboardCacheEntry(userId)?.ordersByQuery?.[queryKey];
+    if (reset && !force && cached) {
+      setOrders(cached.data.orders);
+      setOrdersCursor(cached.data.cursor);
+      setOrdersHasMore(cached.data.hasMore);
+      setOrderCounts({ paid: cached.data.paidCount, unpaid: cached.data.unpaidCount });
+      setLoading(false);
+      return;
+    }
+
+    setOrdersLoadingMore(true);
+    const requestId = ++ordersRequestIdRef.current;
+    let query = supabase
+      .from("orders")
+      .select("id, created_at, status, total, items, payment_method, payment_reference, shipping_address, shipping_tier, customer_name, customer_email, customer_phone, customer_pickup_code, rider_pickup_code")
+      .eq("user_id", userId);
+    query = orderStatusTab === "paid" ? query.eq("status", "paid") : query.neq("status", "paid");
+    let paidCountQuery = supabase
+      .from("orders")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", userId)
+      .eq("status", "paid");
+    let unpaidCountQuery = supabase
+      .from("orders")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", userId)
+      .neq("status", "paid");
+    if (orderDateRange) {
+      query = query.gte("created_at", orderDateRange.from).lt("created_at", orderDateRange.to);
+      paidCountQuery = paidCountQuery.gte("created_at", orderDateRange.from).lt("created_at", orderDateRange.to);
+      unpaidCountQuery = unpaidCountQuery.gte("created_at", orderDateRange.from).lt("created_at", orderDateRange.to);
+    }
+    if (!reset && ordersCursor) query = query.lt("created_at", ordersCursor);
+    const [ordersResult, paidResult, unpaidResult] = await Promise.all([
+      query.order("created_at", { ascending: false }).limit(DASHBOARD_PAGE_SIZE + 1),
+      reset ? paidCountQuery : Promise.resolve({ count: orderCounts.paid }),
+      reset ? unpaidCountQuery : Promise.resolve({ count: orderCounts.unpaid }),
+    ]);
+    if (ordersRequestIdRef.current !== requestId) return;
+    const rows = (ordersResult.data ?? []) as UserOrder[];
+    const pageRows = rows.slice(0, DASHBOARD_PAGE_SIZE);
+    const nextOrders = reset ? pageRows : [...orders, ...pageRows];
+    const nextData: OrdersDashboardData = {
+      cursor: pageRows.at(-1)?.created_at ?? null,
+      hasMore: rows.length > DASHBOARD_PAGE_SIZE,
+      orders: nextOrders,
+      paidCount: paidResult.count ?? 0,
+      unpaidCount: unpaidResult.count ?? 0,
+    };
+    setOrders(nextData.orders);
+    setOrdersCursor(nextData.cursor);
+    setOrdersHasMore(nextData.hasMore);
+    setOrderCounts({ paid: nextData.paidCount, unpaid: nextData.unpaidCount });
+    const currentCache = readDashboardCacheEntry(userId);
+    persistDashboardCacheEntry(userId, {
+      ordersByQuery: {
+        ...(currentCache?.ordersByQuery ?? {}),
+        [queryKey]: { cachedAt: Date.now(), data: nextData },
+      },
+    });
+    setOrdersLoadingMore(false);
+    setLoading(false);
+  }, [
+    orderCounts.paid,
+    orderCounts.unpaid,
+    orderDateRange,
+    orderFilterDay,
+    orderFilterMonth,
+    orders,
+    ordersCursor,
+    ordersLoadingMore,
+    orderStatusTab,
+    userId,
+  ]);
+
+  const loadRegistries = useCallback(async (force = false) => {
+    if (!userId) return;
+    const cached = readDashboardCacheEntry(userId)?.registries;
+    if (!force && cached) {
+      setRegistries(cached.data);
+      setLoading(false);
+      return;
+    }
+    const requestId = ++registriesRequestIdRef.current;
+    const { data } = await supabase
+      .from("registries")
+      .select("id, name, share_code, status, due_month, baby_gender, created_at, closed_at, closed_note")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false });
+    if (registriesRequestIdRef.current !== requestId) return;
+    const nextRegistries = (data ?? []) as RegistryRecord[];
+    setRegistries(nextRegistries);
+    persistDashboardCacheEntry(userId, {
+      registries: { cachedAt: Date.now(), data: nextRegistries },
     });
     setLoading(false);
-  }, [shouldLoadRegistryData, userId]);
+  }, [userId]);
 
-  useEffect(() => {
-    if (!userId || !hasSupabaseEnv) {
+  const loadRegistryDetail = useCallback(async (registryId: string, force = false) => {
+    if (!userId) return;
+    const cached = readDashboardCacheEntry(userId)?.registryDetails?.[registryId];
+    if (!force && cached) {
+      setRegistryItemsByRegistry((current) => ({ ...current, ...cached.data.registryItemsByRegistry }));
+      setRegistrySummaries((current) => ({ ...current, ...cached.data.registrySummaries }));
+      setRegistryPaymentActivities((current) => ({ ...current, ...cached.data.registryPaymentActivities }));
       return;
     }
-
-    const isInitialDashboardLoad = initialLoadKeyRef.current === null;
-    const requestKey = `${userId}:${activeTab}`;
-    if (initialLoadKeyRef.current === requestKey) {
-      return;
-    }
-
-    initialLoadKeyRef.current = requestKey;
-
-    if (hasCurrentTabCache) {
-      const frameId = window.requestAnimationFrame(() => {
-        setLoading(false);
-        void loadUserData(false);
-      });
-
-      return () => {
-        window.cancelAnimationFrame(frameId);
-      };
-    }
-
-    queueMicrotask(() => {
-      void loadUserData(isInitialDashboardLoad && !cachedEntry);
+    setLoadingRegistryIds((current) => new Set(current).add(registryId));
+    const requestId = (registryDetailRequestIdsRef.current[registryId] ?? 0) + 1;
+    registryDetailRequestIdsRef.current[registryId] = requestId;
+    const [itemsResult, ordersResult, contributionsResult] = await Promise.all([
+      supabase
+        .from("registry_items")
+        .select(`id, registry_id, product_id, requested_quantity, purchased_quantity, funded_amount, unit_price_snapshot, created_at, products(${PRODUCT_LIST_SELECT})`)
+        .eq("registry_id", registryId)
+        .order("created_at", { ascending: false }),
+      supabase
+        .from("registry_orders")
+        .select("id, registry_id, buyer_name, buyer_email, buyer_phone, buyer_message, total_amount, contribution_type, status, paystack_reference, paid_at, created_at")
+        .eq("registry_id", registryId)
+        .order("created_at", { ascending: false }),
+      supabase
+        .from("registry_contributions")
+        .select("id, registry_id, buyer_name, buyer_email, buyer_phone, buyer_message, amount, status, paystack_reference, paid_at, created_at")
+        .eq("registry_id", registryId)
+        .order("created_at", { ascending: false }),
+    ]);
+    if (registryDetailRequestIdsRef.current[registryId] !== requestId) return;
+    const registryItems = ((itemsResult.data ?? []) as unknown as RegistryItemRecord[]).map(mapRegistryItemRecord);
+    const registryOrders = (ordersResult.data ?? []) as unknown as RegistryOrderRecord[];
+    const contributions = (contributionsResult.data ?? []) as unknown as RegistryContributionRecord[];
+    const orderItemsResult = registryOrders.length
+      ? await supabase
+          .from("registry_order_items")
+          .select("id, registry_order_id, registry_item_id, product_id, quantity, amount, created_at")
+          .in("registry_order_id", registryOrders.map((order) => order.id))
+      : { data: [] };
+    if (registryDetailRequestIdsRef.current[registryId] !== requestId) return;
+    const detail: RegistryDetailData = {
+      registryItemsByRegistry: { [registryId]: registryItems },
+      registrySummaries: { [registryId]: summarizeRegistryItems(registryItems) },
+      registryPaymentActivities: {
+        [registryId]: buildRegistryPaymentActivities({
+          contributions,
+          orderItems: (orderItemsResult.data ?? []) as unknown as RegistryOrderItemRecord[],
+          orders: registryOrders,
+          registryItems,
+        }),
+      },
+    };
+    setRegistryItemsByRegistry((current) => ({ ...current, ...detail.registryItemsByRegistry }));
+    setRegistrySummaries((current) => ({ ...current, ...detail.registrySummaries }));
+    setRegistryPaymentActivities((current) => ({ ...current, ...detail.registryPaymentActivities }));
+    const currentCache = readDashboardCacheEntry(userId);
+    persistDashboardCacheEntry(userId, {
+      registryDetails: {
+        ...(currentCache?.registryDetails ?? {}),
+        [registryId]: { cachedAt: Date.now(), data: detail },
+      },
     });
-  }, [activeTab, cachedEntry, hasCurrentTabCache, loadUserData, userId]);
+    setLoadingRegistryIds((current) => {
+      const next = new Set(current);
+      next.delete(registryId);
+      return next;
+    });
+  }, [userId]);
+
+  const toggleRegistryDetails = useCallback((registryId: string) => {
+    setExpandedRegistryIds((current) => {
+      const next = new Set(current);
+      if (next.has(registryId)) {
+        next.delete(registryId);
+      } else {
+        next.add(registryId);
+        void loadRegistryDetail(registryId);
+      }
+      return next;
+    });
+  }, [loadRegistryDetail]);
 
   useEffect(() => {
-    if (!userId || !hasSupabaseEnv) {
-      return;
-    }
+    if (!userId || !hasSupabaseEnv) return;
+    const timeoutId = window.setTimeout(() => {
+      if (activeTab === "orders") void loadOrders(true);
+      else if (activeTab === "registries") void loadRegistries();
+      else void loadProfile();
+    }, 0);
+    return () => window.clearTimeout(timeoutId);
+  }, [activeTab, loadOrders, loadProfile, loadRegistries, userId]);
 
-    const refreshDashboardData = () => {
-      void loadUserData(false);
+  useEffect(() => {
+    if (!userId || !hasSupabaseEnv) return;
+    const refreshActiveResource = () => {
+      const now = Date.now();
+      if (now - lastBackgroundRefreshRef.current < DASHBOARD_CACHE_TTL_MS) return;
+      lastBackgroundRefreshRef.current = now;
+      if (activeTab === "orders") void loadOrders(true, true);
+      else if (activeTab === "registries") void loadRegistries(true);
+      else void loadProfile(true);
     };
-
     const handleVisibilityChange = () => {
-      if (document.visibilityState === "visible") {
-        refreshDashboardData();
-      }
+      if (document.visibilityState === "visible") refreshActiveResource();
     };
-
-    window.addEventListener("focus", refreshDashboardData);
+    window.addEventListener("focus", refreshActiveResource);
     document.addEventListener("visibilitychange", handleVisibilityChange);
-
     return () => {
-      window.removeEventListener("focus", refreshDashboardData);
+      window.removeEventListener("focus", refreshActiveResource);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, [loadUserData, userId]);
+  }, [activeTab, loadOrders, loadProfile, loadRegistries, userId]);
 
   const handleShareRegistry = async (registry: RegistryRecord) => {
     const shareUrl = `${window.location.origin}/registry/${registry.share_code}`;
@@ -624,7 +666,7 @@ export function UserDashboard({
     }
 
     toast.success("Profile updated successfully.");
-    await loadUserData();
+    await loadProfile(true);
     return true;
   };
 
@@ -644,7 +686,7 @@ export function UserDashboard({
       toast.error("Failed to update address.");
     } else {
       toast.success("Address updated successfully.");
-      await loadUserData();
+      await loadProfile(true);
     }
   };
 
@@ -668,7 +710,7 @@ export function UserDashboard({
         ? "You will no longer receive customer campaigns."
         : "Customer campaigns are turned back on for your account.",
     );
-    await loadUserData();
+    await loadProfile(true);
   };
 
   const handleChangePassword = async (event: React.FormEvent) => {
@@ -794,7 +836,7 @@ export function UserDashboard({
     setCloseRegistryOpen(false);
     setClosingRegistry(null);
     setClosingRegistryNote("");
-    await loadUserData();
+    await loadRegistries(true);
   };
 
   const handleReopenRegistry = async (registry: RegistryRecord) => {
@@ -816,7 +858,7 @@ export function UserDashboard({
     }
 
     toast.success("Registry reopened.");
-    await loadUserData();
+    await loadRegistries(true);
   };
 
   const renderOrders = (items: UserOrder[], emptyMessage: string) => {
@@ -1066,15 +1108,16 @@ export function UserDashboard({
                   </Button>
                 </div>
                 <Tabs
-                  defaultValue={filteredPaidOrders.length > 0 ? "paid" : "unfinished"}
+                  value={orderStatusTab === "paid" ? "paid" : "unfinished"}
+                  onValueChange={(value) => setOrderStatusTab(value === "paid" ? "paid" : "unpaid")}
                   className="space-y-4"
                 >
                   <TabsList className="grid w-full grid-cols-2">
                     <TabsTrigger value="paid" className="min-w-0 whitespace-normal px-3 py-2 text-center leading-tight">
-                      Paid Orders ({filteredPaidOrders.length})
+                      Paid Orders ({orderCounts.paid})
                     </TabsTrigger>
                     <TabsTrigger value="unfinished" className="min-w-0 whitespace-normal px-3 py-2 text-center leading-tight">
-                      Unfinished ({filteredUnfinishedOrders.length})
+                      Unfinished ({orderCounts.unpaid})
                     </TabsTrigger>
                   </TabsList>
 
@@ -1089,6 +1132,17 @@ export function UserDashboard({
                     {renderOrders(filteredPaidOrders, "No paid orders yet.")}
                   </TabsContent>
                 </Tabs>
+                {ordersHasMore ? (
+                  <div className="mt-4 flex justify-center">
+                    <Button
+                      variant="outline"
+                      disabled={ordersLoadingMore}
+                      onClick={() => void loadOrders(false, true)}
+                    >
+                      {ordersLoadingMore ? "Loading..." : "Load more orders"}
+                    </Button>
+                  </div>
+                ) : null}
               </CardContent>
             </Card>
           </TabsContent>
@@ -1131,6 +1185,8 @@ export function UserDashboard({
                       };
                       const registryItems = registryItemsByRegistry[registry.id] ?? [];
                       const payments = registryPaymentActivities[registry.id] ?? [];
+                      const detailsExpanded = expandedRegistryIds.has(registry.id);
+                      const detailsLoading = loadingRegistryIds.has(registry.id);
 
                       return (
                         <div key={registry.id} className="rounded-lg border p-4">
@@ -1182,6 +1238,18 @@ export function UserDashboard({
                                 <Share2 className="mr-2 h-4 w-4" />
                                 Share
                               </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                disabled={detailsLoading}
+                                onClick={() => toggleRegistryDetails(registry.id)}
+                              >
+                                {detailsLoading
+                                  ? "Loading..."
+                                  : detailsExpanded
+                                    ? "Hide Summary"
+                                    : "View Summary"}
+                              </Button>
                               <Button asChild size="sm">
                                 <Link href={buildRegistryDashboardPath(registry)}>
                                   Open Registry
@@ -1198,6 +1266,7 @@ export function UserDashboard({
                               {registry.share_code}
                             </p>
                           </div>
+                          {detailsExpanded ? (
                           <Tabs defaultValue="funding" className="mt-4 space-y-4">
                             <TabsList className="grid w-full grid-cols-2">
                               <TabsTrigger value="funding" className="cursor-pointer">
@@ -1299,6 +1368,11 @@ export function UserDashboard({
                               )}
                             </TabsContent>
                           </Tabs>
+                          ) : (
+                            <p className="mt-4 text-sm text-gray-500">
+                              Open the summary only when you need funding or payment details.
+                            </p>
+                          )}
 
                           <div className="mt-4 flex flex-wrap gap-2">
                             <Button asChild variant="outline" size="sm">
@@ -1558,7 +1632,7 @@ export function UserDashboard({
         open={registryCreateOpen}
         onOpenChange={setRegistryCreateOpen}
         onCreated={(registry) => {
-          void loadUserData();
+          void loadRegistries(true);
           router.push(registry.dashboardPath);
         }}
       />

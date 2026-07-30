@@ -23,6 +23,8 @@ import {
   Users,
 } from "lucide-react";
 import { toast } from "sonner";
+
+const ADMIN_BACKGROUND_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
 import {
   createSlug,
   type BlogPostRecord,
@@ -53,9 +55,7 @@ import {
 } from "../../lib/registry";
 import {
   buildProductCategoryOptions,
-  extractAssignedCategoryLabel,
   normalizeProductCategoryLabels,
-  type ProductCategoryAssignmentRecord,
   type ProductCategoryRecord,
 } from "../../lib/productCategories";
 import {
@@ -224,81 +224,6 @@ type UploadedProductImage = {
   url: string;
 };
 
-type AdminDashboardCacheEntry = {
-  blogPosts: BlogPostRecord[];
-  campaignContacts: CampaignContactRecord[];
-  deals: HomeDealRecord[];
-  homepageReviews: HomepageReviewRecord[];
-  newsletterCampaigns: NewsletterCampaign[];
-  newsletterSubscribers: NewsletterSubscriber[];
-  productCategories: ProductCategoryRecord[];
-  registryReviews: HomepageReviewRecord[];
-  specialPackages: SpecialPackageRecord[];
-  registries: RegistryRecord[];
-  registryItemsByRegistry: Record<string, RegistryItem[]>;
-  orders: AdminOrderRecord[];
-  registryOrderItemsByOrder: Record<string, RegistryOrderItemRecord[]>;
-  registryOrders: RegistryOrderRecord[];
-  registryPaymentActivities: Record<string, RegistryPaymentActivity[]>;
-  registrySummaries: Record<string, RegistrySummary>;
-  shippingTiers: ShippingTier[];
-  siteContentSettings: SiteContentSettingRecord[];
-  storeLocations: StoreLocationRecord[];
-};
-
-const ADMIN_DASHBOARD_CACHE_STORAGE_PREFIX = "nbe:admin-dashboard:";
-const adminDashboardCache = new Map<string, AdminDashboardCacheEntry>();
-
-function getAdminDashboardCacheStorageKey(userId: string) {
-  return `${ADMIN_DASHBOARD_CACHE_STORAGE_PREFIX}${userId}`;
-}
-
-function readAdminDashboardCacheEntry(userId: string) {
-  if (typeof window === "undefined") {
-    return undefined;
-  }
-
-  const memoryEntry = adminDashboardCache.get(userId);
-  if (memoryEntry) {
-    return memoryEntry;
-  }
-
-  try {
-    const rawValue = window.sessionStorage.getItem(
-      getAdminDashboardCacheStorageKey(userId),
-    );
-    if (!rawValue) {
-      return undefined;
-    }
-
-    const parsed = JSON.parse(rawValue) as AdminDashboardCacheEntry;
-    adminDashboardCache.set(userId, parsed);
-    return parsed;
-  } catch {
-    return undefined;
-  }
-}
-
-function persistAdminDashboardCacheEntry(
-  userId: string,
-  entry: AdminDashboardCacheEntry,
-) {
-  adminDashboardCache.set(userId, entry);
-
-  if (typeof window === "undefined") {
-    return;
-  }
-
-  try {
-    window.sessionStorage.setItem(
-      getAdminDashboardCacheStorageKey(userId),
-      JSON.stringify(entry),
-    );
-  } catch {
-    // Ignore storage failures and keep the in-memory cache.
-  }
-}
-
 function formatDate(value?: string | null) {
   if (!value) {
     return "N/A";
@@ -355,23 +280,6 @@ function getDealStatusLabel(deal: HomeDealRecord) {
   return "Live";
 }
 
-function buildAssignedProductCategoriesByProductId(
-  assignments: ProductCategoryAssignmentRecord[],
-) {
-  return assignments.reduce<Record<number, string[]>>((accumulator, assignment) => {
-    const label = extractAssignedCategoryLabel(assignment);
-    if (!label) {
-      return accumulator;
-    }
-
-    const productId = Number(assignment.product_id);
-    const existing = accumulator[productId] ?? [];
-    existing.push(label);
-    accumulator[productId] = existing;
-    return accumulator;
-  }, {});
-}
-
 function toDatetimeLocalValue(value?: string | null) {
   if (!value) {
     return "";
@@ -397,20 +305,18 @@ function buildAboutImageDrafts(images?: HomepageImageAsset[]) {
 export function AdminDashboard() {
   const { user, session, loading: authLoading } = useAuth();
   const userId = user?.id ?? null;
-  const cachedAdminEntry = useMemo(
-    () => (userId ? readAdminDashboardCacheEntry(userId) : undefined),
-    [userId],
-  );
-  const [loading, setLoading] = useState(Boolean(userId && !cachedAdminEntry));
+  const [loading, setLoading] = useState(Boolean(userId));
   const [adminAccessStatus, setAdminAccessStatus] = useState<
     "checking" | "allowed" | "denied"
-  >(cachedAdminEntry ? "allowed" : "checking");
+  >("checking");
   const initialAdminLoadKeyRef = useRef<string | null>(null);
   const ORDERS_PAGE_SIZE = 30;
   const [orders, setOrders] = useState<AdminOrderRecord[]>([]);
+  const [activeAdminTab, setActiveAdminTab] = useState("orders");
   const [ordersLoadingMore, setOrdersLoadingMore] = useState(false);
   const [ordersHasMore, setOrdersHasMore] = useState(true);
   const ordersPageRef = useRef(0);
+  const loadedOrderQueryRef = useRef<string | null>(null);
   const ordersSentinelRef = useRef<HTMLDivElement | null>(null);
 
   const [totalProductCount, setTotalProductCount] = useState(0);
@@ -440,6 +346,7 @@ export function AdminDashboard() {
   const [productsLoadingMore, setProductsLoadingMore] = useState(false);
   const [productsHasMore, setProductsHasMore] = useState(true);
   const productsPageRef = useRef(0);
+  const loadedProductQueryRef = useRef<string | null>(null);
   const productsSentinelRef = useRef<HTMLDivElement | null>(null);
   const [allProductOptions, setAllProductOptions] = useState<{ id: number; name: string }[]>([]);
 
@@ -449,52 +356,37 @@ export function AdminDashboard() {
   const [customersLoadingMore, setCustomersLoadingMore] = useState(false);
   const [customersHasMore, setCustomersHasMore] = useState(true);
   const customersPageRef = useRef(0);
+  const loadedCustomerQueryRef = useRef<string | null>(null);
   const customersSentinelRef = useRef<HTMLDivElement | null>(null);
-  const [specialPackages, setSpecialPackages] = useState<SpecialPackageRecord[]>(
-    cachedAdminEntry?.specialPackages ?? [],
-  );
-  const [registries, setRegistries] = useState<RegistryRecord[]>(cachedAdminEntry?.registries ?? []);
+  const [specialPackages, setSpecialPackages] = useState<SpecialPackageRecord[]>([]);
+  const [registries, setRegistries] = useState<RegistryRecord[]>([]);
   const [registryItemsByRegistry, setRegistryItemsByRegistry] = useState<
     Record<string, RegistryItem[]>
-  >(cachedAdminEntry?.registryItemsByRegistry ?? {});
+  >({});
   const [registrySummaries, setRegistrySummaries] = useState<Record<string, RegistrySummary>>(
-    cachedAdminEntry?.registrySummaries ?? {},
+    {},
   );
   const [registryPaymentActivities, setRegistryPaymentActivities] = useState<
     Record<string, RegistryPaymentActivity[]>
-  >(cachedAdminEntry?.registryPaymentActivities ?? {});
-  const [deals, setDeals] = useState<HomeDealRecord[]>(cachedAdminEntry?.deals ?? []);
-  const [blogPosts, setBlogPosts] = useState<BlogPostRecord[]>(cachedAdminEntry?.blogPosts ?? []);
+  >({});
+  const [deals, setDeals] = useState<HomeDealRecord[]>([]);
+  const [blogPosts, setBlogPosts] = useState<BlogPostRecord[]>([]);
   const [newsletterSubscribers, setNewsletterSubscribers] = useState<
     NewsletterSubscriber[]
-  >(cachedAdminEntry?.newsletterSubscribers ?? []);
+  >([]);
   const [newsletterCampaigns, setNewsletterCampaigns] = useState<
     NewsletterCampaign[]
-  >(cachedAdminEntry?.newsletterCampaigns ?? []);
+  >([]);
   const [showAddSubscriberModal, setShowAddSubscriberModal] = useState(false);
   const [newSubscriberEmail, setNewSubscriberEmail] = useState("");
   const [savingSubscriber, setSavingSubscriber] = useState(false);
-  const [campaignContacts, setCampaignContacts] = useState<CampaignContactRecord[]>(
-    cachedAdminEntry?.campaignContacts ?? [],
-  );
-  const [productCategories, setProductCategories] = useState<ProductCategoryRecord[]>(
-    cachedAdminEntry?.productCategories ?? [],
-  );
-  const [shippingTiers, setShippingTiers] = useState<ShippingTier[]>(
-    cachedAdminEntry?.shippingTiers ?? [],
-  );
-  const [siteContentSettings, setSiteContentSettings] = useState<SiteContentSettingRecord[]>(
-    cachedAdminEntry?.siteContentSettings ?? [],
-  );
-  const [storeLocations, setStoreLocations] = useState<StoreLocationRecord[]>(
-    cachedAdminEntry?.storeLocations ?? [],
-  );
-  const [homepageReviews, setHomepageReviews] = useState<HomepageReviewRecord[]>(
-    cachedAdminEntry?.homepageReviews ?? [],
-  );
-  const [registryReviews, setRegistryReviews] = useState<HomepageReviewRecord[]>(
-    cachedAdminEntry?.registryReviews ?? [],
-  );
+  const [campaignContacts, setCampaignContacts] = useState<CampaignContactRecord[]>([]);
+  const [productCategories, setProductCategories] = useState<ProductCategoryRecord[]>([]);
+  const [shippingTiers, setShippingTiers] = useState<ShippingTier[]>([]);
+  const [siteContentSettings, setSiteContentSettings] = useState<SiteContentSettingRecord[]>([]);
+  const [storeLocations, setStoreLocations] = useState<StoreLocationRecord[]>([]);
+  const [homepageReviews, setHomepageReviews] = useState<HomepageReviewRecord[]>([]);
+  const [registryReviews, setRegistryReviews] = useState<HomepageReviewRecord[]>([]);
   const homepageSiteContent = useMemo<HomepageSiteContent>(() => {
     return buildHomepageSiteContent(siteContentSettings);
   }, [siteContentSettings]);
@@ -525,73 +417,8 @@ export function AdminDashboard() {
   const [registryReviewSortOrder, setRegistryReviewSortOrder] = useState("0");
   const [registryReviewIsActive, setRegistryReviewIsActive] = useState(true);
   const [savingRegistryReview, setSavingRegistryReview] = useState(false);
-
-  useEffect(() => {
-  if (adminAccessStatus !== "allowed") return;
-  void supabase
-    .from("products")
-    .select("id, name")
-    .eq("product_kind", "standard")
-    .order("name", { ascending: true })
-    .then(({ data }) => setAllProductOptions((data ?? []) as { id: number; name: string }[]));
-}, [adminAccessStatus]);
-
-  useEffect(() => {
-    if (!cachedAdminEntry) {
-      return;
-    }
-
-    const cachedSiteContentSettings = Array.isArray(
-      cachedAdminEntry.siteContentSettings,
-    )
-      ? cachedAdminEntry.siteContentSettings
-      : [];
-    const cachedSpecialPackages = Array.isArray(cachedAdminEntry.specialPackages)
-      ? cachedAdminEntry.specialPackages
-      : [];
-    const cachedStoreLocations = Array.isArray(cachedAdminEntry.storeLocations)
-      ? cachedAdminEntry.storeLocations
-      : [];
-    const cachedHomepageReviews = Array.isArray(cachedAdminEntry.homepageReviews)
-      ? cachedAdminEntry.homepageReviews
-      : [];
-    const cachedRegistryReviews = Array.isArray(cachedAdminEntry.registryReviews)
-      ? cachedAdminEntry.registryReviews
-      : [];
-    const cachedHomepageSiteContent = buildHomepageSiteContent(
-      cachedSiteContentSettings,
-    );
-
-    const frameId = window.requestAnimationFrame(() => {
-      setSpecialPackages(cachedSpecialPackages);
-      setRegistries(cachedAdminEntry.registries);
-      setRegistryItemsByRegistry(cachedAdminEntry.registryItemsByRegistry);
-      setRegistrySummaries(cachedAdminEntry.registrySummaries);
-      setRegistryPaymentActivities(cachedAdminEntry.registryPaymentActivities);
-      setDeals(cachedAdminEntry.deals);
-      setBlogPosts(cachedAdminEntry.blogPosts);
-      setNewsletterSubscribers(cachedAdminEntry.newsletterSubscribers);
-      setNewsletterCampaigns(cachedAdminEntry.newsletterCampaigns);
-      setCampaignContacts(cachedAdminEntry.campaignContacts);
-      setProductCategories(cachedAdminEntry.productCategories);
-      setShippingTiers(cachedAdminEntry.shippingTiers);
-      setSiteContentSettings(cachedSiteContentSettings);
-      setStoreLocations(cachedStoreLocations);
-      setHomepageReviews(cachedHomepageReviews);
-      setRegistryReviews(cachedRegistryReviews);
-      setHeroImageDraft(cachedHomepageSiteContent.heroImage);
-      setHeroImageFile(null);
-      setAboutImageDrafts(
-        buildAboutImageDrafts(cachedHomepageSiteContent.aboutImages),
-      );
-      setAdminAccessStatus("allowed");
-      setLoading(false);
-    });
-
-    return () => {
-      window.cancelAnimationFrame(frameId);
-    };
-  }, [cachedAdminEntry]);
+  const lastBackgroundRefreshRef = useRef(0);
+  const loadedAdminTabsRef = useRef(new Set<string>());
 
   const [showCustomerModal, setShowCustomerModal] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
@@ -745,7 +572,7 @@ export function AdminDashboard() {
 
       let query = supabase
         .from("user_profiles")
-        .select("*")
+        .select("id, full_name, email, phone, shipping_address, account_status, campaign_opt_out, deleted_at, created_at")
         .or("is_admin.eq.false,is_admin.is.null")
         .order("created_at", { ascending: false })
         .range(from, to);
@@ -768,7 +595,7 @@ export function AdminDashboard() {
     [customerSearchQuery, customersLoadingMore],
   );
 
-function resolveOrderDateRange(): { from?: Date; to?: Date } {
+const resolveOrderDateRange = useCallback((): { from?: Date; to?: Date } => {
   const today = new Date();
   const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
 
@@ -800,14 +627,14 @@ function resolveOrderDateRange(): { from?: Date; to?: Date } {
     default:
       return {};
   }
-}
+}, [orderDateFilter, orderDateRange]);
 
 type QueryWithDateFilters<T> = {
   gte: (col: string, val: string) => T;
   lte: (col: string, val: string) => T;
 };
 
-const applyOrderDateRangeToQuery = <T extends QueryWithDateFilters<T>>(query: T): T => {
+const applyOrderDateRangeToQuery = useCallback(<T extends QueryWithDateFilters<T>,>(query: T): T => {
   const range = resolveOrderDateRange();
   if (range.from) {
     query = query.gte("created_at", range.from.toISOString());
@@ -818,7 +645,7 @@ const applyOrderDateRangeToQuery = <T extends QueryWithDateFilters<T>>(query: T)
     query = query.lte("created_at", endOfDay.toISOString());
   }
   return query;
-};
+}, [resolveOrderDateRange]);
 
 const fetchOrdersPage = useCallback(
   async (reset: boolean) => {
@@ -850,7 +677,7 @@ const fetchOrdersPage = useCallback(
     ordersPageRef.current = page + 1;
     setOrdersLoadingMore(false);
   },
-  [ordersLoadingMore, orderStatusTab, orderDateFilter, orderDateRange, orderSearchQuery],
+  [applyOrderDateRangeToQuery, ordersLoadingMore, orderSearchQuery, orderStatusTab],
 );
 
   const fetchOrderCounts = useCallback(async () => {
@@ -864,9 +691,10 @@ const fetchOrdersPage = useCallback(
       paid: paidResult.count ?? 0,
       unpaid: unpaidResult.count ?? 0,
     });
-  }, [applyOrderDateRangeToQuery, orderDateFilter, orderDateRange, orderSearchQuery]);
+  }, [applyOrderDateRangeToQuery]);
 
   const fetchDashboardCounts = useCallback(async () => {
+    lastBackgroundRefreshRef.current = Date.now();
     const [productCountResult, customerCountResult, orderStatsResult] = await Promise.all([
       supabase.from("products").select("id", { count: "exact", head: true }).eq("product_kind", "standard"),
       supabase.from("user_profiles").select("id", { count: "exact", head: true }).or("is_admin.eq.false,is_admin.is.null"),
@@ -893,278 +721,97 @@ const fetchOrdersPage = useCallback(
     }
   }, []);
 
-const loadAdminData = useCallback(async (showSpinner = false) => {
-  if (!userId) {
-    return;
-  }
+  const loadAdminTabData = useCallback(async (tab: string, force = false) => {
+    if (!userId || (!force && loadedAdminTabsRef.current.has(tab))) return;
 
-  if (showSpinner) {
-    setLoading(true);
-  }
+    if (tab === "registries") {
+      const [registriesResult, itemsResult, ordersResult, contributionsResult] = await Promise.all([
+        supabase.from("registries").select("id, user_id, name, due_month, baby_gender, share_code, created_at").order("created_at", { ascending: false }),
+        supabase.from("registry_items").select(`id, registry_id, product_id, requested_quantity, purchased_quantity, funded_amount, unit_price_snapshot, note, created_at, products(${PRODUCT_LIST_SELECT})`).order("created_at", { ascending: false }),
+        supabase.from("registry_orders").select("id, registry_id, buyer_name, buyer_email, buyer_phone, buyer_message, total_amount, contribution_type, status, paystack_reference, paid_at, created_at").order("created_at", { ascending: false }),
+        supabase.from("registry_contributions").select("id, registry_id, buyer_name, buyer_email, buyer_phone, buyer_message, amount, status, paystack_reference, paid_at, created_at").order("created_at", { ascending: false }),
+      ]);
+      const nextRegistries = ((registriesResult.error ? [] : registriesResult.data) ?? []) as RegistryRecord[];
+      const mappedItems = (((itemsResult.error ? [] : itemsResult.data) ?? []) as unknown as RegistryItemRecord[]).map(mapRegistryItemRecord);
+      const itemsByRegistry = mappedItems.reduce<Record<string, RegistryItem[]>>((result, item) => {
+        (result[item.registryId] ??= []).push(item);
+        return result;
+      }, {});
+      const nextOrders = ((ordersResult.error ? [] : ordersResult.data) ?? []) as RegistryOrderRecord[];
+      const contributions = ((contributionsResult.error ? [] : contributionsResult.data) ?? []) as RegistryContributionRecord[];
+      const orderItemsResult = nextOrders.length
+        ? await supabase.from("registry_order_items").select("id, registry_order_id, registry_item_id, product_id, quantity, amount, created_at").in("registry_order_id", nextOrders.map((order) => order.id))
+        : { data: [], error: null };
+      const orderItems = ((orderItemsResult.error ? [] : orderItemsResult.data) ?? []) as RegistryOrderItemRecord[];
+      setRegistries(nextRegistries);
+      setRegistryItemsByRegistry(itemsByRegistry);
+      setRegistrySummaries(Object.fromEntries(Object.entries(itemsByRegistry).map(([id, items]) => [id, summarizeRegistryItems(items)])));
+      setRegistryPaymentActivities(nextRegistries.reduce<Record<string, RegistryPaymentActivity[]>>((result, registry) => {
+        const matchingOrders = nextOrders.filter((order) => order.registry_id === registry.id);
+        result[registry.id] = buildRegistryPaymentActivities({
+          contributions: contributions.filter((entry) => entry.registry_id === registry.id),
+          orderItems: orderItems.filter((item) => matchingOrders.some((order) => order.id === item.registry_order_id)),
+          orders: matchingOrders,
+          registryItems: itemsByRegistry[registry.id] ?? [],
+        });
+        return result;
+      }, {}));
+    } else if (tab === "newsletter") {
+      const [subscribers, campaigns] = await Promise.all([
+        supabase.from("newsletter_subscribers").select("id, email, source, is_active, created_at, last_sent_at").order("created_at", { ascending: false }),
+        supabase.from("newsletter_campaigns").select("id, campaign_type, subject, status, recipient_count, created_at, sent_at").order("created_at", { ascending: false }),
+      ]);
+      setNewsletterSubscribers(((subscribers.error ? [] : subscribers.data) ?? []) as NewsletterSubscriber[]);
+      setNewsletterCampaigns(((campaigns.error ? [] : campaigns.data) ?? []) as NewsletterCampaign[]);
+    } else if (tab === "campaigns") {
+      const [contacts, campaigns] = await Promise.all([
+        supabase.from("campaign_contacts").select("*").order("created_at", { ascending: false }),
+        supabase.from("newsletter_campaigns").select("id, campaign_type, subject, status, recipient_count, created_at, sent_at").order("created_at", { ascending: false }),
+      ]);
+      setCampaignContacts(((contacts.error ? [] : contacts.data) ?? []) as CampaignContactRecord[]);
+      setNewsletterCampaigns(((campaigns.error ? [] : campaigns.data) ?? []) as NewsletterCampaign[]);
+    } else if (tab === "products" || tab === "categories") {
+      const result = await supabase.from("product_categories").select("id, label, slug, is_active, sort_order, created_at").order("sort_order", { ascending: true });
+      setProductCategories(((result.error ? [] : result.data) ?? []) as ProductCategoryRecord[]);
+    } else if (tab === "deals") {
+      const [dealsResult, productsResult] = await Promise.all([
+        supabase.from("homepage_deals").select("id, product_id, title, subtitle, badge_text, override_image, sale_price, compare_at_price, starts_at, ends_at, is_active, sort_order, created_at").order("sort_order", { ascending: true }),
+        supabase.from("products").select("id, name").eq("product_kind", "standard").order("name", { ascending: true }),
+      ]);
+      setDeals(((dealsResult.error ? [] : dealsResult.data) ?? []) as HomeDealRecord[]);
+      setAllProductOptions(((productsResult.error ? [] : productsResult.data) ?? []) as { id: number; name: string }[]);
+    } else if (tab === "packages") {
+      const result = await supabase.from("special_packages").select(`id, product_id, package_type, slug, title, subtitle, badge_text, details, override_image, external_video_url, is_active, sort_order, created_at, updated_at, products(${PRODUCT_LIST_SELECT})`).order("package_type", { ascending: false }).order("sort_order", { ascending: true });
+      setSpecialPackages(((result.error ? [] : result.data) ?? []) as SpecialPackageRecord[]);
+    } else if (tab === "content") {
+      const [settings, locations] = await Promise.all([
+        supabase.from("site_content_settings").select("key, value").in("key", ["hero_image", "about_images"]),
+        supabase.from("store_locations").select("id, name, slug, address, description, contact_phone, whatsapp_phone, contact_email, opening_hours, hero_image, is_active, sort_order, created_at, updated_at").order("sort_order", { ascending: true }).order("created_at", { ascending: false }),
+      ]);
+      const nextSettings = ((settings.error ? [] : settings.data) ?? []) as SiteContentSettingRecord[];
+      const nextContent = buildHomepageSiteContent(nextSettings);
+      setSiteContentSettings(nextSettings);
+      setStoreLocations(((locations.error ? [] : locations.data) ?? []) as StoreLocationRecord[]);
+      setHeroImageDraft(nextContent.heroImage);
+      setHeroImageFile(null);
+      setAboutImageDrafts(buildAboutImageDrafts(nextContent.aboutImages));
+    } else if (tab === "reviews") {
+      const [homepage, registry] = await Promise.all([
+        supabase.from("homepage_reviews").select("id, reviewer_name, reviewer_role, review_text, rating, sort_order, is_active, created_at, updated_at").order("sort_order", { ascending: true }),
+        supabase.from("registry_reviews").select("id, reviewer_name, reviewer_role, review_text, rating, sort_order, is_active, created_at, updated_at").order("sort_order", { ascending: true }),
+      ]);
+      setHomepageReviews(((homepage.error ? [] : homepage.data) ?? []) as HomepageReviewRecord[]);
+      setRegistryReviews(((registry.error ? [] : registry.data) ?? []) as HomepageReviewRecord[]);
+    } else if (tab === "orders" || tab === "shipping") {
+      const result = await supabase.from("shipping_tiers").select("id, code, label, fee, eta, description, fulfillment_type, is_active, sort_order, created_at").order("sort_order", { ascending: true });
+      setShippingTiers(((result.error ? [] : result.data) ?? []) as ShippingTier[]);
+    } else if (tab === "blogs") {
+      const result = await supabase.from("blog_posts").select("id, title, slug, category, excerpt, cover_image, body_markdown, author_name, published_at, is_published, created_at, updated_at").order("created_at", { ascending: false });
+      setBlogPosts(((result.error ? [] : result.data) ?? []) as BlogPostRecord[]);
+    }
 
-  const [
-    registriesResult,
-    registryItemsResult,
-    registryOrdersResult,
-    registryContributionsResult,
-    dealsResult,
-    blogPostsResult,
-    newsletterSubscribersResult,
-    newsletterCampaignsResult,
-    campaignContactsResult,
-    productCategoriesResult,
-    specialPackagesResult,
-    shippingTiersResult,
-    siteContentSettingsResult,
-    storeLocationsResult,
-    homepageReviewsResult,
-    registryReviewsResult,
-  ] = await Promise.all([
-    supabase.from("registries").select("*").order("created_at", { ascending: false }),
-    supabase
-      .from("registry_items")
-      .select(`*, products(${PRODUCT_LIST_SELECT})`)
-      .order("created_at", { ascending: false }),
-    supabase
-      .from("registry_orders")
-      .select("*")
-      .order("created_at", { ascending: false }),
-    supabase
-      .from("registry_contributions")
-      .select("*")
-      .order("created_at", { ascending: false }),
-    supabase
-      .from("homepage_deals")
-      .select("*")
-      .order("sort_order", { ascending: true }),
-    supabase
-      .from("blog_posts")
-      .select("*")
-      .order("created_at", { ascending: false }),
-    supabase
-      .from("newsletter_subscribers")
-      .select("*")
-      .order("created_at", { ascending: false }),
-    supabase
-      .from("newsletter_campaigns")
-      .select("*")
-      .order("created_at", { ascending: false }),
-    supabase
-      .from("campaign_contacts")
-      .select("*")
-      .order("created_at", { ascending: false }),
-    supabase
-      .from("product_categories")
-      .select("*")
-      .order("sort_order", { ascending: true }),
-    supabase
-      .from("special_packages")
-      .select(`*, products(${PRODUCT_LIST_SELECT})`)
-      .order("package_type", { ascending: false })
-      .order("sort_order", { ascending: true }),
-    supabase
-      .from("shipping_tiers")
-      .select("*")
-      .order("sort_order", { ascending: true }),
-    supabase
-      .from("site_content_settings")
-      .select("*")
-      .in("key", ["hero_image", "about_images"]),
-    supabase
-      .from("store_locations")
-      .select("*")
-      .order("sort_order", { ascending: true })
-      .order("created_at", { ascending: false }),
-    supabase
-      .from("homepage_reviews")
-      .select("*")
-      .order("sort_order", { ascending: true }),
-    supabase
-      .from("registry_reviews")
-      .select("*")
-      .order("sort_order", { ascending: true }),
-  ]);
-
-  setSpecialPackages(
-    ((specialPackagesResult.error ? [] : specialPackagesResult.data) ?? []) as SpecialPackageRecord[],
-  );
-  setRegistries(
-    ((registriesResult.error ? [] : registriesResult.data) ?? []) as RegistryRecord[],
-  );
-  setDeals(((dealsResult.error ? [] : dealsResult.data) ?? []) as HomeDealRecord[]);
-  setBlogPosts(
-    ((blogPostsResult.error ? [] : blogPostsResult.data) ?? []) as BlogPostRecord[],
-  );
-  setNewsletterSubscribers(
-    ((newsletterSubscribersResult.error
-      ? []
-      : newsletterSubscribersResult.data) ?? []) as NewsletterSubscriber[],
-  );
-  setNewsletterCampaigns(
-    ((newsletterCampaignsResult.error
-      ? []
-      : newsletterCampaignsResult.data) ?? []) as NewsletterCampaign[],
-  );
-  setCampaignContacts(
-    campaignContactsResult.error?.code === "42P01"
-      ? []
-      : ((campaignContactsResult.error ? [] : campaignContactsResult.data) ?? []) as CampaignContactRecord[],
-  );
-  setProductCategories(
-    productCategoriesResult.error?.code === "42P01"
-      ? []
-      : ((productCategoriesResult.error ? [] : productCategoriesResult.data) ?? []) as ProductCategoryRecord[],
-  );
-  setShippingTiers(
-    ((shippingTiersResult.error ? [] : shippingTiersResult.data) ?? []) as ShippingTier[],
-  );
-  const nextSiteContentSettings =
-    siteContentSettingsResult.error?.code === "42P01"
-      ? []
-      : ((siteContentSettingsResult.error ? [] : siteContentSettingsResult.data) ?? []) as SiteContentSettingRecord[];
-  const nextHomepageSiteContent = buildHomepageSiteContent(nextSiteContentSettings);
-  setSiteContentSettings(nextSiteContentSettings);
-  setStoreLocations(
-    ((storeLocationsResult.error ? [] : storeLocationsResult.data) ?? []) as StoreLocationRecord[],
-  );
-  setHomepageReviews(
-    homepageReviewsResult.error?.code === "42P01"
-      ? []
-      : ((homepageReviewsResult.error ? [] : homepageReviewsResult.data) ?? []) as HomepageReviewRecord[],
-  );
-  setRegistryReviews(
-    registryReviewsResult.error?.code === "42P01"
-      ? []
-      : ((registryReviewsResult.error ? [] : registryReviewsResult.data) ?? []) as HomepageReviewRecord[],
-  );
-  setHeroImageDraft(nextHomepageSiteContent.heroImage);
-  setHeroImageFile(null);
-  setAboutImageDrafts(buildAboutImageDrafts(nextHomepageSiteContent.aboutImages));
-
-  const registryItems = ((registryItemsResult.error
-    ? []
-    : registryItemsResult.data) ?? []) as RegistryItemRecord[];
-  const mappedRegistryItems = registryItems.map(mapRegistryItemRecord);
-  const registryItemsById = mappedRegistryItems.reduce<Record<string, RegistryItem[]>>(
-    (accumulator, item) => {
-      const existing = accumulator[item.registryId] ?? [];
-      existing.push(item);
-      accumulator[item.registryId] = existing;
-      return accumulator;
-    },
-    {},
-  );
-  setRegistryItemsByRegistry(registryItemsById);
-
-  const registrySummaryMap = Object.fromEntries(
-    Object.entries(registryItemsById).map(([registryId, items]) => [
-      registryId,
-      summarizeRegistryItems(items),
-    ]),
-  ) as Record<string, RegistrySummary>;
-  setRegistrySummaries(registrySummaryMap);
-
-  const registryOrders =
-    ((registryOrdersResult.error ? [] : registryOrdersResult.data) ?? []) as RegistryOrderRecord[];
-  const registryContributions =
-    ((registryContributionsResult.error
-      ? []
-      : registryContributionsResult.data) ?? []) as RegistryContributionRecord[];
-  let registryOrderItems: RegistryOrderItemRecord[] = [];
-
-  if (registryOrders.length > 0) {
-    const { data: registryOrderItemsData, error: registryOrderItemsError } = await supabase
-      .from("registry_order_items")
-      .select("*")
-      .in(
-        "registry_order_id",
-        registryOrders.map((registryOrder) => registryOrder.id),
-      );
-
-    registryOrderItems = ((registryOrderItemsError ? [] : registryOrderItemsData) ?? []) as
-      RegistryOrderItemRecord[];
-  }
-
-  const registryOrderItemsMap = registryOrderItems.reduce<Record<string, RegistryOrderItemRecord[]>>(
-    (accumulator, item) => {
-      const existing = accumulator[item.registry_order_id] ?? [];
-      existing.push(item);
-      accumulator[item.registry_order_id] = existing;
-      return accumulator;
-    },
-    {},
-  );
-
-  const registryPaymentsMap = (((registriesResult.error ? [] : registriesResult.data) ?? []) as
-    RegistryRecord[]).reduce<Record<string, RegistryPaymentActivity[]>>(
-    (accumulator, registry) => {
-      const registryOrdersForRegistry = registryOrders.filter(
-        (registryOrder) => registryOrder.registry_id === registry.id,
-      );
-      accumulator[registry.id] = buildRegistryPaymentActivities({
-        contributions: registryContributions.filter(
-          (contribution) => contribution.registry_id === registry.id,
-        ),
-        orderItems: registryOrderItems.filter((orderItem) =>
-          registryOrdersForRegistry.some(
-            (registryOrder) => registryOrder.id === orderItem.registry_order_id,
-          ),
-        ),
-        orders: registryOrdersForRegistry,
-        registryItems: registryItemsById[registry.id] ?? [],
-      });
-      return accumulator;
-    },
-    {},
-  );
-  setRegistryPaymentActivities(registryPaymentsMap);
-
-  persistAdminDashboardCacheEntry(userId, {
-    blogPosts: ((blogPostsResult.error ? [] : blogPostsResult.data) ?? []) as BlogPostRecord[],
-    campaignContacts:
-      campaignContactsResult.error?.code === "42P01"
-        ? []
-        : (((campaignContactsResult.error ? [] : campaignContactsResult.data) ?? []) as CampaignContactRecord[]),
-    deals: ((dealsResult.error ? [] : dealsResult.data) ?? []) as HomeDealRecord[],
-    newsletterCampaigns:
-      ((newsletterCampaignsResult.error ? [] : newsletterCampaignsResult.data) ?? []) as NewsletterCampaign[],
-    newsletterSubscribers:
-      ((newsletterSubscribersResult.error ? [] : newsletterSubscribersResult.data) ?? []) as NewsletterSubscriber[],
-    productCategories:
-      productCategoriesResult.error?.code === "42P01"
-        ? []
-        : (((productCategoriesResult.error ? [] : productCategoriesResult.data) ?? []) as ProductCategoryRecord[]),
-    specialPackages:
-      ((specialPackagesResult.error ? [] : specialPackagesResult.data) ?? []) as SpecialPackageRecord[],
-    registries: ((registriesResult.error ? [] : registriesResult.data) ?? []) as RegistryRecord[],
-    registryItemsByRegistry: registryItemsById,
-    orders: orders,
-    registryOrderItemsByOrder: registryOrderItemsMap,
-    registryOrders,
-    registryPaymentActivities: registryPaymentsMap,
-    registrySummaries: registrySummaryMap,
-    shippingTiers:
-      ((shippingTiersResult.error ? [] : shippingTiersResult.data) ?? []) as ShippingTier[],
-    siteContentSettings:
-      siteContentSettingsResult.error?.code === "42P01"
-        ? []
-        : (((siteContentSettingsResult.error ? [] : siteContentSettingsResult.data) ?? []) as SiteContentSettingRecord[]),
-    storeLocations:
-      ((storeLocationsResult.error ? [] : storeLocationsResult.data) ?? []) as StoreLocationRecord[],
-    homepageReviews:
-      homepageReviewsResult.error?.code === "42P01"
-        ? []
-        : (((homepageReviewsResult.error ? [] : homepageReviewsResult.data) ?? []) as HomepageReviewRecord[]),
-    registryReviews:
-      registryReviewsResult.error?.code === "42P01"
-        ? []
-        : (((registryReviewsResult.error ? [] : registryReviewsResult.data) ?? []) as HomepageReviewRecord[]),
-  });
-
-  if (showSpinner) {
-    setLoading(false);
-  }
-}, [userId]);
+    loadedAdminTabsRef.current.add(tab);
+  }, [userId]);
 
 useEffect(() => {
   if (adminAccessStatus !== "allowed") return;
@@ -1180,6 +827,26 @@ useEffect(() => {
 
   useEffect(() => {
     if (adminAccessStatus !== "allowed") return;
+    const timeoutId = window.setTimeout(() => {
+      void loadAdminTabData(activeAdminTab);
+    }, 0);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [activeAdminTab, adminAccessStatus, loadAdminTabData]);
+
+  useEffect(() => {
+    if (adminAccessStatus !== "allowed" || activeAdminTab !== "orders") return;
+    const orderQueryKey = [
+      orderStatusTab,
+      orderDateFilter,
+      orderDateRange.from.getTime(),
+      orderDateRange.to.getTime(),
+      orderSearchQuery,
+    ].join(":");
+    if (loadedOrderQueryRef.current === orderQueryKey) return;
+    loadedOrderQueryRef.current = orderQueryKey;
     ordersPageRef.current = 0;
 
     const timeoutId = window.setTimeout(() => {
@@ -1190,10 +857,22 @@ useEffect(() => {
     return () => {
       window.clearTimeout(timeoutId);
     };
-  }, [adminAccessStatus, orderStatusTab, orderDateFilter, orderDateRange, orderSearchQuery]);
+  }, [
+    activeAdminTab,
+    adminAccessStatus,
+    fetchOrderCounts,
+    fetchOrdersPage,
+    orderDateFilter,
+    orderDateRange,
+    orderSearchQuery,
+    orderStatusTab,
+  ]);
 
   useEffect(() => {
-    if (adminAccessStatus !== "allowed") return;
+    if (adminAccessStatus !== "allowed" || !["orders", "products", "categories"].includes(activeAdminTab)) return;
+    const productQueryKey = `${productSearchQuery}:${productCategoryFilter}`;
+    if (loadedProductQueryRef.current === productQueryKey) return;
+    loadedProductQueryRef.current = productQueryKey;
     productsPageRef.current = 0;
 
     const timeoutId = window.setTimeout(() => {
@@ -1203,10 +882,12 @@ useEffect(() => {
     return () => {
       window.clearTimeout(timeoutId);
     };
-  }, [adminAccessStatus, fetchProductsPage, productSearchQuery, productCategoryFilter]);
+  }, [activeAdminTab, adminAccessStatus, fetchProductsPage, productSearchQuery, productCategoryFilter]);
 
   useEffect(() => {
-    if (adminAccessStatus !== "allowed") return;
+    if (adminAccessStatus !== "allowed" || !["orders", "registries", "customers", "campaigns"].includes(activeAdminTab)) return;
+    if (loadedCustomerQueryRef.current === customerSearchQuery) return;
+    loadedCustomerQueryRef.current = customerSearchQuery;
     customersPageRef.current = 0;
 
     const timeoutId = window.setTimeout(() => {
@@ -1216,7 +897,7 @@ useEffect(() => {
     return () => {
       window.clearTimeout(timeoutId);
     };
-  }, [adminAccessStatus, fetchCustomersPage, customerSearchQuery]);
+  }, [activeAdminTab, adminAccessStatus, fetchCustomersPage, customerSearchQuery]);
 
   const fetchProductsPageRef = useRef(fetchProductsPage);
 useEffect(() => {
@@ -1293,22 +974,6 @@ useEffect(() => {
     });
   };
 
-  const currentMonth = new Date().getMonth();
-  const currentYear = new Date().getFullYear();
-  const monthlyOrders = (orders ?? []).filter((order) => {
-    const orderDate = new Date(order.created_at);
-    return (
-      orderDate.getMonth() === currentMonth &&
-      orderDate.getFullYear() === currentYear
-    );
-  });
-  const monthlyRevenue = monthlyOrders
-    .filter((order) => order.status === "paid")
-    .reduce((sum, order) => sum + Number(order.total), 0);
-  const paidOrders = useMemo(
-    () => (orders ?? []).filter((order) => order.status === "paid"),
-    [orders],
-  );
   const activeSubscribers = useMemo(
     () => newsletterSubscribers.filter((subscriber) => subscriber.is_active),
     [newsletterSubscribers],
@@ -1379,10 +1044,14 @@ useEffect(() => {
     }
 
     initialAdminLoadKeyRef.current = loadKey;
+    loadedAdminTabsRef.current.clear();
+    loadedOrderQueryRef.current = null;
+    loadedProductQueryRef.current = null;
+    loadedCustomerQueryRef.current = null;
 
     queueMicrotask(() => {
       setAdminAccessStatus("checking");
-      setLoading(!cachedAdminEntry);
+      setLoading(true);
       void (async () => {
         const hasAccess = await verifyAdminAccess();
         if (!hasAccess) {
@@ -1390,48 +1059,48 @@ useEffect(() => {
           return;
         }
 
-        if (cachedAdminEntry) {
-          setAdminAccessStatus("allowed");
-          setLoading(false);
-          await loadAdminData(false);
-          return;
-        }
-
-        await loadAdminData(!cachedAdminEntry);
+        setAdminAccessStatus("allowed");
+        setLoading(false);
       })();
     });
-  }, [authLoading, cachedAdminEntry, loadAdminData, userId, verifyAdminAccess]);
+  }, [authLoading, userId, verifyAdminAccess]);
 
   useEffect(() => {
     if (authLoading || !userId || !hasSupabaseEnv) {
       return;
     }
 
-    const refreshAdminData = () => {
+    const refreshDashboardCounts = () => {
+      const now = Date.now();
+      if (now - lastBackgroundRefreshRef.current < ADMIN_BACKGROUND_REFRESH_INTERVAL_MS) {
+        return;
+      }
+
+      lastBackgroundRefreshRef.current = now;
       void (async () => {
         const hasAccess = await verifyAdminAccess();
         if (!hasAccess) {
           return;
         }
 
-        await loadAdminData(false);
+        await fetchDashboardCounts();
       })();
     };
 
     const handleVisibilityChange = () => {
       if (document.visibilityState === "visible") {
-        refreshAdminData();
+        refreshDashboardCounts();
       }
     };
 
-    window.addEventListener("focus", refreshAdminData);
+    window.addEventListener("focus", refreshDashboardCounts);
     document.addEventListener("visibilitychange", handleVisibilityChange);
 
     return () => {
-      window.removeEventListener("focus", refreshAdminData);
+      window.removeEventListener("focus", refreshDashboardCounts);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, [authLoading, loadAdminData, userId, verifyAdminAccess]);
+  }, [authLoading, fetchDashboardCounts, userId, verifyAdminAccess]);
 
   const revalidatePublicTags = async (tags: string[]) => {
     const accessToken = await getAdminAccessToken();
@@ -1450,9 +1119,14 @@ useEffect(() => {
   };
 
   const uploadAdminContentImage = useCallback(
-    async (accessToken: string, file: File) => {
+    async (
+      accessToken: string,
+      file: File,
+      scope: "content" | "packages" | "locations" = "content",
+    ) => {
       const formData = new FormData();
       formData.append("image", file);
+      formData.append("scope", scope);
 
       const response = await fetch("/api/admin/content/upload", {
         method: "POST",
@@ -1463,14 +1137,15 @@ useEffect(() => {
       });
 
       const result = (await response.json().catch(() => null)) as
-        | { dataUrl?: string; message?: string }
+        | { dataUrl?: string; message?: string; path?: string; url?: string }
         | null;
 
-      if (!response.ok || !result?.dataUrl) {
+      const imageUrl = result?.url ?? result?.dataUrl;
+      if (!response.ok || !imageUrl) {
         throw new Error(result?.message ?? "Could not upload the image.");
       }
 
-      return result.dataUrl;
+      return imageUrl;
     },
     [],
   );
@@ -1530,7 +1205,7 @@ useEffect(() => {
 
       toast.success(result?.message ?? "Homepage content updated.");
       await revalidatePublicTags(["content"]);
-      await loadAdminData();
+      await loadAdminTabData("content", true);
     } catch (error) {
       console.error("Failed to save homepage content.", error);
       toast.error(
@@ -1615,7 +1290,7 @@ useEffect(() => {
       setShowHomepageReviewModal(false);
       resetHomepageReviewForm();
       await revalidatePublicTags(["content"]);
-      await loadAdminData();
+      await loadAdminTabData("reviews", true);
     } catch (error) {
       console.error("Failed to save homepage review.", error);
       toast.error("Could not save the review.");
@@ -1654,7 +1329,7 @@ useEffect(() => {
 
       toast.success(result?.message ?? "Review deleted.");
       await revalidatePublicTags(["content"]);
-      await loadAdminData();
+      await loadAdminTabData("reviews", true);
     } catch (error) {
       console.error("Failed to delete homepage review.", error);
       toast.error("Could not delete the review.");
@@ -1731,7 +1406,7 @@ useEffect(() => {
       setShowRegistryReviewModal(false);
       resetRegistryReviewForm();
       await revalidatePublicTags(["content"]);
-      await loadAdminData();
+      await loadAdminTabData("reviews", true);
     } catch (error) {
       console.error("Failed to save registry review.", error);
       toast.error("Could not save the review.");
@@ -1770,7 +1445,7 @@ useEffect(() => {
 
       toast.success(result?.message ?? "Registry review deleted.");
       await revalidatePublicTags(["content"]);
-      await loadAdminData();
+      await loadAdminTabData("reviews", true);
     } catch (error) {
       console.error("Failed to delete registry review.", error);
       toast.error("Could not delete the review.");
@@ -1848,7 +1523,7 @@ useEffect(() => {
       toast.success(result?.message ?? (editingCustomer ? "Customer updated." : "Customer created."));
       setShowCustomerModal(false);
       resetCustomerForm();
-      void loadAdminData();
+      void Promise.all([fetchCustomersPage(true), fetchDashboardCounts()]);
     } catch (error) {
       console.error("Failed to save customer.", error);
       toast.error("Could not save the customer.");
@@ -1886,7 +1561,7 @@ useEffect(() => {
       }
 
       toast.success(result?.message ?? "Customer disabled.");
-      void loadAdminData();
+      void Promise.all([fetchCustomersPage(true), fetchDashboardCounts()]);
     } catch (error) {
       console.error("Failed to disable customer.", error);
       toast.error("Could not disable the customer.");
@@ -1962,7 +1637,7 @@ useEffect(() => {
       toast.success(result?.message ?? (editingShippingTier ? "Shipping tier updated." : "Shipping tier created."));
       setShowShippingTierModal(false);
       resetShippingTierForm();
-      void loadAdminData();
+      void loadAdminTabData("shipping", true);
     } catch (error) {
       console.error("Failed to save shipping tier.", error);
       toast.error("Could not save the shipping tier.");
@@ -2000,7 +1675,7 @@ useEffect(() => {
       }
 
       toast.success(result?.message ?? "Shipping tier deleted.");
-      void loadAdminData();
+      void loadAdminTabData("shipping", true);
     } catch (error) {
       console.error("Failed to delete shipping tier.", error);
       toast.error("Could not delete the shipping tier.");
@@ -2075,7 +1750,7 @@ useEffect(() => {
 
     try {
       if (packageImageFile) {
-        nextPackageImage = await uploadAdminContentImage(accessToken, packageImageFile);
+        nextPackageImage = await uploadAdminContentImage(accessToken, packageImageFile, "packages");
       }
 
       const response = await fetch(
@@ -2113,7 +1788,7 @@ useEffect(() => {
       toast.success(result?.message ?? (editingPackage ? "Package updated." : "Package created."));
       setShowPackageModal(false);
       resetPackageForm();
-      await loadAdminData();
+      await loadAdminTabData("packages", true);
     } catch (error) {
       console.error("Failed to save package.", error);
       toast.error("Could not save the package.");
@@ -2151,7 +1826,7 @@ useEffect(() => {
       }
 
       toast.success(result?.message ?? "Package deleted.");
-      await loadAdminData();
+      await loadAdminTabData("packages", true);
     } catch (error) {
       console.error("Failed to delete package.", error);
       toast.error("Could not delete the package.");
@@ -2208,7 +1883,7 @@ useEffect(() => {
 
     try {
       if (locationHeroImageFile) {
-        nextHeroImage = await uploadAdminContentImage(accessToken, locationHeroImageFile);
+        nextHeroImage = await uploadAdminContentImage(accessToken, locationHeroImageFile, "locations");
       }
 
       const response = await fetch(
@@ -2246,7 +1921,7 @@ useEffect(() => {
       toast.success(result?.message ?? (editingLocation ? "Location updated." : "Location created."));
       setShowLocationModal(false);
       resetLocationForm();
-      await loadAdminData();
+      await loadAdminTabData("content", true);
     } catch (error) {
       console.error("Failed to save location.", error);
       toast.error("Could not save the location.");
@@ -2284,7 +1959,7 @@ useEffect(() => {
       }
 
       toast.success(result?.message ?? "Location deleted.");
-      await loadAdminData();
+      await loadAdminTabData("content", true);
     } catch (error) {
       console.error("Failed to delete location.", error);
       toast.error("Could not delete the location.");
@@ -2953,7 +2628,8 @@ useEffect(() => {
     setShowProductModal(false);
     resetProductForm();
     await revalidatePublicTags(["products"]);
-    void loadAdminData();
+    void fetchProductsPage(true);
+    void fetchDashboardCounts();
 
     } finally {
       setSavingProduct(false);
@@ -2988,7 +2664,8 @@ useEffect(() => {
 
     toast.success("Product deleted.");
     await revalidatePublicTags(["products"]);
-    void loadAdminData();
+    void fetchProductsPage(true);
+    void fetchDashboardCounts();
   };
 
   const resetDealForm = () => {
@@ -3029,9 +2706,11 @@ useEffect(() => {
   const handleSaveDeal = async (event: React.FormEvent) => {
     event.preventDefault();
 
-    const hasExistingUploadedImage =
-      typeof dealImage === "string" && dealImage.startsWith("data:image/");
-    let overrideImage = hasExistingUploadedImage ? dealImage : null;
+    const existingUploadedImage =
+      typeof dealImage === "string" && dealImage.trim().length > 0
+        ? dealImage.trim()
+        : null;
+    let overrideImage = existingUploadedImage;
 
     if (!dealImageFile && !overrideImage) {
       toast.error("Upload a deal image file that is 500KB or smaller.");
@@ -3057,15 +2736,16 @@ useEffect(() => {
       });
 
       const uploadResult = (await uploadResponse.json().catch(() => null)) as
-        | { dataUrl?: string; message?: string }
+        | { dataUrl?: string; message?: string; path?: string; url?: string }
         | null;
+      const uploadedImageUrl = uploadResult?.url ?? uploadResult?.dataUrl;
 
-      if (!uploadResponse.ok || !uploadResult?.dataUrl) {
+      if (!uploadResponse.ok || !uploadedImageUrl) {
         toast.error(uploadResult?.message ?? "Could not upload the deal image.");
         return;
       }
 
-      overrideImage = uploadResult.dataUrl;
+      overrideImage = uploadedImageUrl;
     }
 
     const payload = {
@@ -3095,7 +2775,7 @@ useEffect(() => {
     setShowDealModal(false);
     resetDealForm();
     await revalidatePublicTags(["products"]);
-    void loadAdminData();
+    void loadAdminTabData("deals", true);
   };
 
   const handleDeleteDeal = async (dealId: string) => {
@@ -3111,7 +2791,7 @@ useEffect(() => {
 
     toast.success("Deal deleted.");
     await revalidatePublicTags(["products"]);
-    void loadAdminData();
+    void loadAdminTabData("deals", true);
   };
 
   const resetBlogForm = () => {
@@ -3176,7 +2856,7 @@ useEffect(() => {
     setShowBlogModal(false);
     resetBlogForm();
     await revalidatePublicTags(["blog"]);
-    void loadAdminData();
+    void loadAdminTabData("blogs", true);
   };
 
   const handleAddSubscriber = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -3202,7 +2882,7 @@ useEffect(() => {
     toast.success("Subscriber added.");
     setNewSubscriberEmail("");
     setShowAddSubscriberModal(false);
-    void loadAdminData();
+    void loadAdminTabData("newsletter", true);
   };
 
   const handleDeleteSubscriber = async (subscriberId: string) => {
@@ -3221,7 +2901,7 @@ useEffect(() => {
     }
 
     toast.success("Subscriber removed.");
-    void loadAdminData();
+    void loadAdminTabData("newsletter", true);
   };
   const handleDeleteBlog = async (blogId: string) => {
     if (!window.confirm("Delete this blog post?")) {
@@ -3236,7 +2916,7 @@ useEffect(() => {
 
     toast.success("Blog post deleted.");
     await revalidatePublicTags(["blog"]);
-    void loadAdminData();
+    void loadAdminTabData("blogs", true);
   };
 
   const handleSendNewsletter = async (event: React.FormEvent) => {
@@ -3289,7 +2969,7 @@ useEffect(() => {
       );
       setNewsletterSubject("");
       setNewsletterBody("");
-      void loadAdminData();
+      void loadAdminTabData("newsletter", true);
     } catch (error) {
       console.error("Failed to send newsletter.", error);
       toast.error("Failed to send newsletter.");
@@ -3346,7 +3026,7 @@ useEffect(() => {
 
   return (
     <div className="container mx-auto px-4 py-8">
-      <Tabs defaultValue="orders" className="space-y-6">
+      <Tabs value={activeAdminTab} onValueChange={setActiveAdminTab} className="space-y-6">
         <div className="mb-6 space-y-4">
           <div className="flex items-center justify-between">
             <h1 className="text-3xl font-bold">Admin Dashboard</h1>
@@ -3702,7 +3382,7 @@ useEffect(() => {
             contacts={campaignContacts}
             customers={customers}
             getAdminAccessToken={getAdminAccessToken}
-            onReload={loadAdminData}
+            onReload={() => loadAdminTabData("campaigns", true)}
           />
         </TabsContent>
 
@@ -3828,7 +3508,7 @@ useEffect(() => {
         <TabsContent value="categories">
           <AdminProductCategoriesManager
             categories={productCategories}
-            onReload={loadAdminData}
+            onReload={() => loadAdminTabData("categories", true)}
             onRevalidateProducts={async () => {
               await revalidatePublicTags(["products"]);
             }}
@@ -4045,6 +3725,8 @@ useEffect(() => {
                         <img
                           src={heroImageDraft.image}
                           alt={heroImageDraft.alt}
+                          loading="lazy"
+                          decoding="async"
                           className="h-56 w-full object-cover"
                         />
                       </div>
@@ -4098,6 +3780,8 @@ useEffect(() => {
                             <img
                               src={imageDraft.image}
                               alt={imageDraft.alt}
+                              loading="lazy"
+                              decoding="async"
                               className="h-48 w-full object-cover"
                             />
                           </div>
@@ -4933,7 +4617,13 @@ useEffect(() => {
               </p>
               {packageImage ? (
                 <div className="overflow-hidden rounded-2xl border">
-                  <img src={packageImage} alt={packageTitle || "Package preview"} className="h-56 w-full object-cover" />
+                  <img
+                    src={packageImage}
+                    alt={packageTitle || "Package preview"}
+                    loading="lazy"
+                    decoding="async"
+                    className="h-56 w-full object-cover"
+                  />
                 </div>
               ) : null}
             </div>
@@ -5067,6 +4757,8 @@ useEffect(() => {
                   <img
                     src={locationHeroImage}
                     alt={locationName || "Location preview"}
+                    loading="lazy"
+                    decoding="async"
                     className="h-56 w-full object-cover"
                   />
                 </div>
@@ -5408,6 +5100,8 @@ useEffect(() => {
                         <img
                           src={preview.url}
                           alt={`New image ${index + 1}`}
+                          loading="lazy"
+                          decoding="async"
                           className="aspect-square w-full object-cover"
                         />
                         <div className="flex items-center justify-between gap-1 p-2">
@@ -5603,6 +5297,8 @@ useEffect(() => {
                               <img
                                 src={image.thumbnailUrl || image.url}
                                 alt={`Variant ${index + 1} photo`}
+                                loading="lazy"
+                                decoding="async"
                                 className="h-full w-full rounded-md border object-cover"
                               />
                               <button
@@ -5621,6 +5317,8 @@ useEffect(() => {
                               <img
                                 src={previewUrl}
                                 alt={`Variant ${index + 1} pending photo`}
+                                loading="lazy"
+                                decoding="async"
                                 className="h-full w-full rounded-md border-2 border-dashed object-cover opacity-80"
                               />
                               <button
