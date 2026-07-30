@@ -42,6 +42,8 @@ export interface BlogPostRecord {
   updated_at?: string;
 }
 
+export type BlogPostSummary = Omit<BlogPostRecord, "body_markdown">;
+
 export interface HomepageDeal {
   id: string;
   title: string;

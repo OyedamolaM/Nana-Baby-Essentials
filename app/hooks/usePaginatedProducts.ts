@@ -28,12 +28,14 @@ interface UsePaginatedProductsOptions {
 }
 
 type PaginatedProductsCacheEntry = {
+  cachedAt: number;
   page: number;
   products: StoreProduct[];
   totalCount: number;
 };
 
 const PAGINATED_PRODUCTS_CACHE_STORAGE_PREFIX = "nbe:product-page:";
+const PAGINATED_PRODUCTS_CACHE_TTL_MS = 5 * 60 * 1000;
 const paginatedProductsCache = new Map<string, PaginatedProductsCacheEntry>();
 function mapCatalogProduct(record: ProductRecord): StoreProduct {
   return mapProductRecord(record);
@@ -71,7 +73,10 @@ function readPaginatedProductsCache(cacheKey: string) {
 
   const memoryEntry = paginatedProductsCache.get(cacheKey);
   if (memoryEntry) {
-    return memoryEntry;
+    if (Date.now() - Number(memoryEntry.cachedAt ?? 0) < PAGINATED_PRODUCTS_CACHE_TTL_MS) {
+      return memoryEntry;
+    }
+    paginatedProductsCache.delete(cacheKey);
   }
 
   try {
@@ -83,6 +88,10 @@ function readPaginatedProductsCache(cacheKey: string) {
     }
 
     const parsed = JSON.parse(rawValue) as PaginatedProductsCacheEntry;
+    if (Date.now() - Number(parsed.cachedAt ?? 0) >= PAGINATED_PRODUCTS_CACHE_TTL_MS) {
+      window.sessionStorage.removeItem(`${PAGINATED_PRODUCTS_CACHE_STORAGE_PREFIX}${cacheKey}`);
+      return undefined;
+    }
     paginatedProductsCache.set(cacheKey, parsed);
     return parsed;
   } catch {
@@ -92,9 +101,13 @@ function readPaginatedProductsCache(cacheKey: string) {
 
 function persistPaginatedProductsCache(
   cacheKey: string,
-  entry: PaginatedProductsCacheEntry,
+  entry: Omit<PaginatedProductsCacheEntry, "cachedAt">,
 ) {
-  paginatedProductsCache.set(cacheKey, entry);
+  const cachedEntry = {
+    ...entry,
+    cachedAt: Date.now(),
+  };
+  paginatedProductsCache.set(cacheKey, cachedEntry);
 
   if (typeof window === "undefined") {
     return;
@@ -103,7 +116,7 @@ function persistPaginatedProductsCache(
   try {
     window.sessionStorage.setItem(
       `${PAGINATED_PRODUCTS_CACHE_STORAGE_PREFIX}${cacheKey}`,
-      JSON.stringify(entry),
+      JSON.stringify(cachedEntry),
     );
   } catch {
     // Ignore storage failures and keep the in-memory cache.
@@ -272,6 +285,7 @@ export function usePaginatedProducts({
   );
   const [searchQuery, setSearchQueryState] = useState(initialSearchQuery);
   const requestIdRef = useRef(0);
+  const initialCachePersistedRef = useRef(false);
   const skipInitialFetchRef = useRef(
     hasInitialResult || Boolean(initialCachedResult),
   );
@@ -309,6 +323,7 @@ export function usePaginatedProducts({
         setTotalCount(cachedResult.totalCount);
         setLoading(false);
       }
+      return;
     }
 
     if (!hasSupabaseEnv) {
@@ -451,21 +466,20 @@ export function usePaginatedProducts({
   }, [page, totalPages]);
 
   useEffect(() => {
-    const cacheKey = getPaginatedProductsCacheKey({
-      featuredOnly,
-      onlyInStock,
-      page,
-      pageSize,
-      searchQuery,
-      selectedCategory,
+    if (!hasInitialResult || initialCachePersistedRef.current) return;
+    initialCachePersistedRef.current = true;
+    persistPaginatedProductsCache(initialCacheKey, {
+      page: initialPage,
+      products: initialProducts,
+      totalCount: initialTotalCount,
     });
-
-    persistPaginatedProductsCache(cacheKey, {
-      page,
-      products,
-      totalCount,
-    });
-  }, [featuredOnly, onlyInStock, page, pageSize, products, searchQuery, selectedCategory, totalCount]);
+  }, [
+    hasInitialResult,
+    initialCacheKey,
+    initialPage,
+    initialProducts,
+    initialTotalCount,
+  ]);
 
   return {
     loading,

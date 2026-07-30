@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   FALLBACK_BLOG_POSTS,
-  type BlogPostRecord,
+  type BlogPostSummary,
   type HomeDealRecord,
   type HomepageDeal,
 } from "../../lib/content";
@@ -14,6 +14,22 @@ import {
   type ProductRecord,
 } from "../../lib/commerce";
 import { hasSupabaseEnv, supabase } from "../lib/supabase";
+
+const FALLBACK_BLOG_SUMMARIES: BlogPostSummary[] = FALLBACK_BLOG_POSTS.map(
+  (post) => ({
+    author_name: post.author_name,
+    category: post.category,
+    cover_image: post.cover_image,
+    created_at: post.created_at,
+    excerpt: post.excerpt,
+    id: post.id,
+    is_published: post.is_published,
+    published_at: post.published_at,
+    slug: post.slug,
+    title: post.title,
+    updated_at: post.updated_at,
+  }),
+);
 
 function buildProductLookup(records: ProductRecord[] | null | undefined) {
   return Object.fromEntries(
@@ -96,6 +112,10 @@ export function useHomepageDeals(initialDeals?: HomepageDeal[]) {
   );
 
   useEffect(() => {
+    if (initialDeals && initialDeals.length > 0) {
+      return;
+    }
+
     if (!hasSupabaseEnv) {
       return;
     }
@@ -151,9 +171,9 @@ export function useHomepageDeals(initialDeals?: HomepageDeal[]) {
   return deals;
 }
 
-export function usePublishedBlogPosts(initialPosts?: BlogPostRecord[]) {
-  const [posts, setPosts] = useState<BlogPostRecord[]>(
-    initialPosts && initialPosts.length > 0 ? initialPosts : FALLBACK_BLOG_POSTS,
+export function usePublishedBlogPosts(initialPosts?: BlogPostSummary[]) {
+  const [posts, setPosts] = useState<BlogPostSummary[]>(
+    initialPosts && initialPosts.length > 0 ? initialPosts : FALLBACK_BLOG_SUMMARIES,
   );
   const [loading, setLoading] = useState(
     Boolean(hasSupabaseEnv && !(initialPosts && initialPosts.length > 0)),
@@ -171,17 +191,17 @@ export function usePublishedBlogPosts(initialPosts?: BlogPostRecord[]) {
     const loadPosts = async () => {
       const { data, error } = await supabase
         .from("blog_posts")
-        .select("*")
+        .select("id, title, slug, category, excerpt, cover_image, author_name, published_at, is_published, created_at, updated_at")
         .eq("is_published", true)
         .order("published_at", { ascending: false });
 
       if (error || !data || data.length === 0) {
-        setPosts(FALLBACK_BLOG_POSTS);
+        setPosts(FALLBACK_BLOG_SUMMARIES);
         setLoading(false);
         return;
       }
 
-      setPosts(data as BlogPostRecord[]);
+      setPosts(data as BlogPostSummary[]);
       setLoading(false);
     };
 
@@ -191,7 +211,7 @@ export function usePublishedBlogPosts(initialPosts?: BlogPostRecord[]) {
   const postLookup = useMemo(() => {
     return Object.fromEntries(posts.map((post) => [post.slug, post])) as Record<
       string,
-      BlogPostRecord
+      BlogPostSummary
     >;
   }, [posts]);
 
