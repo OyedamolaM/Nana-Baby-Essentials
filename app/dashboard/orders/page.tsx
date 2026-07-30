@@ -4,7 +4,7 @@ import { buildPageMetadata } from "../../../lib/site";
 
 export const metadata = buildPageMetadata({
   title: "My Orders",
-  description: "Review your paid and unfinished store orders.",
+  description: "Review your confirmed store orders and download receipts.",
   path: "/dashboard/orders",
   noIndex: true,
 });

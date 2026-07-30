@@ -80,6 +80,10 @@ import {
   AdminCampaignManager,
   type CampaignContactRecord,
 } from "../components/admin/AdminCampaignManager";
+import {
+  AdminAbandonedCartsManager,
+  type AdminAbandonedCart,
+} from "../components/admin/AdminAbandonedCartsManager";
 import { AdminOrdersManager, type AdminOrderRecord } from "../components/admin/AdminOrdersManager";
 import { AdminProductCategoriesManager } from "../components/admin/AdminProductCategoriesManager";
 import { AdminRegistryAccountsManager } from "../components/admin/AdminRegistryAccountsManager";
@@ -336,6 +340,10 @@ export function AdminDashboard() {
   const [orderSearchInput, setOrderSearchInput] = useState("");
   const orderSearchQuery = useDebouncedValue(orderSearchInput, 400);
   const [orderCounts, setOrderCounts] = useState({ paid: 0, unpaid: 0 });
+  const [abandonedCarts, setAbandonedCarts] = useState<AdminAbandonedCart[]>([]);
+  const [abandonedAfterMinutes, setAbandonedAfterMinutes] = useState(30);
+  const [abandonedCartsLoading, setAbandonedCartsLoading] = useState(false);
+  const [abandonedCartsLoaded, setAbandonedCartsLoaded] = useState(false);
 
   const [customers, setCustomers] = useState<Customer[]>([]);
   const PRODUCTS_PAGE_SIZE = 200;
@@ -996,6 +1004,64 @@ useEffect(() => {
 
     return session?.access_token ?? null;
   }, [session]);
+
+  const loadAbandonedCarts = useCallback(async () => {
+    const accessToken = await getAdminAccessToken();
+    if (!accessToken) {
+      toast.error("Sign in again to load abandoned carts.");
+      return;
+    }
+
+    setAbandonedCartsLoading(true);
+    try {
+      const response = await fetch("/api/admin/abandoned-carts", {
+        cache: "no-store",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      });
+      const payload = (await response.json().catch(() => null)) as
+        | {
+            abandonedAfterMinutes?: number;
+            carts?: AdminAbandonedCart[];
+            message?: string;
+          }
+        | null;
+
+      if (!response.ok) {
+        toast.error(payload?.message ?? "Could not load abandoned carts.");
+        return;
+      }
+
+      setAbandonedCarts(payload?.carts ?? []);
+      setAbandonedAfterMinutes(payload?.abandonedAfterMinutes ?? 30);
+      setAbandonedCartsLoaded(true);
+    } catch (error) {
+      console.error("Failed to load abandoned carts.", error);
+      toast.error("Could not load abandoned carts.");
+    } finally {
+      setAbandonedCartsLoading(false);
+    }
+  }, [getAdminAccessToken]);
+
+  useEffect(() => {
+    if (
+      activeAdminTab !== "abandoned-carts" ||
+      abandonedCartsLoaded ||
+      adminAccessStatus !== "allowed"
+    ) {
+      return;
+    }
+
+    queueMicrotask(() => {
+      void loadAbandonedCarts();
+    });
+  }, [
+    abandonedCartsLoaded,
+    activeAdminTab,
+    adminAccessStatus,
+    loadAbandonedCarts,
+  ]);
 
   const verifyAdminAccess = useCallback(async () => {
     if (!userId || !hasSupabaseEnv) {
@@ -3083,6 +3149,7 @@ useEffect(() => {
 
           <TabsList className="flex h-14 w-full items-center justify-start gap-2 overflow-x-auto px-2 no-scrollbar sm:h-auto sm:flex-wrap sm:overflow-visible sm:px-0 [&>*]:shrink-0">
             <TabsTrigger value="orders" className="h-10 px-4 py-3 whitespace-nowrap">Orders</TabsTrigger>
+            <TabsTrigger value="abandoned-carts" className="h-10 px-4 py-3 whitespace-nowrap">Abandoned Carts</TabsTrigger>
             <TabsTrigger value="registries" className="h-10 px-4 py-3 whitespace-nowrap">Registries</TabsTrigger>
             <TabsTrigger value="customers" className="h-10 px-4 py-3 whitespace-nowrap">Customers</TabsTrigger>
             <TabsTrigger value="newsletter" className="h-10 px-4 py-3 whitespace-nowrap">Newsletter</TabsTrigger>
@@ -3130,6 +3197,17 @@ useEffect(() => {
               sentinelRef={ordersSentinelRef}
             />
           </div>
+        </TabsContent>
+
+        <TabsContent value="abandoned-carts">
+          <AdminAbandonedCartsManager
+            abandonedAfterMinutes={abandonedAfterMinutes}
+            carts={abandonedCarts}
+            loading={abandonedCartsLoading}
+            onRefresh={() => {
+              void loadAbandonedCarts();
+            }}
+          />
         </TabsContent>
 
         <TabsContent value="registries">

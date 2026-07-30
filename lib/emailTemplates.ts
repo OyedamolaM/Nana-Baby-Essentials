@@ -41,9 +41,15 @@ type OrderConfirmationEmailOptions = {
   orderId: string;
   paymentMethod?: string | null;
   paymentReference?: string | null;
+  pickupCode?: string | null;
   shippingAddress?: StoreOrderAddress | null;
   shippingTier?: string | null;
   totalAmount: number;
+};
+
+type OrderSupportEmailOptions = OrderConfirmationEmailOptions & {
+  customerPhone?: string | null;
+  status?: string | null;
 };
 
 type EmailContent = {
@@ -378,6 +384,7 @@ export function renderOrderConfirmationEmail({
   orderId,
   paymentMethod,
   paymentReference,
+  pickupCode,
   shippingAddress,
   shippingTier,
   totalAmount,
@@ -394,6 +401,9 @@ export function renderOrderConfirmationEmail({
     { label: "Placed", value: formatOrderDate(createdAt) },
     { label: "Delivery Zone", value: formatShippingTier(shippingTier) },
     { label: "Payment Method", value: paymentMethodLabel },
+    ...(pickupCode?.trim()
+      ? [{ label: "Pickup Code", value: pickupCode.trim() }]
+      : []),
     { label: "Total", value: formatNairaAmount(totalAmount) },
   ];
 
@@ -415,6 +425,15 @@ export function renderOrderConfirmationEmail({
     <h2 style="margin:0 0 14px;font-size:18px;line-height:1.4;color:#0f172a;">Order summary</h2>
     ${renderOrderItems(items)}
     ${renderAddressCard("Delivery address", formatAddress(shippingAddress))}
+    ${
+      pickupCode?.trim()
+        ? `<div style="margin:0 0 24px;border:1px solid #bfdbfe;border-radius:20px;padding:18px 20px;background:#eff6ff;">
+            <div style="font-size:12px;letter-spacing:0.08em;text-transform:uppercase;color:#1d4ed8;">Pickup Code</div>
+            <div style="margin-top:8px;font-size:24px;font-weight:800;letter-spacing:0.08em;color:#1e3a8a;">${escapeHtml(pickupCode.trim())}</div>
+            <p style="margin:8px 0 0;font-size:13px;line-height:1.7;color:#1e40af;">Share this code with the rider or pickup attendant only when receiving your order.</p>
+          </div>`
+        : ""
+    }
     <p style="margin:0;font-size:15px;line-height:1.8;color:#334155;">
       We will keep you updated as your order moves through processing and delivery.
     </p>
@@ -431,6 +450,7 @@ export function renderOrderConfirmationEmail({
     paymentReference?.trim()
       ? `Payment reference: ${paymentReference.trim()}`
       : null,
+    pickupCode?.trim() ? `Pickup code: ${pickupCode.trim()}` : null,
     `Total: ${formatNairaAmount(totalAmount)}`,
     "A PDF receipt is attached to this email for your records.",
     "",
@@ -458,6 +478,128 @@ export function renderOrderConfirmationEmail({
       footerText: "Sent by Nana's Baby Essentials.",
       subtitle:
         "Your payment has been received and your order is now in our processing queue.",
+      title: subject,
+    }),
+    subject,
+    text,
+  };
+}
+
+export function renderOrderSupportEmail({
+  createdAt,
+  customerEmail,
+  customerName,
+  customerPhone,
+  items,
+  orderId,
+  paymentMethod,
+  paymentReference,
+  pickupCode,
+  shippingAddress,
+  shippingTier,
+  status,
+  totalAmount,
+}: OrderSupportEmailOptions): EmailContent {
+  const customerLabel = customerName?.trim() || "Customer";
+  const paymentMethodLabel = formatPaymentMethodLabel(
+    paymentMethod,
+    paymentReference,
+  );
+  const fulfillmentLabel = pickupCode?.trim()
+    ? `Store pickup (${formatShippingTier(shippingTier)})`
+    : formatShippingTier(shippingTier);
+  const subject = `New paid order ${orderId.slice(0, 8).toUpperCase()} - ${formatNairaAmount(totalAmount)}`;
+  const facts = [
+    { label: "Order ID", value: orderId },
+    { label: "Placed", value: formatOrderDate(createdAt) },
+    { label: "Status", value: status?.trim() || "paid" },
+    { label: "Customer", value: customerLabel },
+    { label: "Email", value: customerEmail.trim() || "Not provided" },
+    { label: "Phone", value: customerPhone?.trim() || "Not provided" },
+    { label: "Fulfillment", value: fulfillmentLabel },
+    { label: "Payment Method", value: paymentMethodLabel },
+    ...(paymentReference?.trim()
+      ? [{ label: "Payment Reference", value: paymentReference.trim() }]
+      : []),
+    ...(pickupCode?.trim()
+      ? [{ label: "Pickup Code", value: pickupCode.trim() }]
+      : []),
+    { label: "Total", value: formatNairaAmount(totalAmount) },
+  ];
+
+  const bodyHtml = `
+    <p style="margin:0 0 18px;font-size:16px;line-height:1.8;color:#334155;">
+      A customer has completed payment. Please review the order, confirm stock,
+      and begin fulfillment.
+    </p>
+    ${renderFactGrid(facts)}
+    ${
+      pickupCode?.trim()
+        ? `<div style="margin:0 0 24px;border-radius:22px;background:#eff6ff;padding:20px 22px;color:#1e3a8a;">
+            <div style="font-size:12px;letter-spacing:0.08em;text-transform:uppercase;color:#2563eb;">Shared Pickup Code</div>
+            <div style="margin-top:8px;font-size:28px;font-weight:800;letter-spacing:0.1em;">${escapeHtml(pickupCode.trim())}</div>
+            <p style="margin:8px 0 0;font-size:13px;line-height:1.7;">The customer, rider, and support team should use this same code at handover.</p>
+          </div>`
+        : ""
+    }
+    <h2 style="margin:0 0 14px;font-size:18px;line-height:1.4;color:#0f172a;">Items to fulfill</h2>
+    ${renderOrderItems(items)}
+    ${renderAddressCard(
+      pickupCode?.trim() ? "Pickup contact details" : "Delivery address",
+      formatAddress(shippingAddress),
+    )}
+    <div style="margin:0;border-radius:22px;background:#f1f5f9;padding:18px 20px;">
+      <p style="margin:0;font-size:14px;line-height:1.8;color:#334155;">
+        The customer receipt is attached. Use the order ID and Paystack reference
+        when reconciling payment or contacting the customer.
+      </p>
+    </div>
+  `;
+
+  const text = [
+    "New paid order",
+    "",
+    `Order ID: ${orderId}`,
+    `Placed: ${formatOrderDate(createdAt)}`,
+    `Status: ${status?.trim() || "paid"}`,
+    `Customer: ${customerLabel}`,
+    `Email: ${customerEmail.trim() || "Not provided"}`,
+    `Phone: ${customerPhone?.trim() || "Not provided"}`,
+    `Fulfillment: ${fulfillmentLabel}`,
+    `Payment method: ${paymentMethodLabel}`,
+    paymentReference?.trim()
+      ? `Payment reference: ${paymentReference.trim()}`
+      : null,
+    pickupCode?.trim() ? `Pickup code: ${pickupCode.trim()}` : null,
+    `Total: ${formatNairaAmount(totalAmount)}`,
+    "",
+    "Items:",
+    ...items.map((item) => {
+      const quantity = Math.max(1, Math.floor(Number(item.quantity ?? 1)));
+      const unitAmount = Number(item.price ?? 0);
+      return `- ${item.name?.trim() || "Store item"} x ${quantity}: ${formatNairaAmount(
+        unitAmount * quantity,
+      )}`;
+    }),
+    "",
+    pickupCode?.trim() ? "Pickup contact details:" : "Delivery address:",
+    formatAddress(shippingAddress),
+    "",
+    "The customer receipt is attached to this email.",
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  return {
+    html: renderEmailShell({
+      bodyHtml,
+      eyebrow: "Paid Order Alert",
+      footerText:
+        "Internal fulfillment notification from Nana's Baby Essentials.",
+      subtitle:
+        pickupCode?.trim()
+          ? "Payment is confirmed and this pickup order is ready for fulfillment."
+          : "Payment is confirmed and this delivery order is ready for fulfillment.",
       title: subject,
     }),
     subject,

@@ -75,6 +75,7 @@ export type AdminOrderRecord = {
   items?: AdminOrderItem[] | null;
   payment_method?: string | null;
   payment_reference?: string | null;
+  pickup_code?: string | null;
   rider_pickup_code?: string | null;
   shipping_address?: Partial<ShippingAddress> | null;
   shipping_tier?: string | null;
@@ -145,6 +146,15 @@ function formatDateTime(value?: string | null) {
     hour: "numeric",
     minute: "2-digit",
   });
+}
+
+function getPickupCode(order: AdminOrderRecord) {
+  return (
+    order.pickup_code?.trim() ||
+    order.customer_pickup_code?.trim() ||
+    order.rider_pickup_code?.trim() ||
+    null
+  );
 }
 
 export function AdminOrdersManager({
@@ -487,6 +497,7 @@ export function AdminOrdersManager({
         <TableBody>
           {orders.map((order) => {
             const savedAddress = normalizeShippingAddress(order.shipping_address);
+            const pickupCode = getPickupCode(order);
             const selectedTier = shippingTiers.find(
               (tier) => tier.code === order.shipping_tier,
             );
@@ -502,14 +513,9 @@ export function AdminOrdersManager({
                   <div className="text-xs text-gray-500">
                     {order.shipping_tier || "No shipping tier"}
                   </div>
-                  {order.customer_pickup_code || order.rider_pickup_code ? (
-                    <div className="mt-1 space-y-1 text-xs text-gray-500">
-                      {order.customer_pickup_code ? (
-                        <div>Customer pickup code: {order.customer_pickup_code}</div>
-                      ) : null}
-                      {order.rider_pickup_code ? (
-                        <div>Rider pickup code: {order.rider_pickup_code}</div>
-                      ) : null}
+                  {pickupCode ? (
+                    <div className="mt-1 text-xs font-medium text-blue-700">
+                      Pickup code: {pickupCode}
                     </div>
                   ) : null}
                 </TableCell>
@@ -561,6 +567,7 @@ export function AdminOrdersManager({
                           items: order.items,
                           paymentMethod: order.payment_method,
                           paymentReference: order.payment_reference,
+                          pickupCode,
                           riderPickupCode: order.rider_pickup_code,
                           shippingAddress: normalizeShippingAddress(order.shipping_address),
                           shippingTier: order.shipping_tier,
@@ -715,7 +722,7 @@ export function AdminOrdersManager({
                 value="unpaid"
                 className="min-w-0 cursor-pointer whitespace-normal px-3 py-2 text-center text-xs leading-tight sm:text-sm"
               >
-                Unpaid Orders ({unpaidCount})
+                Unfinished ({unpaidCount})
               </TabsTrigger>
             </TabsList>
 
@@ -723,7 +730,7 @@ export function AdminOrdersManager({
               {renderOrdersTable("No paid store orders yet.")}
             </TabsContent>
             <TabsContent value="unpaid">
-              {renderOrdersTable("No unpaid store orders right now.")}
+              {renderOrdersTable("No unfinished store orders right now.")}
             </TabsContent>
           </Tabs>
 
@@ -1049,7 +1056,8 @@ export function AdminOrdersManager({
                 </>
               ) : (
                 <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
-                  This is a pickup order. Rider and customer pickup codes will be generated automatically after the order is saved.
+                  This is a pickup order. One pickup code will be generated for the customer,
+                  rider, and support team after the order is saved.
                 </div>
               )}
             </div>

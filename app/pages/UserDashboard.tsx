@@ -65,6 +65,7 @@ type UserOrder = {
   created_at: string;
   payment_method?: string | null;
   payment_reference?: string | null;
+  pickup_code?: string | null;
   shipping_address?: Partial<ShippingAddress> | null;
   status: string;
   rider_pickup_code?: string | null;
@@ -274,6 +275,15 @@ function formatDateTime(value?: string | null) {
   });
 }
 
+function getPickupCode(order: UserOrder) {
+  return (
+    order.pickup_code?.trim() ||
+    order.customer_pickup_code?.trim() ||
+    order.rider_pickup_code?.trim() ||
+    null
+  );
+}
+
 type DashboardTab = "orders" | "registries" | "profile" | "address" | "security";
 
 function getDashboardTabRoute(tab: DashboardTab) {
@@ -347,7 +357,6 @@ export function UserDashboard({
   const [savingRegistryStatus, setSavingRegistryStatus] = useState(false);
   const [savingCampaignPreference, setSavingCampaignPreference] = useState(false);
   const [activeTab, setActiveTab] = useState<DashboardTab>(initialTab);
-  const [orderStatusTab, setOrderStatusTab] = useState<"paid" | "unpaid">("paid");
   const [orderFilterDay, setOrderFilterDay] = useState("");
   const [orderFilterMonth, setOrderFilterMonth] = useState("");
   const profileRequestIdRef = useRef(0);
@@ -357,10 +366,6 @@ export function UserDashboard({
   const lastBackgroundRefreshRef = useRef(0);
   const [expandedRegistryIds, setExpandedRegistryIds] = useState<Set<string>>(new Set());
   const [loadingRegistryIds, setLoadingRegistryIds] = useState<Set<string>>(new Set());
-
-
-  const filteredPaidOrders = orderStatusTab === "paid" ? orders : [];
-  const filteredUnfinishedOrders = orderStatusTab === "unpaid" ? orders : [];
 
   const loadProfile = useCallback(async (force = false) => {
     if (!userId) return;
@@ -421,7 +426,7 @@ export function UserDashboard({
 
   const loadOrders = useCallback(async (reset = true, force = false) => {
     if (!userId || (!reset && ordersLoadingMore)) return;
-    const queryKey = createOrderQueryKey(orderStatusTab, orderFilterDay, orderFilterMonth);
+    const queryKey = createOrderQueryKey("paid", orderFilterDay, orderFilterMonth);
     const cached = readDashboardCacheEntry(userId)?.ordersByQuery?.[queryKey];
     if (reset && !force && cached) {
       setOrders(cached.data.orders);
@@ -436,29 +441,22 @@ export function UserDashboard({
     const requestId = ++ordersRequestIdRef.current;
     let query = supabase
       .from("orders")
-      .select("id, created_at, status, total, items, payment_method, payment_reference, shipping_address, shipping_tier, customer_name, customer_email, customer_phone, customer_pickup_code, rider_pickup_code")
-      .eq("user_id", userId);
-    query = orderStatusTab === "paid" ? query.eq("status", "paid") : query.neq("status", "paid");
+      .select("id, created_at, status, total, items, payment_method, payment_reference, shipping_address, shipping_tier, customer_name, customer_email, customer_phone, pickup_code, customer_pickup_code, rider_pickup_code")
+      .eq("user_id", userId)
+      .eq("status", "paid");
     let paidCountQuery = supabase
       .from("orders")
       .select("id", { count: "exact", head: true })
       .eq("user_id", userId)
       .eq("status", "paid");
-    let unpaidCountQuery = supabase
-      .from("orders")
-      .select("id", { count: "exact", head: true })
-      .eq("user_id", userId)
-      .neq("status", "paid");
     if (orderDateRange) {
       query = query.gte("created_at", orderDateRange.from).lt("created_at", orderDateRange.to);
       paidCountQuery = paidCountQuery.gte("created_at", orderDateRange.from).lt("created_at", orderDateRange.to);
-      unpaidCountQuery = unpaidCountQuery.gte("created_at", orderDateRange.from).lt("created_at", orderDateRange.to);
     }
     if (!reset && ordersCursor) query = query.lt("created_at", ordersCursor);
-    const [ordersResult, paidResult, unpaidResult] = await Promise.all([
+    const [ordersResult, paidResult] = await Promise.all([
       query.order("created_at", { ascending: false }).limit(DASHBOARD_PAGE_SIZE + 1),
       reset ? paidCountQuery : Promise.resolve({ count: orderCounts.paid }),
-      reset ? unpaidCountQuery : Promise.resolve({ count: orderCounts.unpaid }),
     ]);
     if (ordersRequestIdRef.current !== requestId) return;
     const rows = (ordersResult.data ?? []) as UserOrder[];
@@ -469,7 +467,7 @@ export function UserDashboard({
       hasMore: rows.length > DASHBOARD_PAGE_SIZE,
       orders: nextOrders,
       paidCount: paidResult.count ?? 0,
-      unpaidCount: unpaidResult.count ?? 0,
+      unpaidCount: 0,
     };
     setOrders(nextData.orders);
     setOrdersCursor(nextData.cursor);
@@ -486,14 +484,12 @@ export function UserDashboard({
     setLoading(false);
   }, [
     orderCounts.paid,
-    orderCounts.unpaid,
     orderDateRange,
     orderFilterDay,
     orderFilterMonth,
     orders,
     ordersCursor,
     ordersLoadingMore,
-    orderStatusTab,
     userId,
   ]);
 
@@ -868,7 +864,9 @@ export function UserDashboard({
 
     return (
       <div className="space-y-4">
-        {items.map((order) => (
+        {items.map((order) => {
+          const pickupCode = getPickupCode(order);
+          return (
           <div key={order.id} className="rounded-lg border p-4">
             <div className="mb-2 flex items-start justify-between">
               <div>
@@ -904,16 +902,15 @@ export function UserDashboard({
                 {order.status}
               </span>
             </div>
-            {order.customer_pickup_code || order.rider_pickup_code ? (
+            {pickupCode ? (
               <>
                 <Separator className="my-2" />
                 <div className="rounded-lg bg-blue-50 p-3 text-sm text-blue-900">
-                  {order.customer_pickup_code ? (
-                    <p>Customer pickup code: {order.customer_pickup_code}</p>
-                  ) : null}
-                  {order.rider_pickup_code ? (
-                    <p>Rider pickup code: {order.rider_pickup_code}</p>
-                  ) : null}
+                  <p className="font-semibold">Pickup code: {pickupCode}</p>
+                  <p className="mt-1 text-xs">
+                    Share this code with the rider or pickup attendant only when receiving
+                    your order.
+                  </p>
                 </div>
               </>
             ) : null}
@@ -951,6 +948,7 @@ export function UserDashboard({
                     items: order.items,
                     paymentMethod: order.payment_method,
                     paymentReference: order.payment_reference,
+                    pickupCode,
                     riderPickupCode: order.rider_pickup_code,
                     shippingAddress: normalizeShippingAddress(order.shipping_address),
                     shippingTier: order.shipping_tier,
@@ -964,7 +962,8 @@ export function UserDashboard({
               </Button>
             </div>
           </div>
-        ))}
+          );
+        })}
       </div>
     );
   };
@@ -1107,31 +1106,7 @@ export function UserDashboard({
                     Clear Filter
                   </Button>
                 </div>
-                <Tabs
-                  value={orderStatusTab === "paid" ? "paid" : "unfinished"}
-                  onValueChange={(value) => setOrderStatusTab(value === "paid" ? "paid" : "unpaid")}
-                  className="space-y-4"
-                >
-                  <TabsList className="grid w-full grid-cols-2">
-                    <TabsTrigger value="paid" className="min-w-0 whitespace-normal px-3 py-2 text-center leading-tight">
-                      Paid Orders ({orderCounts.paid})
-                    </TabsTrigger>
-                    <TabsTrigger value="unfinished" className="min-w-0 whitespace-normal px-3 py-2 text-center leading-tight">
-                      Unfinished ({orderCounts.unpaid})
-                    </TabsTrigger>
-                  </TabsList>
-
-                  <TabsContent value="unfinished">
-                    {renderOrders(
-                      filteredUnfinishedOrders,
-                      "No unfinished orders right now.",
-                    )}
-                  </TabsContent>
-
-                  <TabsContent value="paid">
-                    {renderOrders(filteredPaidOrders, "No paid orders yet.")}
-                  </TabsContent>
-                </Tabs>
+                {renderOrders(orders, "No orders yet.")}
                 {ordersHasMore ? (
                   <div className="mt-4 flex justify-center">
                     <Button

@@ -28,6 +28,7 @@ type OrderRecord = {
   items?: unknown;
   payment_method?: string | null;
   payment_reference?: string | null;
+  pickup_code?: string | null;
   rider_pickup_code?: string | null;
   shipping_address?: unknown;
   shipping_tier?: string | null;
@@ -158,7 +159,7 @@ export async function POST(request: Request) {
       adminClient
         .from("orders")
         .select(
-          "id, user_id, total, status, shipping_address, items, payment_method, payment_reference, shipping_tier, created_at, customer_name, customer_email, customer_phone, customer_pickup_code, rider_pickup_code",
+          "id, user_id, total, status, shipping_address, items, payment_method, payment_reference, shipping_tier, created_at, customer_name, customer_email, customer_phone, pickup_code, customer_pickup_code, rider_pickup_code",
         )
         .eq("id", orderId)
         .maybeSingle<OrderRecord>(),
@@ -203,6 +204,11 @@ export async function POST(request: Request) {
     orderId: order.id,
     paymentMethod: order.payment_method ?? null,
     paymentReference: order.payment_reference ?? null,
+    pickupCode:
+      order.pickup_code ??
+      order.customer_pickup_code ??
+      order.rider_pickup_code ??
+      null,
     shippingAddress: normalizeAddress(order.shipping_address),
     shippingTier: order.shipping_tier ?? null,
     totalAmount: Number(order.total ?? 0),
@@ -229,6 +235,11 @@ export async function POST(request: Request) {
           items: normalizeItems(order.items),
           paymentMethod: order.payment_method ?? null,
           paymentReference: order.payment_reference ?? null,
+          pickupCode:
+            order.pickup_code ??
+            order.customer_pickup_code ??
+            order.rider_pickup_code ??
+            null,
           riderPickupCode: order.rider_pickup_code ?? null,
           shippingAddress: normalizeAddress(order.shipping_address),
           shippingTier: order.shipping_tier ?? null,

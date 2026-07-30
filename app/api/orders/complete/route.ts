@@ -19,12 +19,17 @@ type CompleteOrderPayload = {
 };
 
 type StoreOrderRow = {
+  created_at?: string | null;
   customer_email?: string | null;
   customer_name?: string | null;
   customer_phone?: string | null;
   id: string;
   items?: unknown;
+  payment_method?: string | null;
   payment_reference?: string | null;
+  pickup_code?: string | null;
+  customer_pickup_code?: string | null;
+  rider_pickup_code?: string | null;
   shipping_address?: unknown;
   shipping_tier?: string | null;
   status?: string | null;
@@ -68,7 +73,7 @@ export async function POST(request: Request) {
 
   const { data: order, error: orderError } = await serviceRoleClient
     .from("orders")
-    .select("id, user_id, status, payment_reference, total, items, shipping_address, shipping_tier, customer_name, customer_email, customer_phone")
+    .select("id, user_id, created_at, status, payment_method, payment_reference, total, items, shipping_address, shipping_tier, customer_name, customer_email, customer_phone, pickup_code, customer_pickup_code, rider_pickup_code")
     .eq("id", orderId)
     .maybeSingle<StoreOrderRow>();
 
@@ -172,14 +177,22 @@ export async function POST(request: Request) {
   }
 
   await notifyOrderSupport({
+    createdAt: order.created_at,
     customerEmail: order.customer_email,
     customerName: order.customer_name,
     customerPhone: order.customer_phone,
     id: order.id,
     items: order.items,
+    paymentMethod: order.payment_method,
     paymentReference: paystackReference,
+    pickupCode:
+      order.pickup_code ??
+      order.customer_pickup_code ??
+      order.rider_pickup_code ??
+      null,
     shippingAddress: order.shipping_address,
     shippingTier: order.shipping_tier,
+    status: "paid",
     total: order.total,
   }).catch((error) => console.error("Failed to notify order support.", error));
 

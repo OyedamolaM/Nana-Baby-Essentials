@@ -28,6 +28,7 @@ export type OrderReceiptPayload = {
   items?: ReceiptItem[] | null;
   paymentMethod?: string | null;
   paymentReference?: string | null;
+  pickupCode?: string | null;
   riderPickupCode?: string | null;
   shippingAddress?: ReceiptAddress | null;
   shippingTier?: string | null;
@@ -394,11 +395,15 @@ function createPdfBytes(order: OrderReceiptPayload) {
     order.customerPhone?.trim() || "No phone provided",
   ];
   const addressLines = buildAddressLines(order.shippingAddress);
+  const pickupCode =
+    order.pickupCode?.trim() ||
+    order.customerPickupCode?.trim() ||
+    order.riderPickupCode?.trim() ||
+    null;
   const fulfillmentLines = [
     order.shippingTier?.trim() ? `Shipping Tier: ${order.shippingTier.trim()}` : "Shipping Tier: N/A",
     ...(addressLines.length > 0 ? addressLines : ["No delivery address recorded."]),
-    ...(order.customerPickupCode ? [`Customer pickup code: ${order.customerPickupCode}`] : []),
-    ...(order.riderPickupCode ? [`Rider pickup code: ${order.riderPickupCode}`] : []),
+    ...(pickupCode ? [`Pickup code: ${pickupCode}`] : []),
   ];
   const receiptLines = [
     `Receipt No: ${getReceiptNumber(order.id)}`,
