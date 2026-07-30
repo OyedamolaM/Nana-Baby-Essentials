@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 
 import { requireAdminRoute } from "@/lib/authServer";
+import { isSiteImageScope, uploadSiteImage } from "@/lib/siteImageStorage";
 
-const MAX_IMAGE_SIZE_BYTES = 500 * 1024;
+export const runtime = "nodejs";
 
 export async function POST(request: Request) {
   const admin = await requireAdminRoute(request);
@@ -20,26 +21,24 @@ export async function POST(request: Request) {
     );
   }
 
-  if (!image.type.startsWith("image/")) {
+  const requestedScope = formData?.get("scope");
+  const scope = isSiteImageScope(requestedScope) && requestedScope !== "deals"
+    ? requestedScope
+    : "content";
+
+  try {
+    const uploaded = await uploadSiteImage(image, scope);
+    return NextResponse.json({
+      ...uploaded,
+      dataUrl: uploaded.url,
+      message: "Image uploaded successfully.",
+    });
+  } catch (error) {
     return NextResponse.json(
-      { message: "Only image uploads are supported." },
+      {
+        message: error instanceof Error ? error.message : "Could not process this image.",
+      },
       { status: 400 },
     );
   }
-
-  if (image.size > MAX_IMAGE_SIZE_BYTES) {
-    return NextResponse.json(
-      { message: "Image uploads must be 500KB or smaller." },
-      { status: 400 },
-    );
-  }
-
-  const arrayBuffer = await image.arrayBuffer();
-  const base64 = Buffer.from(arrayBuffer).toString("base64");
-  const dataUrl = `data:${image.type};base64,${base64}`;
-
-  return NextResponse.json({
-    dataUrl,
-    message: "Image uploaded successfully.",
-  });
 }
