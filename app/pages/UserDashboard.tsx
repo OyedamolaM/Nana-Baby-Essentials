@@ -7,6 +7,7 @@ import {
   Download,
   Gift,
   Home,
+  Menu,
   Package,
   Pencil,
   Settings,
@@ -57,8 +58,15 @@ import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { RegistryCreateModal } from "../components/registry/RegistryCreateModal";
 import { Separator } from "../components/ui/separator";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from "../components/ui/sheet";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { Textarea } from "../components/ui/textarea";
+import { cn } from "../components/ui/utils";
 
 type OrderItem = {
   name: string;
@@ -303,6 +311,91 @@ type DashboardTab = "home" | "orders" | "registries" | "account" | "settings";
 type AccountSection = "profile" | "address";
 type SettingsSection = "communication" | "security" | "account";
 
+const CUSTOMER_NAVIGATION = [
+  {
+    id: "home",
+    label: "Home",
+    description: "Welcome and quick actions",
+    icon: Home,
+  },
+  {
+    id: "orders",
+    label: "Orders",
+    description: "Receipts and order history",
+    icon: Package,
+  },
+  {
+    id: "registries",
+    label: "Registries",
+    description: "Gifts and fulfilment",
+    icon: Gift,
+  },
+  {
+    id: "account",
+    label: "Account",
+    description: "Profile and delivery address",
+    icon: User,
+  },
+  {
+    id: "settings",
+    label: "Settings",
+    description: "Preferences and security",
+    icon: Settings,
+  },
+] satisfies Array<{
+  id: DashboardTab;
+  label: string;
+  description: string;
+  icon: typeof Home;
+}>;
+
+function CustomerNavigation({
+  activeSection,
+  onSelect,
+}: {
+  activeSection: DashboardTab;
+  onSelect: (section: DashboardTab) => void;
+}) {
+  return (
+    <div className="space-y-5">
+      <p className="px-3 text-lg font-bold text-pink-600">My Dashboard</p>
+      <nav aria-label="Customer dashboard sections" className="space-y-1">
+        {CUSTOMER_NAVIGATION.map((item) => {
+          const Icon = item.icon;
+          const isActive = item.id === activeSection;
+          return (
+            <button
+              key={item.id}
+              type="button"
+              aria-current={isActive ? "page" : undefined}
+              onClick={() => onSelect(item.id)}
+              className={cn(
+                "flex w-full items-start gap-3 rounded-xl px-3 py-3 text-left transition-colors",
+                isActive
+                  ? "bg-pink-50 text-pink-700"
+                  : "text-gray-600 hover:bg-gray-100 hover:text-gray-950",
+              )}
+            >
+              <Icon className="mt-0.5 h-4 w-4 shrink-0" />
+              <span className="min-w-0">
+                <span className="block text-sm font-semibold">{item.label}</span>
+                <span
+                  className={cn(
+                    "mt-0.5 block text-xs",
+                    isActive ? "text-pink-600" : "text-gray-400",
+                  )}
+                >
+                  {item.description}
+                </span>
+              </span>
+            </button>
+          );
+        })}
+      </nav>
+    </div>
+  );
+}
+
 function getDashboardTabRoute(tab: DashboardTab) {
   switch (tab) {
     case "home":
@@ -378,6 +471,7 @@ export function UserDashboard({
   const [savingRegistryStatus, setSavingRegistryStatus] = useState(false);
   const [savingCampaignPreference, setSavingCampaignPreference] = useState(false);
   const [activeTab, setActiveTab] = useState<DashboardTab>(initialTab);
+  const [mobileNavigationOpen, setMobileNavigationOpen] = useState(false);
   const [accountSection, setAccountSection] = useState<AccountSection>(initialAccountSection);
   const [settingsSection, setSettingsSection] =
     useState<SettingsSection>(initialSettingsSection);
@@ -1046,6 +1140,7 @@ export function UserDashboard({
   const handleTabChange = (nextTab: string) => {
     const normalizedTab = nextTab as DashboardTab;
     setActiveTab(normalizedTab);
+    setMobileNavigationOpen(false);
 
     if (typeof window !== "undefined") {
       const nextRoute = getDashboardTabRoute(normalizedTab);
@@ -1054,6 +1149,14 @@ export function UserDashboard({
       }
     }
   };
+
+  const hasCompleteProfile = Boolean(
+    fullName.trim() &&
+      phone.trim() &&
+      shippingAddress.trim() &&
+      shippingCity.trim() &&
+      shippingState.trim(),
+  );
 
   if (authLoading) {
     return (
@@ -1089,51 +1192,38 @@ export function UserDashboard({
   }
 
   return (
-    <div className="container mx-auto px-4 py-8">
-      <div className="mx-auto max-w-4xl">
-        <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-6">
-          <div className="mb-6 space-y-4">
-            <h1 className="text-3xl font-bold">My Dashboard</h1>
-            <TabsList className="flex h-14 w-full items-center justify-start gap-2 overflow-x-auto px-2 no-scrollbar sm:h-auto sm:flex-wrap sm:overflow-visible sm:px-0 [&>*]:shrink-0">
-            <TabsTrigger
-              value="home"
-              className="flex h-10 cursor-pointer items-center gap-2 whitespace-nowrap px-4 py-3 text-sm"
-            >
-              <Home className="h-4 w-4" />
-              Home
-            </TabsTrigger>
-            <TabsTrigger
-              value="orders"
-              className="flex h-10 cursor-pointer items-center gap-2 whitespace-nowrap px-4 py-3 text-sm"
-            >
-              <Package className="h-4 w-4" />
-              Orders
-            </TabsTrigger>
-            <TabsTrigger 
-              value="registries"
-              className="flex cursor-pointer items-center gap-2 whitespace-nowrap px-4 py-3 text-sm h-10"
-            >
-              <Gift className="h-4 w-4" />
-              Registries
-            </TabsTrigger>
-            <TabsTrigger 
-              value="account"
-              className="flex h-10 cursor-pointer items-center gap-2 whitespace-nowrap px-4 py-3 text-sm"
-            >
-              <User className="h-4 w-4" />
-              Account
-            </TabsTrigger>
-            <TabsTrigger 
-              value="settings"
-              className="flex h-10 cursor-pointer items-center gap-2 whitespace-nowrap px-4 py-3 text-sm"
-            >
-              <Settings className="h-4 w-4" />
-              Settings
-            </TabsTrigger>
-            </TabsList>
-          </div>
+    <div className="mx-auto w-full max-w-[1600px] px-4 py-6 sm:px-6 lg:px-8">
+      <Tabs value={activeTab} onValueChange={handleTabChange}>
+        <div className="mb-4 lg:hidden">
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            onClick={() => setMobileNavigationOpen(true)}
+            aria-label="Open dashboard navigation"
+          >
+            <Menu className="h-5 w-5" />
+          </Button>
+        </div>
 
-          <div className="min-h-[55vh]">
+        <Sheet open={mobileNavigationOpen} onOpenChange={setMobileNavigationOpen}>
+          <SheetContent side="left" className="w-[88vw] max-w-sm overflow-y-auto p-0">
+            <SheetHeader className="sr-only">
+              <SheetTitle>My Dashboard</SheetTitle>
+            </SheetHeader>
+            <div className="px-3 py-5">
+              <CustomerNavigation activeSection={activeTab} onSelect={handleTabChange} />
+            </div>
+          </SheetContent>
+        </Sheet>
+
+        <div className="grid items-start gap-6 lg:grid-cols-[260px_minmax(0,1fr)]">
+          <aside className="sticky top-24 hidden max-h-[calc(100vh-7rem)] overflow-y-auto rounded-2xl border bg-white p-3 shadow-sm lg:block">
+            <CustomerNavigation activeSection={activeTab} onSelect={handleTabChange} />
+          </aside>
+
+          <main className="min-w-0">
+            <div className="min-h-[55vh]">
           <TabsContent value="home">
             <div className="space-y-6">
               <div className="overflow-hidden rounded-3xl bg-gradient-to-br from-pink-600 to-pink-500 px-6 py-8 text-white sm:px-8">
@@ -1149,16 +1239,27 @@ export function UserDashboard({
                 </p>
               </div>
 
-              <div className="grid gap-4 sm:grid-cols-2">
+              <div className={cn("grid gap-4", !hasCompleteProfile && "sm:grid-cols-2")}>
+                {!hasCompleteProfile ? (
                 <Card>
                   <CardHeader>
-                    <CardTitle className="text-lg">Account Readiness</CardTitle>
+                    <CardTitle className="text-lg">Complete Your Profile</CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-3">
                     <div className="flex items-center justify-between rounded-xl bg-gray-50 px-4 py-3">
+                      <span className="text-sm text-gray-600">Full name</span>
+                      <span
+                        className={`text-sm font-semibold ${
+                          fullName.trim() ? "text-green-700" : "text-amber-700"
+                        }`}
+                      >
+                        {fullName.trim() ? "Saved" : "Required"}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between rounded-xl bg-gray-50 px-4 py-3">
                       <span className="text-sm text-gray-600">Phone number</span>
-                      <span className={`text-sm font-semibold ${phone ? "text-green-700" : "text-amber-700"}`}>
-                        {phone ? "Saved" : "Required"}
+                      <span className={`text-sm font-semibold ${phone.trim() ? "text-green-700" : "text-amber-700"}`}>
+                        {phone.trim() ? "Saved" : "Required"}
                       </span>
                     </div>
                     <div className="flex items-center justify-between rounded-xl bg-gray-50 px-4 py-3">
@@ -1178,12 +1279,18 @@ export function UserDashboard({
                     <Button
                       variant="outline"
                       className="w-full"
-                      onClick={() => handleTabChange("account")}
+                      onClick={() => {
+                        setAccountSection(
+                          fullName.trim() && phone.trim() ? "address" : "profile",
+                        );
+                        handleTabChange("account");
+                      }}
                     >
-                      Review Account
+                      Complete Profile
                     </Button>
                   </CardContent>
                 </Card>
+                ) : null}
 
                 <Card>
                   <CardHeader>
@@ -1385,7 +1492,7 @@ export function UserDashboard({
                               {registry.share_code}
                             </p>
                           </div>
-                          {detailsExpanded ? (
+                          {detailsExpanded && (
                           <Tabs defaultValue="funding" className="mt-4 space-y-4">
                             <TabsList className="grid w-full grid-cols-2">
                               <TabsTrigger value="funding" className="cursor-pointer">
@@ -1487,10 +1594,6 @@ export function UserDashboard({
                               )}
                             </TabsContent>
                           </Tabs>
-                          ) : (
-                            <p className="mt-4 text-sm text-gray-500">
-                              Open the summary only when you need funding or payment details.
-                            </p>
                           )}
 
                           <div className="mt-4 flex flex-wrap gap-2">
@@ -1821,9 +1924,10 @@ export function UserDashboard({
               </TabsContent>
             </Tabs>
           </TabsContent>
-          </div>
-        </Tabs>
-      </div>
+            </div>
+          </main>
+        </div>
+      </Tabs>
 
       <RegistryCreateModal
         open={registryCreateOpen}
