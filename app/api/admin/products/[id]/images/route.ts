@@ -171,7 +171,10 @@ async function insertProductImageWithRetry(
 
   return {
     data: null,
-    error: { message: "Could not assign a gallery position after several attempts." },
+    error: {
+      code: "23505",
+      message: "Could not assign a gallery position after several attempts.",
+    },
   };
 }
 
@@ -249,6 +252,15 @@ export async function POST(request: Request, context: RouteProps) {
 
   if (saveResult.error || !saveResult.data) {
     console.error("Failed to save product gallery image.", saveResult.error);
+    if (saveResult.error?.code === "23505" && isVariantOnly) {
+      return NextResponse.json(
+        {
+          message:
+            "Variant photo positions still use the legacy product-wide index. Apply the latest variant image migration.",
+        },
+        { status: 409 },
+      );
+    }
     return NextResponse.json(
       { message: "Could not update the product image right now." },
       { status: 500 },
