@@ -7,10 +7,6 @@ import {
   hasSupabaseServiceRoleEnv,
 } from "@/lib/supabaseServer";
 import {
-  hasSavedShippingAddress,
-  normalizeShippingAddress,
-} from "@/lib/userProfile";
-import {
   hasPaystackServerEnv,
   verifyPaystackTransaction,
   type PaystackMetadata,
@@ -30,7 +26,6 @@ type InitiateRegistryCheckoutPayload = {
   paymentAmount?: number | string;
   registryId?: string;
   selectedItems?: RegistryCheckoutItemInput[];
-  shippingAddress?: Record<string, unknown> | null;
 };
 
 type VerifyRegistryCheckoutPayload = {
@@ -285,10 +280,6 @@ async function handleInitiateCheckout(
   const buyerMessage = payload.buyerMessage?.trim() ?? "";
   const selectedItems = normalizeSelectedItems(payload.selectedItems);
   const paymentAmount = normalizePaymentAmount(payload.paymentAmount);
-  const shippingAddress = normalizeShippingAddress(
-    isRecord(payload.shippingAddress) ? payload.shippingAddress : null,
-  );
-
   if (!registryId) {
     return jsonError("Registry id is required.", 400);
   }
@@ -305,13 +296,6 @@ async function handleInitiateCheckout(
     return jsonError("Buyer phone number is required.", 400);
   }
 
-  if (!hasSavedShippingAddress(shippingAddress)) {
-    return jsonError(
-      "This registry cannot accept gifts until the owner saves a shipping address.",
-      400,
-    );
-  }
-
   if (selectedItems.length === 0 && paymentAmount <= 0) {
     return jsonError("Select registry items or enter a payment amount.", 400);
   }
@@ -322,6 +306,27 @@ async function handleInitiateCheckout(
       "Add SUPABASE_SERVICE_ROLE_KEY before starting registry checkout.",
       500,
     );
+  }
+
+  const { data: registryRow, error: registryError } = await adminClient
+    .from("registries")
+    .select("id, status")
+    .eq("id", registryId)
+    .maybeSingle();
+
+  if (registryError) {
+    return jsonError(
+      getErrorMessage(registryError, "Registry could not be prepared for checkout."),
+      400,
+    );
+  }
+
+  if (!registryRow) {
+    return jsonError("Registry not found.", 404);
+  }
+
+  if (registryRow.status === "closed") {
+    return jsonError("This registry is closed and is not accepting new gifts.", 400);
   }
 
   let selectedItemsTotal = 0;
@@ -442,7 +447,6 @@ async function handleInitiateCheckout(
         .from("registry_orders")
         .update({
           paystack_reference: reference,
-          shipping_address: shippingAddress,
         })
         .eq("id", fallbackOrderId);
 

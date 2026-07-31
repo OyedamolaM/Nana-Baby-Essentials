@@ -15,6 +15,11 @@ export interface RegistryRecord {
   status?: string | null;
   closed_at?: string | null;
   closed_note?: string | null;
+  fulfillment_status?: "collecting" | "ready_for_shipping" | "shipped" | "completed" | null;
+  ready_for_shipping_at?: string | null;
+  shipped_at?: string | null;
+  completed_at?: string | null;
+  fulfillment_updated_at?: string | null;
   partner_email?: string | null;
   partner_name?: string | null;
   whatsapp?: string | null;

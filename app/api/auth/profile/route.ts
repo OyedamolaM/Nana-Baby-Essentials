@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { revalidateTag } from "next/cache";
 
 import {
   createSupabaseServiceRoleClient,
@@ -10,6 +11,7 @@ import {
   requireRouteUser,
 } from "@/lib/authServer";
 import {
+  hasSavedShippingAddress,
   isMissingUserProfileColumnError,
   normalizeShippingAddress,
   type ShippingAddress,
@@ -146,6 +148,7 @@ export async function PATCH(request: Request) {
   }
 
   const updateData: Record<string, unknown> = {};
+  let shippingAddressChanged = false;
 
   if (typeof payload?.full_name === "string") {
     updateData.full_name = payload.full_name.trim();
@@ -167,9 +170,17 @@ export async function PATCH(request: Request) {
   }
 
   if (payload?.shipping_address && typeof payload.shipping_address === "object") {
-    updateData.shipping_address = normalizeShippingAddress(
+    const shippingAddress = normalizeShippingAddress(
       payload.shipping_address as Partial<ShippingAddress>,
     );
+    if (!hasSavedShippingAddress(shippingAddress)) {
+      return NextResponse.json(
+        { message: "Name, phone, address, city, and state are required." },
+        { status: 400 },
+      );
+    }
+    updateData.shipping_address = shippingAddress;
+    shippingAddressChanged = true;
   }
 
   if (Object.keys(updateData).length === 0) {
@@ -201,6 +212,10 @@ export async function PATCH(request: Request) {
       { message: error.message || "Could not update your profile." },
       { status: 500 },
     );
+  }
+
+  if (shippingAddressChanged) {
+    revalidateTag("registries", "max");
   }
 
   const profile = await loadServerUserProfile(

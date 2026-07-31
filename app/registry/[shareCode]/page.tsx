@@ -37,14 +37,13 @@ export default async function PublicRegistryPage({
   params,
 }: PublicRegistryPageProps) {
   const { shareCode } = await params;
-  const { items, registry, shippingAddress } = await getPublicRegistryByShareCode(shareCode);
+  const { items, registry } = await getPublicRegistryByShareCode(shareCode);
 
   return (
     <PublicRegistryPageClient
       shareCode={shareCode}
       initialRegistry={registry}
       initialItems={items}
-      initialShippingAddress={shippingAddress}
     />
   );
 }

@@ -39,20 +39,17 @@ import {
   type RegistryItemRecord,
   type RegistryRecord,
 } from "../../../lib/registry";
-import { type ShippingAddress } from "../../../lib/userProfile";
 import { hasSupabaseEnv, supabase } from "../../lib/supabase";
 
 interface PublicRegistryPageClientProps {
   initialItems: RegistryItem[];
   initialRegistry: RegistryRecord | null;
-  initialShippingAddress: ShippingAddress | null;
   shareCode: string;
 }
 
 type PublicRegistryCacheEntry = {
   items: RegistryItem[];
   registry: RegistryRecord | null;
-  shippingAddress: ShippingAddress | null;
 };
 
 const PUBLIC_REGISTRY_CACHE_STORAGE_PREFIX = "nbe:public-registry:";
@@ -109,7 +106,6 @@ function persistPublicRegistryCache(
 export function PublicRegistryPageClient({
   initialItems,
   initialRegistry,
-  initialShippingAddress,
   shareCode,
 }: PublicRegistryPageClientProps) {
   const cachedEntry = useMemo(
@@ -124,9 +120,6 @@ export function PublicRegistryPageClient({
   );
   const [registryItems, setRegistryItems] = useState<RegistryItem[]>(
     initialRegistry ? initialItems : cachedEntry?.items ?? initialItems,
-  );
-  const [shippingAddress, setShippingAddress] = useState<ShippingAddress | null>(
-    initialRegistry ? initialShippingAddress : cachedEntry?.shippingAddress ?? initialShippingAddress,
   );
   const skipInitialLoadRef = useRef(Boolean(initialRegistry || cachedEntry?.registry));
   const [giftQuantities, setGiftQuantities] = useState<Record<string, number>>({});
@@ -158,7 +151,6 @@ export function PublicRegistryPageClient({
 
       if (!typedRegistry) {
         setRegistryItems([]);
-        setShippingAddress(null);
         setLoading(false);
         return;
       }
@@ -186,9 +178,8 @@ export function PublicRegistryPageClient({
     persistPublicRegistryCache(shareCode, {
       items: registryItems,
       registry,
-      shippingAddress,
     });
-  }, [registry, registryItems, shareCode, shippingAddress]);
+  }, [registry, registryItems, shareCode]);
 
   const selectedItems = useMemo<RegistryGiftSelection[]>(() => {
     const selectableItems = new Map(
@@ -788,7 +779,6 @@ export function PublicRegistryPageClient({
           open={giftModalOpen}
           onClose={() => setGiftModalOpen(false)}
           registry={registry}
-          shippingAddress={shippingAddress}
           selectedItems={selectedItems}
           paymentAmount={paymentAmount}
           onCheckoutComplete={() => {

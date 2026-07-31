@@ -29,15 +29,8 @@ import {
 } from "./registry";
 import {
   createSupabaseServerClient,
-  createSupabaseServiceRoleClient,
   hasSupabaseServerEnv,
-  hasSupabaseServiceRoleEnv,
 } from "./supabaseServer";
-import {
-  hasSavedShippingAddress,
-  normalizeShippingAddress,
-  type ShippingAddress,
-} from "./userProfile";
 import {
   buildHomepageReviews,
   buildRegistryReviews,
@@ -68,7 +61,7 @@ const STORE_LOCATION_SELECT =
 const SPECIAL_PACKAGE_SELECT =
   "id, product_id, package_type, slug, title, subtitle, badge_text, details, override_image, external_video_url, is_active, sort_order, created_at, updated_at";
 const REGISTRY_SELECT =
-  "id, user_id, share_code, name, status, closed_at, closed_note, partner_email, partner_name, whatsapp, due_month, baby_gender, additional_info, created_at";
+  "id, user_id, share_code, name, status, closed_at, closed_note, fulfillment_status, ready_for_shipping_at, shipped_at, completed_at, partner_email, partner_name, whatsapp, due_month, baby_gender, additional_info, created_at";
 const REGISTRY_ITEM_SELECT =
   "id, registry_id, product_id, requested_quantity, purchased_quantity, funded_amount, unit_price_snapshot, note, created_at";
 
@@ -94,7 +87,6 @@ type ProductCategorySnapshot = {
 type RegistrySnapshot = {
   items: RegistryItem[];
   registry: RegistryRecord | null;
-  shippingAddress: ShippingAddress | null;
 };
 
 type SpecialPackageSnapshot = {
@@ -829,7 +821,6 @@ const getRegistryByShareCodeCached = unstable_cache(
       return {
         items: [],
         registry: null,
-        shippingAddress: null,
       } satisfies RegistrySnapshot;
     }
 
@@ -838,7 +829,6 @@ const getRegistryByShareCodeCached = unstable_cache(
       return {
         items: [],
         registry: null,
-        shippingAddress: null,
       } satisfies RegistrySnapshot;
     }
 
@@ -853,7 +843,6 @@ const getRegistryByShareCodeCached = unstable_cache(
       return {
         items: [],
         registry: null,
-        shippingAddress: null,
       } satisfies RegistrySnapshot;
     }
 
@@ -863,37 +852,11 @@ const getRegistryByShareCodeCached = unstable_cache(
       .eq("registry_id", registry.id)
       .order("created_at", { ascending: false });
 
-    let shippingAddress: ShippingAddress | null = null;
-
-    if (hasSupabaseServiceRoleEnv) {
-      const serviceRoleClient = createSupabaseServiceRoleClient();
-      if (serviceRoleClient) {
-        const { data: profileRow } = await serviceRoleClient
-          .from("user_profiles")
-          .select("shipping_address")
-          .eq("id", registry.user_id)
-          .maybeSingle();
-
-        const normalizedAddress = normalizeShippingAddress(
-          (
-            profileRow as
-              | { shipping_address?: Partial<ShippingAddress> | null }
-              | null
-          )?.shipping_address ?? null,
-        );
-
-        shippingAddress = hasSavedShippingAddress(normalizedAddress)
-          ? normalizedAddress
-          : null;
-      }
-    }
-
     return {
       items: ((itemRows as RegistryItemRecord[] | null) ?? []).map(
         mapRegistryItemRecord,
       ),
       registry,
-      shippingAddress,
     } satisfies RegistrySnapshot;
   },
   ["public-registry-by-share-code"],
