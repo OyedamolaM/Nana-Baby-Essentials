@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Edit, Gift, Plus, Trash2 } from "lucide-react";
+import { CheckCircle2, Edit, Gift, PackageCheck, Plus, RotateCcw, Trash2, Truck } from "lucide-react";
 import { toast } from "sonner";
 
 import { formatNairaAmount } from "../../../lib/commerce";
@@ -44,9 +44,14 @@ import {
 import { Textarea } from "../ui/textarea";
 
 type RegistryRecord = {
+  completed_at?: string | null;
+  fulfillment_status?: "collecting" | "ready_for_shipping" | "shipped" | "completed" | null;
   id: string;
   name: string;
+  ready_for_shipping_at?: string | null;
   share_code: string;
+  shipped_at?: string | null;
+  status?: string | null;
   user_id: string;
 };
 
@@ -126,6 +131,7 @@ export function AdminRegistryOrdersManager({
   const [showOrderModal, setShowOrderModal] = useState(false);
   const [editingOrder, setEditingOrder] = useState<RegistryOrderRecord | null>(null);
   const [savingOrder, setSavingOrder] = useState(false);
+  const [savingRegistryId, setSavingRegistryId] = useState<string | null>(null);
   const [selectedRegistryId, setSelectedRegistryId] = useState("");
   const [buyerName, setBuyerName] = useState("");
   const [buyerEmail, setBuyerEmail] = useState("");
@@ -436,8 +442,139 @@ export function AdminRegistryOrdersManager({
     }
   };
 
+  const handleRegistryFulfillment = async (
+    registry: RegistryRecord,
+    status: "collecting" | "ready_for_shipping" | "shipped" | "completed",
+  ) => {
+    const accessToken = await getAdminAccessToken();
+    if (!accessToken) {
+      toast.error("Sign in again to update registry fulfilment.");
+      return;
+    }
+
+    setSavingRegistryId(registry.id);
+    try {
+      const response = await fetch(`/api/registry/${registry.id}/fulfillment`, {
+        method: "PATCH",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ status }),
+      });
+      const result = (await response.json().catch(() => null)) as
+        | { message?: string }
+        | null;
+
+      if (!response.ok) {
+        toast.error(result?.message || "Registry fulfilment status could not be updated.");
+        return;
+      }
+
+      toast.success(result?.message || "Registry updated.");
+      await onReload();
+    } catch (error) {
+      console.error("Failed to update registry fulfilment.", error);
+      toast.error("Registry fulfilment status could not be updated.");
+    } finally {
+      setSavingRegistryId(null);
+    }
+  };
+
   return (
     <>
+      <Card>
+        <CardHeader>
+          <CardTitle>Registry Fulfilment</CardTitle>
+          <p className="text-sm text-gray-500">
+            Owners or admins mark paid items ready. Admins confirm dispatch, and either side can
+            confirm completion.
+          </p>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {registries.length === 0 ? (
+            <p className="text-sm text-gray-500">No registries yet.</p>
+          ) : (
+            registries.map((registry) => {
+              const fulfillmentStatus = registry.fulfillment_status ?? "collecting";
+              const owner = customerLookup[registry.user_id];
+              const ownerAddress = normalizeShippingAddress(owner?.shipping_address);
+              return (
+                <div
+                  key={registry.id}
+                  className="flex flex-col gap-3 rounded-xl border p-4 lg:flex-row lg:items-center lg:justify-between"
+                >
+                  <div>
+                    <p className="font-semibold">{registry.name}</p>
+                    <p className="text-sm text-gray-500">
+                      {owner?.full_name || owner?.email || "Registry owner"} ·{" "}
+                      <span className="capitalize">
+                        {fulfillmentStatus.replaceAll("_", " ")}
+                      </span>
+                    </p>
+                    <p className="text-xs text-gray-500">
+                      {ownerAddress.address
+                        ? `${ownerAddress.address}, ${ownerAddress.city}, ${ownerAddress.state}`
+                        : "Owner shipping address not yet saved"}
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {fulfillmentStatus === "collecting" ? (
+                      <Button
+                        size="sm"
+                        onClick={() =>
+                          void handleRegistryFulfillment(registry, "ready_for_shipping")
+                        }
+                        disabled={savingRegistryId === registry.id}
+                      >
+                        <PackageCheck className="mr-2 h-4 w-4" />
+                        Mark Ready
+                      </Button>
+                    ) : null}
+                    {fulfillmentStatus === "ready_for_shipping" ? (
+                      <>
+                        <Button
+                          size="sm"
+                          onClick={() => void handleRegistryFulfillment(registry, "shipped")}
+                          disabled={savingRegistryId === registry.id}
+                        >
+                          <Truck className="mr-2 h-4 w-4" />
+                          Mark Shipped
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => void handleRegistryFulfillment(registry, "collecting")}
+                          disabled={savingRegistryId === registry.id}
+                        >
+                          <RotateCcw className="mr-2 h-4 w-4" />
+                          Continue Collecting
+                        </Button>
+                      </>
+                    ) : null}
+                    {fulfillmentStatus === "shipped" ? (
+                      <Button
+                        size="sm"
+                        onClick={() => void handleRegistryFulfillment(registry, "completed")}
+                        disabled={savingRegistryId === registry.id}
+                      >
+                        <CheckCircle2 className="mr-2 h-4 w-4" />
+                        Complete
+                      </Button>
+                    ) : null}
+                    {fulfillmentStatus === "completed" ? (
+                      <span className="rounded-full bg-green-100 px-3 py-2 text-sm font-semibold text-green-800">
+                        Completed
+                      </span>
+                    ) : null}
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </CardContent>
+      </Card>
+
       <Card>
         <CardHeader className="space-y-4">
           <div className="space-y-1">

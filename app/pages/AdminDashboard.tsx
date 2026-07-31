@@ -734,12 +734,27 @@ const fetchOrdersPage = useCallback(
 
     if (tab === "registries") {
       const [registriesResult, itemsResult, ordersResult, contributionsResult] = await Promise.all([
-        supabase.from("registries").select("id, user_id, name, due_month, baby_gender, share_code, created_at").order("created_at", { ascending: false }),
+        supabase.from("registries").select("id, user_id, name, due_month, baby_gender, share_code, status, fulfillment_status, ready_for_shipping_at, shipped_at, completed_at, created_at").order("created_at", { ascending: false }),
         supabase.from("registry_items").select(`id, registry_id, product_id, requested_quantity, purchased_quantity, funded_amount, unit_price_snapshot, note, created_at, products(${PRODUCT_LIST_SELECT})`).order("created_at", { ascending: false }),
-        supabase.from("registry_orders").select("id, registry_id, buyer_name, buyer_email, buyer_phone, buyer_message, total_amount, contribution_type, status, paystack_reference, paid_at, created_at").order("created_at", { ascending: false }),
+        supabase.from("registry_orders").select("id, registry_id, buyer_name, buyer_email, buyer_phone, buyer_message, total_amount, contribution_type, status, paystack_reference, shipping_address, paid_at, created_at").order("created_at", { ascending: false }),
         supabase.from("registry_contributions").select("id, registry_id, buyer_name, buyer_email, buyer_phone, buyer_message, amount, status, paystack_reference, paid_at, created_at").order("created_at", { ascending: false }),
       ]);
       const nextRegistries = ((registriesResult.error ? [] : registriesResult.data) ?? []) as RegistryRecord[];
+      const ownerProfilesResult = nextRegistries.length
+        ? await supabase
+            .from("user_profiles")
+            .select("id, full_name, email, phone, shipping_address")
+            .in("id", Array.from(new Set(nextRegistries.map((registry) => registry.user_id))))
+        : { data: [], error: null };
+      const ownerProfiles =
+        ((ownerProfilesResult.error ? [] : ownerProfilesResult.data) ?? []) as Customer[];
+      setCustomers((currentCustomers) => {
+        const mergedCustomers = new Map(
+          currentCustomers.map((customer) => [customer.id, customer]),
+        );
+        ownerProfiles.forEach((customer) => mergedCustomers.set(customer.id, customer));
+        return Array.from(mergedCustomers.values());
+      });
       const mappedItems = (((itemsResult.error ? [] : itemsResult.data) ?? []) as unknown as RegistryItemRecord[]).map(mapRegistryItemRecord);
       const itemsByRegistry = mappedItems.reduce<Record<string, RegistryItem[]>>((result, item) => {
         (result[item.registryId] ??= []).push(item);

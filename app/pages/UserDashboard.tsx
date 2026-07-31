@@ -91,8 +91,13 @@ type RegistryRecord = {
   id: string;
   closed_at?: string | null;
   closed_note?: string | null;
+  completed_at?: string | null;
+  fulfillment_status?: "collecting" | "ready_for_shipping" | "shipped" | "completed" | null;
+  fulfillment_updated_at?: string | null;
   name: string;
+  ready_for_shipping_at?: string | null;
   share_code: string;
+  shipped_at?: string | null;
   status?: string | null;
   due_month?: string | null;
   baby_gender?: string | null;
@@ -309,7 +314,7 @@ export function UserDashboard({
   initialTab?: DashboardTab;
 }) {
   const router = useRouter();
-  const { user, signOut, updateProfile, loading: authLoading } = useAuth();
+  const { user, session, signOut, updateProfile, loading: authLoading } = useAuth();
   const userId = user?.id ?? null;
   const cachedEntry = useMemo(
     () => (userId ? readDashboardCacheEntry(userId) : undefined),
@@ -504,7 +509,7 @@ export function UserDashboard({
     const requestId = ++registriesRequestIdRef.current;
     const { data } = await supabase
       .from("registries")
-      .select("id, name, share_code, status, due_month, baby_gender, created_at, closed_at, closed_note")
+      .select("id, name, share_code, status, due_month, baby_gender, created_at, closed_at, closed_note, fulfillment_status, ready_for_shipping_at, shipped_at, completed_at, fulfillment_updated_at")
       .eq("user_id", userId)
       .order("created_at", { ascending: false });
     if (registriesRequestIdRef.current !== requestId) return;
@@ -679,7 +684,7 @@ export function UserDashboard({
     });
 
     if (error) {
-      toast.error("Failed to update address.");
+      toast.error(error.message || "Failed to update address.");
     } else {
       toast.success("Address updated successfully.");
       await loadProfile(true);
@@ -855,6 +860,57 @@ export function UserDashboard({
 
     toast.success("Registry reopened.");
     await loadRegistries(true);
+  };
+
+  const handleRegistryFulfillment = async (
+    registry: RegistryRecord,
+    status: "collecting" | "ready_for_shipping" | "completed",
+  ) => {
+    if (
+      status === "ready_for_shipping" &&
+      !window.confirm(
+        "Mark this registry ready for shipping? It will close to new gifts and use your saved address.",
+      )
+    ) {
+      return;
+    }
+
+    const accessToken =
+      session?.access_token ||
+      (await supabase.auth.getSession()).data.session?.access_token ||
+      "";
+    if (!accessToken) {
+      toast.error("Sign in again to update this registry.");
+      return;
+    }
+
+    setSavingRegistryStatus(true);
+    try {
+      const response = await fetch(`/api/registry/${registry.id}/fulfillment`, {
+        method: "PATCH",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ status }),
+      });
+      const result = (await response.json().catch(() => null)) as
+        | { message?: string }
+        | null;
+
+      if (!response.ok) {
+        toast.error(result?.message || "Registry fulfilment status could not be updated.");
+        return;
+      }
+
+      toast.success(result?.message || "Registry updated.");
+      await loadRegistries(true);
+    } catch (error) {
+      console.error("Failed to update registry fulfilment.", error);
+      toast.error("Registry fulfilment status could not be updated.");
+    } finally {
+      setSavingRegistryStatus(false);
+    }
   };
 
   const renderOrders = (items: UserOrder[], emptyMessage: string) => {
@@ -1413,7 +1469,7 @@ export function UserDashboard({
                 <CardHeader>
                   <CardTitle>Registry Controls</CardTitle>
                   <p className="mt-1 text-sm text-gray-500">
-                    Close a registry when you are done with it. The history stays available.
+                    Keep collecting gifts, mark paid items ready for shipping, or confirm delivery.
                   </p>
                 </CardHeader>
                 <CardContent className="space-y-4">
@@ -1430,29 +1486,76 @@ export function UserDashboard({
                             <p className="text-sm text-gray-500">
                               Code: {registry.share_code}
                             </p>
+                            <p className="text-sm font-medium capitalize text-gray-700">
+                              Fulfilment:{" "}
+                              {(registry.fulfillment_status ?? "collecting").replaceAll("_", " ")}
+                            </p>
                             {registry.closed_note ? (
                               <p className="rounded-lg bg-gray-50 px-3 py-2 text-sm text-gray-600">
                                 Closing note: {registry.closed_note}
                               </p>
                             ) : null}
                           </div>
-                          {registry.status === "closed" ? (
-                            <Button
-                              variant="outline"
-                              onClick={() => void handleReopenRegistry(registry)}
-                              disabled={savingRegistryStatus}
-                            >
-                              Reopen Registry
-                            </Button>
-                          ) : (
-                            <Button
-                              variant="outline"
-                              onClick={() => handleOpenCloseRegistry(registry)}
-                              disabled={savingRegistryStatus}
-                            >
-                              Close Registry
-                            </Button>
-                          )}
+                          <div className="flex flex-wrap gap-2">
+                            {(registry.fulfillment_status ?? "collecting") === "collecting" ? (
+                              <>
+                                <Button
+                                  onClick={() =>
+                                    void handleRegistryFulfillment(
+                                      registry,
+                                      "ready_for_shipping",
+                                    )
+                                  }
+                                  disabled={savingRegistryStatus}
+                                >
+                                  Ready for Shipping
+                                </Button>
+                                {registry.status === "closed" ? (
+                                  <Button
+                                    variant="outline"
+                                    onClick={() => void handleReopenRegistry(registry)}
+                                    disabled={savingRegistryStatus}
+                                  >
+                                    Reopen Registry
+                                  </Button>
+                                ) : (
+                                  <Button
+                                    variant="outline"
+                                    onClick={() => handleOpenCloseRegistry(registry)}
+                                    disabled={savingRegistryStatus}
+                                  >
+                                    Close Registry
+                                  </Button>
+                                )}
+                              </>
+                            ) : null}
+                            {registry.fulfillment_status === "ready_for_shipping" ? (
+                              <Button
+                                variant="outline"
+                                onClick={() =>
+                                  void handleRegistryFulfillment(registry, "collecting")
+                                }
+                                disabled={savingRegistryStatus}
+                              >
+                                Continue Collecting
+                              </Button>
+                            ) : null}
+                            {registry.fulfillment_status === "shipped" ? (
+                              <Button
+                                onClick={() =>
+                                  void handleRegistryFulfillment(registry, "completed")
+                                }
+                                disabled={savingRegistryStatus}
+                              >
+                                Confirm Delivery
+                              </Button>
+                            ) : null}
+                            {registry.fulfillment_status === "completed" ? (
+                              <span className="rounded-full bg-green-100 px-3 py-2 text-sm font-semibold text-green-800">
+                                Completed
+                              </span>
+                            ) : null}
+                          </div>
                         </div>
                       </div>
                     ))
