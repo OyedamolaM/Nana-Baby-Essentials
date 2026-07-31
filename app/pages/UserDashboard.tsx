@@ -3,7 +3,17 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Download, Gift, Lock, MapPin, Package, Pencil, Share2, Trash2, User } from "lucide-react";
+import {
+  Download,
+  Gift,
+  Home,
+  Package,
+  Pencil,
+  Settings,
+  Share2,
+  Trash2,
+  User,
+} from "lucide-react";
 import { toast } from "sonner";
 import { formatNairaAmount, PRODUCT_LIST_SELECT } from "../../lib/commerce";
 import {
@@ -289,29 +299,35 @@ function getPickupCode(order: UserOrder) {
   );
 }
 
-type DashboardTab = "orders" | "registries" | "profile" | "address" | "security";
+type DashboardTab = "home" | "orders" | "registries" | "account" | "settings";
+type AccountSection = "profile" | "address";
+type SettingsSection = "communication" | "security" | "account";
 
 function getDashboardTabRoute(tab: DashboardTab) {
   switch (tab) {
+    case "home":
+      return "/dashboard";
     case "orders":
       return "/dashboard/orders";
     case "registries":
       return "/dashboard/registries";
-    case "profile":
-      return "/dashboard/profile";
-    case "address":
-      return "/dashboard/address";
-    case "security":
-      return "/dashboard/security";
+    case "account":
+      return "/dashboard/account";
+    case "settings":
+      return "/dashboard/settings";
     default:
-      return "/dashboard/orders";
+      return "/dashboard";
   }
 }
 
 export function UserDashboard({
-  initialTab = "orders",
+  initialTab = "home",
+  initialAccountSection = "profile",
+  initialSettingsSection = "communication",
 }: {
   initialTab?: DashboardTab;
+  initialAccountSection?: AccountSection;
+  initialSettingsSection?: SettingsSection;
 }) {
   const router = useRouter();
   const { user, session, signOut, updateProfile, loading: authLoading } = useAuth();
@@ -362,6 +378,9 @@ export function UserDashboard({
   const [savingRegistryStatus, setSavingRegistryStatus] = useState(false);
   const [savingCampaignPreference, setSavingCampaignPreference] = useState(false);
   const [activeTab, setActiveTab] = useState<DashboardTab>(initialTab);
+  const [accountSection, setAccountSection] = useState<AccountSection>(initialAccountSection);
+  const [settingsSection, setSettingsSection] =
+    useState<SettingsSection>(initialSettingsSection);
   const [orderFilterDay, setOrderFilterDay] = useState("");
   const [orderFilterMonth, setOrderFilterMonth] = useState("");
   const profileRequestIdRef = useRef(0);
@@ -1077,8 +1096,15 @@ export function UserDashboard({
             <h1 className="text-3xl font-bold">My Dashboard</h1>
             <TabsList className="flex h-14 w-full items-center justify-start gap-2 overflow-x-auto px-2 no-scrollbar sm:h-auto sm:flex-wrap sm:overflow-visible sm:px-0 [&>*]:shrink-0">
             <TabsTrigger
+              value="home"
+              className="flex h-10 cursor-pointer items-center gap-2 whitespace-nowrap px-4 py-3 text-sm"
+            >
+              <Home className="h-4 w-4" />
+              Home
+            </TabsTrigger>
+            <TabsTrigger
               value="orders"
-              className="flex cursor-pointer items-center gap-2 whitespace-nowrap px-4 py-3 text-sm h-10"
+              className="flex h-10 cursor-pointer items-center gap-2 whitespace-nowrap px-4 py-3 text-sm"
             >
               <Package className="h-4 w-4" />
               Orders
@@ -1091,30 +1117,94 @@ export function UserDashboard({
               Registries
             </TabsTrigger>
             <TabsTrigger 
-              value="profile"
-              className="flex cursor-pointer items-center gap-2 whitespace-nowrap px-4 py-3 text-sm h-10"
+              value="account"
+              className="flex h-10 cursor-pointer items-center gap-2 whitespace-nowrap px-4 py-3 text-sm"
             >
               <User className="h-4 w-4" />
-              Profile
+              Account
             </TabsTrigger>
             <TabsTrigger 
-              value="address"
-              className="flex cursor-pointer items-center gap-2 whitespace-nowrap px-4 py-3 text-sm h-10"
+              value="settings"
+              className="flex h-10 cursor-pointer items-center gap-2 whitespace-nowrap px-4 py-3 text-sm"
             >
-              <MapPin className="h-4 w-4" />
-              Address
-            </TabsTrigger>
-            <TabsTrigger 
-              value="security"
-              className="flex cursor-pointer items-center gap-2 whitespace-nowrap px-4 py-3 text-sm h-10"
-            >
-              <Lock className="h-4 w-4" />
-              Security
+              <Settings className="h-4 w-4" />
+              Settings
             </TabsTrigger>
             </TabsList>
           </div>
 
           <div className="min-h-[55vh]">
+          <TabsContent value="home">
+            <div className="space-y-6">
+              <div className="overflow-hidden rounded-3xl bg-gradient-to-br from-pink-600 to-pink-500 px-6 py-8 text-white sm:px-8">
+                <p className="text-sm font-semibold uppercase tracking-[0.16em] text-pink-100">
+                  Welcome back
+                </p>
+                <h2 className="mt-2 text-3xl font-bold">
+                  {fullName ? fullName.split(" ")[0] : "Welcome"}
+                </h2>
+                <p className="mt-3 max-w-xl text-sm leading-6 text-pink-50">
+                  Manage your orders, registries, delivery details, and account preferences
+                  from one place.
+                </p>
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-lg">Account Readiness</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <div className="flex items-center justify-between rounded-xl bg-gray-50 px-4 py-3">
+                      <span className="text-sm text-gray-600">Phone number</span>
+                      <span className={`text-sm font-semibold ${phone ? "text-green-700" : "text-amber-700"}`}>
+                        {phone ? "Saved" : "Required"}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between rounded-xl bg-gray-50 px-4 py-3">
+                      <span className="text-sm text-gray-600">Delivery address</span>
+                      <span
+                        className={`text-sm font-semibold ${
+                          shippingAddress && shippingCity && shippingState
+                            ? "text-green-700"
+                            : "text-amber-700"
+                        }`}
+                      >
+                        {shippingAddress && shippingCity && shippingState
+                          ? "Ready"
+                          : "Incomplete"}
+                      </span>
+                    </div>
+                    <Button
+                      variant="outline"
+                      className="w-full"
+                      onClick={() => handleTabChange("account")}
+                    >
+                      Review Account
+                    </Button>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-lg">Quick Actions</CardTitle>
+                  </CardHeader>
+                  <CardContent className="grid gap-3">
+                    <Button onClick={() => handleTabChange("orders")}>
+                      View Orders
+                    </Button>
+                    <Button variant="outline" onClick={() => handleTabChange("registries")}>
+                      Manage Registries
+                    </Button>
+                    <Button asChild variant="outline">
+                      <Link href="/products">Continue Shopping</Link>
+                    </Button>
+                  </CardContent>
+                </Card>
+              </div>
+            </div>
+          </TabsContent>
+
           <TabsContent value="orders">
             <Card>
               <CardHeader>
@@ -1179,13 +1269,11 @@ export function UserDashboard({
           </TabsContent>
 
           <TabsContent value="registries">
-            <Card>
+            <div className="space-y-6">
+              <Card>
               <CardHeader className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                 <div>
                   <CardTitle>My Registries</CardTitle>
-                  <p className="mt-1 text-sm text-gray-500">
-                    Open each registry detail page to review funded items and payment history.
-                  </p>
                 </div>
                 <div className="flex w-full flex-col gap-2 sm:flex-row lg:w-auto">
                   <Button asChild variant="outline">
@@ -1419,47 +1507,6 @@ export function UserDashboard({
                   </div>
                 )}
               </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="profile">
-            <div className="space-y-6">
-              <Card>
-                <CardHeader className="flex flex-row items-start justify-between gap-4">
-                  <div>
-                    <CardTitle>Profile</CardTitle>
-                  </div>
-                  <Button variant="outline" onClick={() => setProfileEditOpen(true)}>
-                    <Pencil className="mr-2 h-4 w-4" />
-                    Edit Profile
-                  </Button>
-                </CardHeader>
-                <CardContent className="grid gap-4 sm:grid-cols-2">
-                  <div className="rounded-xl bg-gray-50 px-4 py-3">
-                    <p className="text-xs font-semibold uppercase tracking-[0.14em] text-gray-500">
-                      Email
-                    </p>
-                    <p className="mt-2 text-sm font-medium text-gray-900">
-                      {user.email || "No email saved"}
-                    </p>
-                  </div>
-                  <div className="rounded-xl bg-gray-50 px-4 py-3">
-                    <p className="text-xs font-semibold uppercase tracking-[0.14em] text-gray-500">
-                      Full Name
-                    </p>
-                    <p className="mt-2 text-sm font-medium text-gray-900">
-                      {fullName || "No name saved"}
-                    </p>
-                  </div>
-                  <div className="rounded-xl bg-gray-50 px-4 py-3 sm:col-span-2">
-                    <p className="text-xs font-semibold uppercase tracking-[0.14em] text-gray-500">
-                      Phone
-                    </p>
-                    <p className="mt-2 text-sm font-medium text-gray-900">
-                      {phone || "No phone number saved"}
-                    </p>
-                  </div>
-                </CardContent>
               </Card>
 
               <Card>
@@ -1559,7 +1606,62 @@ export function UserDashboard({
             </div>
           </TabsContent>
 
-          <TabsContent value="address">
+          <TabsContent value="account">
+            <Tabs
+              value={accountSection}
+              onValueChange={(value) => setAccountSection(value as AccountSection)}
+              className="space-y-6"
+            >
+              <TabsList className="grid h-auto w-full grid-cols-2">
+                <TabsTrigger value="profile" className="cursor-pointer py-3">
+                  Personal Information
+                </TabsTrigger>
+                <TabsTrigger value="address" className="cursor-pointer py-3">
+                  Delivery Address
+                </TabsTrigger>
+              </TabsList>
+              <TabsContent value="profile">
+              <Card>
+                <CardHeader className="flex flex-row items-start justify-between gap-4">
+                  <div>
+                    <CardTitle>Personal Information</CardTitle>
+                  </div>
+                  <Button variant="outline" onClick={() => setProfileEditOpen(true)}>
+                    <Pencil className="mr-2 h-4 w-4" />
+                    Edit Profile
+                  </Button>
+                </CardHeader>
+                <CardContent className="grid gap-4 sm:grid-cols-2">
+                  <div className="rounded-xl bg-gray-50 px-4 py-3">
+                    <p className="text-xs font-semibold uppercase tracking-[0.14em] text-gray-500">
+                      Email
+                    </p>
+                    <p className="mt-2 text-sm font-medium text-gray-900">
+                      {user.email || "No email saved"}
+                    </p>
+                  </div>
+                  <div className="rounded-xl bg-gray-50 px-4 py-3">
+                    <p className="text-xs font-semibold uppercase tracking-[0.14em] text-gray-500">
+                      Full Name
+                    </p>
+                    <p className="mt-2 text-sm font-medium text-gray-900">
+                      {fullName || "No name saved"}
+                    </p>
+                  </div>
+                  <div className="rounded-xl bg-gray-50 px-4 py-3 sm:col-span-2">
+                    <p className="text-xs font-semibold uppercase tracking-[0.14em] text-gray-500">
+                      Phone
+                    </p>
+                    <p className="mt-2 text-sm font-medium text-gray-900">
+                      {phone || "No phone number saved"}
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+
+              </TabsContent>
+
+              <TabsContent value="address">
             <Card>
               <CardHeader>
                 <CardTitle>Shipping Address</CardTitle>
@@ -1599,10 +1701,30 @@ export function UserDashboard({
                 </form>
               </CardContent>
             </Card>
+              </TabsContent>
+            </Tabs>
           </TabsContent>
 
-          <TabsContent value="security">
-            <Card className="mb-4">
+          <TabsContent value="settings">
+            <Tabs
+              value={settingsSection}
+              onValueChange={(value) => setSettingsSection(value as SettingsSection)}
+              className="space-y-6"
+            >
+              <TabsList className="grid h-auto w-full grid-cols-3">
+                <TabsTrigger value="communication" className="cursor-pointer px-2 py-3 text-xs sm:text-sm">
+                  Communication
+                </TabsTrigger>
+                <TabsTrigger value="security" className="cursor-pointer px-2 py-3 text-xs sm:text-sm">
+                  Security
+                </TabsTrigger>
+                <TabsTrigger value="account" className="cursor-pointer px-2 py-3 text-xs sm:text-sm">
+                  Account
+                </TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="security">
+            <Card>
               <CardHeader>
                 <CardTitle>Change Password</CardTitle>
               </CardHeader>
@@ -1645,8 +1767,10 @@ export function UserDashboard({
                 </form>
               </CardContent>
             </Card>
+              </TabsContent>
 
-                        <Card className="mb-4">
+              <TabsContent value="communication">
+            <Card>
               <CardHeader>
                 <CardTitle>Campaign Emails</CardTitle>
               </CardHeader>
@@ -1676,7 +1800,9 @@ export function UserDashboard({
                 </div>
               </CardContent>
             </Card>
+              </TabsContent>
 
+              <TabsContent value="account">
             <Card className="border-red-200">
               <CardHeader>
                 <CardTitle className="text-red-600">Danger Zone</CardTitle>
@@ -1692,6 +1818,8 @@ export function UserDashboard({
                 </Button>
               </CardContent>
             </Card>
+              </TabsContent>
+            </Tabs>
           </TabsContent>
           </div>
         </Tabs>

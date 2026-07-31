@@ -1,4 +1,5 @@
-import { redirect } from "next/navigation";
+import { SiteHeaderShell } from "../components/SiteHeaderShell";
+import { UserDashboard } from "../pages/UserDashboard";
 import { buildPageMetadata } from "../../lib/site";
 
 export const metadata = buildPageMetadata({
@@ -9,5 +10,10 @@ export const metadata = buildPageMetadata({
 });
 
 export default function DashboardPage() {
-  redirect("/dashboard/orders");
+  return (
+    <>
+      <SiteHeaderShell />
+      <UserDashboard initialTab="home" />
+    </>
+  );
 }

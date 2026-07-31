@@ -3427,10 +3427,7 @@ useEffect(() => {
 
               <Card>
                 <CardHeader>
-                  <CardTitle>Management Shortcuts</CardTitle>
-                  <p className="text-sm text-gray-500">
-                    Open a section without loading the rest of the admin workspace.
-                  </p>
+                  <CardTitle>Shortcuts</CardTitle>
                 </CardHeader>
                 <CardContent className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                   {[
