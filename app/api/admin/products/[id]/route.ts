@@ -92,6 +92,7 @@ export async function DELETE(request: Request, context: RouteProps) {
   }
 
   revalidateTag("products", "max");
+  revalidateTag("registries", "max");
 
   return NextResponse.json({
     cleanupPending: Boolean(cleanup.error),

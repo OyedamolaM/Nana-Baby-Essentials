@@ -63,7 +63,7 @@ const SPECIAL_PACKAGE_SELECT =
 const REGISTRY_SELECT =
   "id, user_id, share_code, name, status, closed_at, closed_note, fulfillment_status, ready_for_shipping_at, shipped_at, completed_at, partner_email, partner_name, whatsapp, due_month, baby_gender, additional_info, created_at";
 const REGISTRY_ITEM_SELECT =
-  "id, registry_id, product_id, requested_quantity, purchased_quantity, funded_amount, unit_price_snapshot, note, created_at";
+  "id, registry_id, product_id, product_name_snapshot, product_image_snapshot, product_description_snapshot, requested_quantity, purchased_quantity, funded_amount, unit_price_snapshot, note, created_at";
 
 function buildProductLookup(records: ProductRecord[] | null | undefined) {
   return Object.fromEntries(
