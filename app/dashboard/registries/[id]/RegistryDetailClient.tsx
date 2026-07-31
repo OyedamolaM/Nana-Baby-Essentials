@@ -520,7 +520,7 @@ export function RegistryDetailClient({ registryId }: { registryId: string }) {
 
     const { data: existingRows, error: existingError } = await supabase
       .from("registry_items")
-      .select("id, product_id, requested_quantity")
+      .select("id, product_id, requested_quantity, purchased_quantity, unit_price_snapshot")
       .eq("registry_id", targetRegistryId)
       .in("product_id", productIds);
 
@@ -529,20 +529,34 @@ export function RegistryDetailClient({ registryId }: { registryId: string }) {
       return;
     }
 
-    const existingByProductId = new Map<number, { id: string; requested_quantity?: number | null }>(
-      ((existingRows as Array<{ id: string; product_id: number; requested_quantity?: number | null }> | null) ?? [])
-        .map((row) => [Number(row.product_id), row]),
-    );
+    type ExistingRegistryItem = {
+      id: string;
+      product_id: number;
+      purchased_quantity?: number | null;
+      requested_quantity?: number | null;
+      unit_price_snapshot?: number | null;
+    };
+    const existingByProductId = ((existingRows as ExistingRegistryItem[] | null) ?? []).reduce<
+      Map<number, ExistingRegistryItem[]>
+    >((itemsByProduct, row) => {
+      const productId = Number(row.product_id);
+      itemsByProduct.set(productId, [...(itemsByProduct.get(productId) ?? []), row]);
+      return itemsByProduct;
+    }, new Map());
 
     for (const item of registryCartItems) {
-      const existingItem = existingByProductId.get(item.product.id);
+      const existingItem = existingByProductId
+        .get(item.product.id)
+        ?.find(
+          (row) =>
+            Math.abs(Number(row.unit_price_snapshot ?? 0) - item.product.price) < 0.0001,
+        );
 
       if (existingItem) {
         const { error } = await supabase
           .from("registry_items")
           .update({
             requested_quantity: Number(existingItem.requested_quantity ?? 0) + item.quantity,
-            unit_price_snapshot: item.product.price,
           })
           .eq("id", existingItem.id);
 
