@@ -261,8 +261,8 @@ export default function ShippingReturnsPolicyPage() {
         </p>
         <p>
           Email:{" "}
-          <a className="text-pink-600 hover:text-pink-700" href="mailto:nanasbabyessentials@gmail.com">
-            nanasbabyessentials@gmail.com
+          <a className="text-pink-600 hover:text-pink-700" href="mailto:info@nanababyessentials.com">
+            info@nanababyessentials.com
           </a>
           <br />
           Phone / WhatsApp:{" "}

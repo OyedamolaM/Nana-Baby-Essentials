@@ -252,8 +252,8 @@ export default function TermsOfServicePage() {
       <Section title="21. Contact Us">
         <p>
           Questions about these terms should be sent to{" "}
-          <a className="text-pink-600 hover:text-pink-700" href="mailto:nanasbabyessentials@gmail.com">
-            nanasbabyessentials@gmail.com
+          <a className="text-pink-600 hover:text-pink-700" href="mailto:info@nanababyessentials.com">
+            info@nanababyessentials.com
           </a>{" "}
           or directed to us by phone or WhatsApp at{" "}
           <a className="text-pink-600 hover:text-pink-700" href="tel:+2348024740159">

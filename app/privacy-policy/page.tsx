@@ -42,7 +42,7 @@ export default function PrivacyPolicyPage() {
         <p>
           Contact details:
           <br />
-          Email: <a className="text-pink-600 hover:text-pink-700" href="mailto:nanasbabyessentials@gmail.com">nanasbabyessentials@gmail.com</a>
+          Email: <a className="text-pink-600 hover:text-pink-700" href="mailto:info@nanababyessentials.com">info@nanababyessentials.com</a>
           <br />
           Phone / WhatsApp: <a className="text-pink-600 hover:text-pink-700" href="tel:+2348024740159">+234 802 474 0159</a>
           <br />
@@ -245,8 +245,8 @@ export default function PrivacyPolicyPage() {
         <p>
           If you have questions about this Privacy Policy, our data practices, or your account, contact
           Nana&apos;s Baby Essentials at{" "}
-          <a className="text-pink-600 hover:text-pink-700" href="mailto:nanasbabyessentials@gmail.com">
-            nanasbabyessentials@gmail.com
+          <a className="text-pink-600 hover:text-pink-700" href="mailto:info@nanababyessentials.com">
+            info@nanababyessentials.com
           </a>{" "}
           or by phone/WhatsApp at{" "}
           <a className="text-pink-600 hover:text-pink-700" href="tel:+2348024740159">

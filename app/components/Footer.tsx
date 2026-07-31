@@ -26,7 +26,7 @@ export function Footer() {
     { href: "/products?featured=1&view=best-sellers", label: "Best Sellers" },
   ];
   const serviceLinks: FooterLink[] = [
-    { href: "mailto:nanasbabyessentials@gmail.com", label: "Contact Us", isExternal: true },
+    { href: "mailto:info@nanababyessentials.com", label: "Contact Us", isExternal: true },
     { href: "/shipping-returns-policy#shipping-policy", label: "Shipping Policy" },
     { href: "/shipping-returns-policy#return-policy", label: "Return Policy" },
     { href: "/privacy-policy", label: "Privacy Policy" },
@@ -120,9 +120,9 @@ export function Footer() {
                 <span>+23408024740159</span></a>
               </li>
               <li className="flex items-center gap-2"> 
-                <a href="mailto:nanasbabyessentials@gmail.com" className="flex items-center gap-2">
+                <a href="mailto:info@nanababyessentials.com" className="flex items-center gap-2">
                 <Mail className="h-5 w-5 flex-shrink-0 text-pink-400" />
-                <span>nanasbabyessentials@gmail.com</span>
+                <span>info@nanababyessentials.com</span>
                 </a>
               </li>
             </ul>

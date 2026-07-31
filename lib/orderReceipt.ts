@@ -62,7 +62,7 @@ const LIGHT_FILL: [number, number, number] = [0.99, 0.97, 0.98];
 
 const RECEIPT_STORE_DETAILS = [
   "Nana's Baby Essentials",
-  "Email: nanasbabyessentials@gmail.com",
+  "Email: info@nanababyessentials.com",
   "Phone / WhatsApp: +234 802 474 0159",
   "Mainland store: 71 Ogunlana Drive, Surulere, Lagos",
   "Island store: Block A4 Shop 844/845, HFP Eastline Shopping Complex, Abraham Adesanya Bus Stop, Ajah, Lagos",
