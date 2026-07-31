@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { DateRange } from "react-day-picker";
 import { useDebouncedValue } from "../hooks/useDebounceValue";
 import {
   ArrowDown,
@@ -556,7 +557,7 @@ export function AdminDashboard() {
   const [orderDateFilter, setOrderDateFilter] = useState<
     "today" | "yesterday" | "last7" | "thisMonth" | "lastMonth" | "custom"
   >("today");
-  const [orderDateRange, setOrderDateRange] = useState<{ from: Date; to: Date }>({ from: new Date(), to: new Date() });
+  const [orderDateRange, setOrderDateRange] = useState<DateRange | undefined>();
   const [orderSearchInput, setOrderSearchInput] = useState("");
   const orderSearchQuery = useDebouncedValue(orderSearchInput, 400);
   const [orderCounts, setOrderCounts] = useState({ paid: 0, unpaid: 0 });
@@ -851,7 +852,7 @@ const resolveOrderDateRange = useCallback((): { from?: Date; to?: Date } => {
         to: new Date(today.getFullYear(), today.getMonth(), 0),
       };
     case "custom":
-      return orderDateRange;
+      return orderDateRange ?? {};
     default:
       return {};
   }
@@ -1084,8 +1085,8 @@ useEffect(() => {
     const orderQueryKey = [
       orderStatusTab,
       orderDateFilter,
-      orderDateRange.from.getTime(),
-      orderDateRange.to.getTime(),
+      orderDateRange?.from?.getTime() ?? "-",
+      orderDateRange?.to?.getTime() ?? "-",
       orderSearchQuery,
     ].join(":");
     if (loadedOrderQueryRef.current === orderQueryKey) return;
@@ -3498,11 +3499,7 @@ useEffect(() => {
               dateFilter={orderDateFilter}
               onDateFilterChange={setOrderDateFilter}
               dateRange={orderDateRange}
-              onDateRangeChange={(range) => {
-                if (!range) return;
-                // range may have optional fields; ensure non-null before setting state
-                setOrderDateRange({ from: range.from as Date, to: range.to as Date });
-              }}
+              onDateRangeChange={setOrderDateRange}
               searchInput={orderSearchInput}
               onSearchInputChange={setOrderSearchInput}
               paidCount={orderCounts.paid}

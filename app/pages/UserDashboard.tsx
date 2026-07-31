@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  CalendarIcon,
   Download,
   Gift,
   Home,
@@ -15,6 +16,8 @@ import {
   Trash2,
   User,
 } from "lucide-react";
+import { format } from "date-fns";
+import type { DateRange } from "react-day-picker";
 import { toast } from "sonner";
 import { formatNairaAmount, PRODUCT_LIST_SELECT } from "../../lib/commerce";
 import {
@@ -42,6 +45,7 @@ import { normalizeShippingAddress, type ShippingAddress } from "../../lib/userPr
 import { useAuth } from "../contexts/AuthContext";
 import { hasSupabaseEnv, supabase } from "../lib/supabase";
 import { Button } from "../components/ui/button";
+import { Calendar } from "../components/ui/calendar";
 import {
   Card,
   CardContent,
@@ -57,6 +61,18 @@ import {
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { RegistryCreateModal } from "../components/registry/RegistryCreateModal";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "../components/ui/popover";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../components/ui/select";
 import { Separator } from "../components/ui/separator";
 import {
   Sheet,
@@ -245,12 +261,21 @@ function persistDashboardCacheEntry(userId: string, patch: Partial<DashboardCach
   }
 }
 
+type OrderDateFilter =
+  | "all"
+  | "today"
+  | "yesterday"
+  | "last7"
+  | "thisMonth"
+  | "lastMonth"
+  | "custom";
+
 function createOrderQueryKey(
   status: "paid" | "unpaid",
-  selectedDay: string,
-  selectedMonth: string,
+  dateFilter: OrderDateFilter,
+  range?: { from: string; to: string } | null,
 ) {
-  return `${status}:${selectedDay || "-"}:${selectedMonth || "-"}`;
+  return `${status}:${dateFilter}:${range?.from ?? "-"}:${range?.to ?? "-"}`;
 }
 
 function formatDueMonth(dueMonth?: string | null) {
@@ -429,7 +454,7 @@ export function UserDashboard({
     () => (userId ? readDashboardCacheEntry(userId) : undefined),
     [userId],
   );
-  const initialOrderQueryKey = createOrderQueryKey("paid", "", "");
+  const initialOrderQueryKey = createOrderQueryKey("paid", "all");
   const initialOrdersCache = cachedEntry?.ordersByQuery?.[initialOrderQueryKey]?.data;
   const cachedProfile = cachedEntry?.profile?.data;
   const [orders, setOrders] = useState<UserOrder[]>(initialOrdersCache?.orders ?? []);
@@ -475,8 +500,9 @@ export function UserDashboard({
   const [accountSection, setAccountSection] = useState<AccountSection>(initialAccountSection);
   const [settingsSection, setSettingsSection] =
     useState<SettingsSection>(initialSettingsSection);
-  const [orderFilterDay, setOrderFilterDay] = useState("");
-  const [orderFilterMonth, setOrderFilterMonth] = useState("");
+  const [orderDateFilter, setOrderDateFilter] = useState<OrderDateFilter>("all");
+  const [customOrderDateRange, setCustomOrderDateRange] = useState<DateRange | undefined>();
+  const [orderCalendarOpen, setOrderCalendarOpen] = useState(false);
   const profileRequestIdRef = useRef(0);
   const ordersRequestIdRef = useRef(0);
   const registriesRequestIdRef = useRef(0);
@@ -527,24 +553,56 @@ export function UserDashboard({
   }, [userId]);
 
   const orderDateRange = useMemo(() => {
-    if (orderFilterDay) {
-      const from = new Date(`${orderFilterDay}T00:00:00`);
-      const to = new Date(from);
-      to.setDate(to.getDate() + 1);
+    if (orderDateFilter === "all") return null;
+
+    if (orderDateFilter === "custom") {
+      if (!customOrderDateRange?.from) return null;
+      const from = new Date(
+        customOrderDateRange.from.getFullYear(),
+        customOrderDateRange.from.getMonth(),
+        customOrderDateRange.from.getDate(),
+      );
+      const selectedTo = customOrderDateRange.to ?? customOrderDateRange.from;
+      const to = new Date(
+        selectedTo.getFullYear(),
+        selectedTo.getMonth(),
+        selectedTo.getDate() + 1,
+      );
       return { from: from.toISOString(), to: to.toISOString() };
     }
-    if (orderFilterMonth) {
-      const [year, month] = orderFilterMonth.split("-").map(Number);
-      const from = new Date(year, month - 1, 1);
-      const to = new Date(year, month, 1);
-      return { from: from.toISOString(), to: to.toISOString() };
+
+    const now = new Date();
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const startOfTomorrow = new Date(startOfToday);
+    startOfTomorrow.setDate(startOfTomorrow.getDate() + 1);
+
+    if (orderDateFilter === "today") {
+      return { from: startOfToday.toISOString(), to: startOfTomorrow.toISOString() };
     }
-    return null;
-  }, [orderFilterDay, orderFilterMonth]);
+    if (orderDateFilter === "yesterday") {
+      const startOfYesterday = new Date(startOfToday);
+      startOfYesterday.setDate(startOfYesterday.getDate() - 1);
+      return { from: startOfYesterday.toISOString(), to: startOfToday.toISOString() };
+    }
+    if (orderDateFilter === "last7") {
+      const sevenDaysAgo = new Date(startOfToday);
+      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6);
+      return { from: sevenDaysAgo.toISOString(), to: startOfTomorrow.toISOString() };
+    }
+    if (orderDateFilter === "thisMonth") {
+      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+      const startOfNextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+      return { from: startOfMonth.toISOString(), to: startOfNextMonth.toISOString() };
+    }
+
+    const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const startOfThisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    return { from: startOfLastMonth.toISOString(), to: startOfThisMonth.toISOString() };
+  }, [customOrderDateRange, orderDateFilter]);
 
   const loadOrders = useCallback(async (reset = true, force = false) => {
     if (!userId || (!reset && ordersLoadingMore)) return;
-    const queryKey = createOrderQueryKey("paid", orderFilterDay, orderFilterMonth);
+    const queryKey = createOrderQueryKey("paid", orderDateFilter, orderDateRange);
     const cached = readDashboardCacheEntry(userId)?.ordersByQuery?.[queryKey];
     if (reset && !force && cached) {
       setOrders(cached.data.orders);
@@ -603,8 +661,7 @@ export function UserDashboard({
   }, [
     orderCounts.paid,
     orderDateRange,
-    orderFilterDay,
-    orderFilterMonth,
+    orderDateFilter,
     orders,
     ordersCursor,
     ordersLoadingMore,
@@ -1296,7 +1353,7 @@ export function UserDashboard({
                   <CardHeader>
                     <CardTitle className="text-lg">Quick Actions</CardTitle>
                   </CardHeader>
-                  <CardContent className="grid gap-3">
+                  <CardContent className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
                     <Button onClick={() => handleTabChange("orders")}>
                       View Orders
                     </Button>
@@ -1314,51 +1371,72 @@ export function UserDashboard({
 
           <TabsContent value="orders">
             <Card>
-              <CardHeader>
+              <CardHeader className="flex flex-row flex-wrap items-end justify-between gap-3">
                 <CardTitle>Order History</CardTitle>
+                <div className="w-36 sm:w-48">
+                  <Label htmlFor="dashboard-order-date-filter" className="sr-only">
+                    Filter orders by date
+                  </Label>
+                  <Select
+                    value={orderDateFilter}
+                    onValueChange={(value) => setOrderDateFilter(value as OrderDateFilter)}
+                  >
+                    <SelectTrigger id="dashboard-order-date-filter" className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Orders</SelectItem>
+                      <SelectItem value="today">Today</SelectItem>
+                      <SelectItem value="yesterday">Yesterday</SelectItem>
+                      <SelectItem value="last7">Last 7 Days</SelectItem>
+                      <SelectItem value="thisMonth">This Month</SelectItem>
+                      <SelectItem value="lastMonth">Last Month</SelectItem>
+                      <SelectItem value="custom">Custom Range</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {orderDateFilter === "custom" ? (
+                  <div className="order-last w-full space-y-1 sm:ml-auto sm:w-72">
+                    <Label>Custom Range</Label>
+                    <Popover open={orderCalendarOpen} onOpenChange={setOrderCalendarOpen}>
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant="outline"
+                          className="w-full justify-start"
+                        >
+                          <CalendarIcon className="mr-2 h-4 w-4" />
+                          {customOrderDateRange?.from ? (
+                            customOrderDateRange.to ? (
+                              <>
+                                {format(customOrderDateRange.from, "PPP")} -{" "}
+                                {format(customOrderDateRange.to, "PPP")}
+                              </>
+                            ) : (
+                              format(customOrderDateRange.from, "PPP")
+                            )
+                          ) : (
+                            "Select dates"
+                          )}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent align="end" className="w-auto p-0">
+                        <Calendar
+                          mode="range"
+                          selected={customOrderDateRange}
+                          onSelect={(range) => {
+                            setCustomOrderDateRange(range);
+                            if (range?.from && range?.to) {
+                              setOrderCalendarOpen(false);
+                            }
+                          }}
+                        />
+                      </PopoverContent>
+                    </Popover>
+                  </div>
+                ) : null}
               </CardHeader>
               <CardContent>
-                <div className="mb-4 flex flex-col gap-3 rounded-2xl border border-gray-100 bg-gray-50 p-4 sm:flex-row sm:items-end">
-                  <div className="grid flex-1 gap-3 sm:grid-cols-2">
-                    <div className="space-y-2">
-                      <Label htmlFor="dashboard-order-filter-day">Filter By Day</Label>
-                      <Input
-                        id="dashboard-order-filter-day"
-                        type="date"
-                        value={orderFilterDay}
-                        onChange={(event) => {
-                          setOrderFilterDay(event.target.value);
-                          if (event.target.value) {
-                            setOrderFilterMonth("");
-                          }
-                        }}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="dashboard-order-filter-month">Filter By Month</Label>
-                      <Input
-                        id="dashboard-order-filter-month"
-                        type="month"
-                        value={orderFilterMonth}
-                        onChange={(event) => {
-                          setOrderFilterMonth(event.target.value);
-                          if (event.target.value) {
-                            setOrderFilterDay("");
-                          }
-                        }}
-                      />
-                    </div>
-                  </div>
-                  <Button
-                    variant="outline"
-                    onClick={() => {
-                      setOrderFilterDay("");
-                      setOrderFilterMonth("");
-                    }}
-                  >
-                    Clear Filter
-                  </Button>
-                </div>
                 {renderOrders(orders, "No orders yet.")}
                 {ordersHasMore ? (
                   <div className="mt-4 flex justify-center">
@@ -1378,28 +1456,31 @@ export function UserDashboard({
           <TabsContent value="registries">
             <div className="space-y-6">
               <Card>
-              <CardHeader className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+              <CardHeader className="flex flex-col gap-3 p-4 sm:p-6 lg:flex-row lg:items-start lg:justify-between">
                 <div>
                   <CardTitle>My Registries</CardTitle>
                 </div>
-                <div className="flex w-full flex-col gap-2 sm:flex-row lg:w-auto">
-                  <Button asChild variant="outline">
+                <div className="grid w-full grid-cols-2 gap-2 lg:flex lg:w-auto">
+                  <Button asChild variant="outline" className="px-2 text-xs sm:px-4 sm:text-sm">
                     <Link href="/registry/products">Browse Registry Catalog</Link>
                   </Button>
-                  <Button onClick={() => setRegistryCreateOpen(true)}>
-                    <Gift className="mr-2 h-4 w-4" />
-                    Create New Registry
+                  <Button
+                    className="px-2 text-xs sm:px-4 sm:text-sm"
+                    onClick={() => setRegistryCreateOpen(true)}
+                  >
+                    <Gift className="mr-1.5 h-4 w-4" />
+                    New Registry
                   </Button>
                 </div>
               </CardHeader>
-              <CardContent>
+              <CardContent className="p-4 pt-0 sm:p-6 sm:pt-0">
                 {registries.length === 0 ? (
                   <div className="py-8 text-center">
                     <p className="mb-4 text-gray-500">No registries yet.</p>
                     <Button onClick={() => setRegistryCreateOpen(true)}>Create Your First Registry</Button>
                   </div>
                 ) : (
-                  <div className="space-y-4">
+                  <div className="space-y-3">
                     {registries.map((registry) => {
                       const summary = registrySummaries[registry.id] ?? {
                         fundedAmount: 0,
@@ -1415,82 +1496,101 @@ export function UserDashboard({
                       const detailsLoading = loadingRegistryIds.has(registry.id);
 
                       return (
-                        <div key={registry.id} className="rounded-lg border p-4">
-                          <div className="mb-2 flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+                        <div key={registry.id} className="rounded-xl border p-3 sm:p-4">
+                          <div className="mb-2 flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
                             <div>
-                              <p className="text-lg font-semibold">
+                              <p className="font-semibold sm:text-lg">
                                 {registry.name}
                               </p>
-                              <p className="text-sm text-gray-500">
-                                Due: {formatDueMonth(registry.due_month)} and
-                                gender: {formatBabyGender(registry.baby_gender)}
-                              </p>
-                              <p className="text-sm text-gray-500">
-                                Created:{" "}
-                                {new Date(registry.created_at).toLocaleDateString()}
+                              <p className="mt-1 text-xs leading-5 text-gray-500 sm:text-sm">
+                                Due {formatDueMonth(registry.due_month)}
+                                {" · "}
+                                {formatBabyGender(registry.baby_gender)}
+                                {" · "}
+                                Created {new Date(registry.created_at).toLocaleDateString()}
                               </p>
                               {registry.status === "closed" ? (
                                 <p className="mt-2 inline-flex rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-gray-700">
                                   Closed
                                 </p>
                               ) : null}
-                              <div className="mt-3 grid gap-2 text-sm sm:grid-cols-3">
-                                <div className="rounded-xl bg-gray-50 px-3 py-2">
-                                  <span className="font-semibold text-gray-900">
-                                    Requested:
-                                  </span>{" "}
-                                  {summary.requested}
+                              <div className="mt-3 grid grid-cols-3 gap-1.5 text-center sm:gap-2">
+                                <div className="rounded-xl bg-gray-50 px-1.5 py-2 sm:px-3">
+                                  <span className="block text-[10px] font-medium uppercase tracking-wide text-gray-500 sm:text-xs">
+                                    Requested
+                                  </span>
+                                  <span className="mt-0.5 block text-sm font-bold text-gray-900">
+                                    {summary.requested}
+                                  </span>
                                 </div>
-                                <div className="rounded-xl bg-gray-50 px-3 py-2">
-                                  <span className="font-semibold text-gray-900">
-                                    Gifted:
-                                  </span>{" "}
-                                  {summary.purchased}
+                                <div className="rounded-xl bg-gray-50 px-1.5 py-2 sm:px-3">
+                                  <span className="block text-[10px] font-medium uppercase tracking-wide text-gray-500 sm:text-xs">
+                                    Gifted
+                                  </span>
+                                  <span className="mt-0.5 block text-sm font-bold text-gray-900">
+                                    {summary.purchased}
+                                  </span>
                                 </div>
-                                <div className="rounded-xl bg-gray-50 px-3 py-2">
-                                  <span className="font-semibold text-gray-900">
-                                    Remaining:
-                                  </span>{" "}
-                                  {summary.remainingQuantity}
+                                <div className="rounded-xl bg-gray-50 px-1.5 py-2 sm:px-3">
+                                  <span className="block text-[10px] font-medium uppercase tracking-wide text-gray-500 sm:text-xs">
+                                    Remaining
+                                  </span>
+                                  <span className="mt-0.5 block text-sm font-bold text-gray-900">
+                                    {summary.remainingQuantity}
+                                  </span>
                                 </div>
                               </div>
                             </div>
-                            <div className="flex w-full flex-col gap-2 sm:flex-row xl:w-auto">
+                            <div className="grid w-full grid-cols-3 gap-2 xl:flex xl:w-auto">
                               <Button
                                 variant="outline"
                                 size="sm"
+                                className="px-2 text-xs sm:text-sm"
                                 onClick={() => handleShareRegistry(registry)}
                               >
-                                <Share2 className="mr-2 h-4 w-4" />
+                                <Share2 className="mr-1 h-4 w-4" />
                                 Share
                               </Button>
                               <Button
                                 variant="outline"
                                 size="sm"
+                                className="px-2 text-xs sm:text-sm"
                                 disabled={detailsLoading}
                                 onClick={() => toggleRegistryDetails(registry.id)}
                               >
                                 {detailsLoading
                                   ? "Loading..."
                                   : detailsExpanded
-                                    ? "Hide Summary"
-                                    : "View Summary"}
+                                    ? "Hide"
+                                    : "Summary"}
                               </Button>
-                              <Button asChild size="sm">
+                              <Button asChild size="sm" className="px-2 text-xs sm:text-sm">
                                 <Link href={buildRegistryDashboardPath(registry)}>
-                                  Open Registry
+                                  Open
                                 </Link>
                               </Button>
                             </div>
                           </div>
                           <Separator className="my-2" />
-                          <div className="rounded bg-gray-50 p-3">
-                            <p className="text-sm font-medium text-gray-700">
-                              Registry Code:
-                            </p>
-                            <p className="font-mono text-lg font-bold text-pink-600">
-                              {registry.share_code}
-                            </p>
+                          <div className="rounded-xl bg-gray-50 p-3">
+                            <div className="flex items-center justify-between gap-3">
+                              <div className="min-w-0">
+                                <p className="text-xs font-medium text-gray-500">
+                                  Registry Code
+                                </p>
+                                <p className="truncate font-mono text-base font-bold text-pink-600 sm:text-lg">
+                                  {registry.share_code}
+                                </p>
+                              </div>
+                              <span className="shrink-0 rounded-full bg-white px-2.5 py-1 text-[10px] font-semibold capitalize text-gray-700 sm:text-xs">
+                                {(registry.fulfillment_status ?? "collecting").replaceAll("_", " ")}
+                              </span>
+                            </div>
+                            {registry.closed_note ? (
+                              <p className="mt-2 rounded-lg bg-white px-3 py-2 text-xs text-gray-600 sm:text-sm">
+                                Closing note: {registry.closed_note}
+                              </p>
+                            ) : null}
                           </div>
                           {detailsExpanded && (
                           <Tabs defaultValue="funding" className="mt-4 space-y-4">
@@ -1504,24 +1604,30 @@ export function UserDashboard({
                             </TabsList>
 
                             <TabsContent value="funding" className="space-y-3">
-                              <div className="grid gap-2 sm:grid-cols-3">
-                                <div className="rounded-xl bg-gray-50 px-3 py-2 text-sm">
-                                  <span className="font-semibold text-gray-900">
-                                    Needed:
-                                  </span>{" "}
-                                  {formatNairaAmount(summary.totalNeededAmount)}
+                              <div className="grid grid-cols-3 gap-1.5 text-center sm:gap-2">
+                                <div className="rounded-xl bg-gray-50 px-1 py-2 text-xs sm:px-3 sm:text-sm">
+                                  <span className="block font-semibold text-gray-900">
+                                    Needed
+                                  </span>
+                                  <span className="block text-[10px] sm:text-sm">
+                                    {formatNairaAmount(summary.totalNeededAmount)}
+                                  </span>
                                 </div>
-                                <div className="rounded-xl bg-gray-50 px-3 py-2 text-sm">
-                                  <span className="font-semibold text-gray-900">
-                                    Funded:
-                                  </span>{" "}
-                                  {formatNairaAmount(summary.fundedAmount)}
+                                <div className="rounded-xl bg-gray-50 px-1 py-2 text-xs sm:px-3 sm:text-sm">
+                                  <span className="block font-semibold text-gray-900">
+                                    Funded
+                                  </span>
+                                  <span className="block text-[10px] sm:text-sm">
+                                    {formatNairaAmount(summary.fundedAmount)}
+                                  </span>
                                 </div>
-                                <div className="rounded-xl bg-gray-50 px-3 py-2 text-sm">
-                                  <span className="font-semibold text-gray-900">
-                                    Left:
-                                  </span>{" "}
-                                  {formatNairaAmount(summary.remainingAmount)}
+                                <div className="rounded-xl bg-gray-50 px-1 py-2 text-xs sm:px-3 sm:text-sm">
+                                  <span className="block font-semibold text-gray-900">
+                                    Left
+                                  </span>
+                                  <span className="block text-[10px] sm:text-sm">
+                                    {formatNairaAmount(summary.remainingAmount)}
+                                  </span>
                                 </div>
                               </div>
 
@@ -1596,14 +1702,82 @@ export function UserDashboard({
                           </Tabs>
                           )}
 
-                          <div className="mt-4 flex flex-wrap gap-2">
-                            <Button asChild variant="outline" size="sm">
-                              <Link href={buildRegistryDashboardPath(registry)}>
+                          <div className="mt-3 grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
+                            <Button
+                              asChild
+                              variant="outline"
+                              size="sm"
+                              className="w-full px-2 text-xs sm:w-auto sm:text-sm"
+                            >
+                               <Link href={buildRegistryDashboardPath(registry)}>
                                 <Pencil className="mr-2 h-4 w-4" />
-                                Edit Registry
-                              </Link>
-                            </Button>
-                          </div>
+                                 Edit Registry
+                               </Link>
+                             </Button>
+                             {(registry.fulfillment_status ?? "collecting") === "collecting" ? (
+                               <>
+                                 <Button
+                                   size="sm"
+                                   className="w-full px-2 text-xs sm:w-auto sm:text-sm"
+                                   onClick={() =>
+                                     void handleRegistryFulfillment(
+                                       registry,
+                                       "ready_for_shipping",
+                                     )
+                                   }
+                                   disabled={savingRegistryStatus}
+                                 >
+                                   Ready for Shipping
+                                 </Button>
+                                 {registry.status === "closed" ? (
+                                   <Button
+                                     variant="outline"
+                                     size="sm"
+                                     className="w-full px-2 text-xs sm:w-auto sm:text-sm"
+                                     onClick={() => void handleReopenRegistry(registry)}
+                                     disabled={savingRegistryStatus}
+                                   >
+                                     Reopen Registry
+                                   </Button>
+                                 ) : (
+                                   <Button
+                                     variant="outline"
+                                     size="sm"
+                                     className="w-full px-2 text-xs sm:w-auto sm:text-sm"
+                                     onClick={() => handleOpenCloseRegistry(registry)}
+                                     disabled={savingRegistryStatus}
+                                   >
+                                     Close Registry
+                                   </Button>
+                                 )}
+                               </>
+                             ) : null}
+                             {registry.fulfillment_status === "ready_for_shipping" ? (
+                               <Button
+                                 variant="outline"
+                                 size="sm"
+                                 className="w-full px-2 text-xs sm:w-auto sm:text-sm"
+                                 onClick={() =>
+                                   void handleRegistryFulfillment(registry, "collecting")
+                                 }
+                                 disabled={savingRegistryStatus}
+                               >
+                                 Continue Collecting
+                               </Button>
+                             ) : null}
+                             {registry.fulfillment_status === "shipped" ? (
+                               <Button
+                                 size="sm"
+                                 className="w-full px-2 text-xs sm:w-auto sm:text-sm"
+                                 onClick={() =>
+                                   void handleRegistryFulfillment(registry, "completed")
+                                 }
+                                 disabled={savingRegistryStatus}
+                               >
+                                 Confirm Delivery
+                               </Button>
+                             ) : null}
+                           </div>
                         </div>
                       );
                     })}
@@ -1612,100 +1786,6 @@ export function UserDashboard({
               </CardContent>
               </Card>
 
-              <Card>
-                <CardHeader>
-                  <CardTitle>Registry Controls</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  {registries.length === 0 ? (
-                    <p className="text-sm text-gray-500">
-                      You do not have any registries yet.
-                    </p>
-                  ) : (
-                    registries.map((registry) => (
-                      <div key={registry.id} className="rounded-xl border px-4 py-4">
-                        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                          <div className="space-y-1">
-                            <p className="font-semibold text-gray-900">{registry.name}</p>
-                            <p className="text-sm text-gray-500">
-                              Code: {registry.share_code}
-                            </p>
-                            <p className="text-sm font-medium capitalize text-gray-700">
-                              Fulfilment:{" "}
-                              {(registry.fulfillment_status ?? "collecting").replaceAll("_", " ")}
-                            </p>
-                            {registry.closed_note ? (
-                              <p className="rounded-lg bg-gray-50 px-3 py-2 text-sm text-gray-600">
-                                Closing note: {registry.closed_note}
-                              </p>
-                            ) : null}
-                          </div>
-                          <div className="flex flex-wrap gap-2">
-                            {(registry.fulfillment_status ?? "collecting") === "collecting" ? (
-                              <>
-                                <Button
-                                  onClick={() =>
-                                    void handleRegistryFulfillment(
-                                      registry,
-                                      "ready_for_shipping",
-                                    )
-                                  }
-                                  disabled={savingRegistryStatus}
-                                >
-                                  Ready for Shipping
-                                </Button>
-                                {registry.status === "closed" ? (
-                                  <Button
-                                    variant="outline"
-                                    onClick={() => void handleReopenRegistry(registry)}
-                                    disabled={savingRegistryStatus}
-                                  >
-                                    Reopen Registry
-                                  </Button>
-                                ) : (
-                                  <Button
-                                    variant="outline"
-                                    onClick={() => handleOpenCloseRegistry(registry)}
-                                    disabled={savingRegistryStatus}
-                                  >
-                                    Close Registry
-                                  </Button>
-                                )}
-                              </>
-                            ) : null}
-                            {registry.fulfillment_status === "ready_for_shipping" ? (
-                              <Button
-                                variant="outline"
-                                onClick={() =>
-                                  void handleRegistryFulfillment(registry, "collecting")
-                                }
-                                disabled={savingRegistryStatus}
-                              >
-                                Continue Collecting
-                              </Button>
-                            ) : null}
-                            {registry.fulfillment_status === "shipped" ? (
-                              <Button
-                                onClick={() =>
-                                  void handleRegistryFulfillment(registry, "completed")
-                                }
-                                disabled={savingRegistryStatus}
-                              >
-                                Confirm Delivery
-                              </Button>
-                            ) : null}
-                            {registry.fulfillment_status === "completed" ? (
-                              <span className="rounded-full bg-green-100 px-3 py-2 text-sm font-semibold text-green-800">
-                                Completed
-                              </span>
-                            ) : null}
-                          </div>
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </CardContent>
-              </Card>
             </div>
           </TabsContent>
 
