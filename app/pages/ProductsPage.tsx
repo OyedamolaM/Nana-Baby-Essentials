@@ -109,6 +109,7 @@ export function ProductsPage({
   const [productDetailOpen, setProductDetailOpen] = useState(false);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
+  const productResultsRef = useRef<HTMLDivElement | null>(null);
   const {
     loading,
     page,
@@ -140,6 +141,17 @@ export function ProductsPage({
     totalCount,
     rangeSuffix,
   );
+
+  const changePage = (nextPage: number) => {
+    if (nextPage === page || nextPage < 1 || nextPage > totalPages) {
+      return;
+    }
+
+    setPage(nextPage);
+    window.requestAnimationFrame(() => {
+      productResultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  };
 
   useEffect(() => {
     const reopenContext = readProductDetailReturnContext();
@@ -375,24 +387,25 @@ export function ProductsPage({
               </div>
             )}
 
-            {!loading && totalCount > 0 ? (
-              <p className="mb-6 text-center text-sm leading-6 text-gray-600 md:text-left">
-                {visibleRangeLabel}
-              </p>
-            ) : null}
-
-            {loading ? (
-              <div className="py-16 text-center">
-                <p className="text-xl text-gray-500">Loading products...</p>
-              </div>
-            ) : products.length === 0 ? (
-              <div className="py-16 text-center">
-                <p className="text-xl text-gray-500">
-                  No products found. Try a different search or category.
+            <div ref={productResultsRef} className="scroll-mt-24">
+              {!loading && totalCount > 0 ? (
+                <p className="mb-6 text-center text-sm leading-6 text-gray-600 md:text-left">
+                  {visibleRangeLabel}
                 </p>
-              </div>
-            ) : (
-              <>
+              ) : null}
+
+              {loading ? (
+                <div className="py-16 text-center">
+                  <p className="text-xl text-gray-500">Loading products...</p>
+                </div>
+              ) : products.length === 0 ? (
+                <div className="py-16 text-center">
+                  <p className="text-xl text-gray-500">
+                    No products found. Try a different search or category.
+                  </p>
+                </div>
+              ) : (
+                <>
                 <div className="grid grid-cols-2 gap-4 sm:gap-6 lg:grid-cols-3 xl:grid-cols-4">
                   {products.map((product) => (
                     <ProductCard
@@ -411,9 +424,7 @@ export function ProductsPage({
                         href="/products"
                         onClick={(event) => {
                           event.preventDefault();
-                          if (page > 1) {
-                            setPage(page - 1);
-                          }
+                          changePage(page - 1);
                         }}
                         aria-disabled={page === 1}
                         className={page === 1 ? "pointer-events-none opacity-50" : ""}
@@ -430,7 +441,7 @@ export function ProductsPage({
                             isActive={item === page}
                             onClick={(event) => {
                               event.preventDefault();
-                              setPage(Number(item));
+                              changePage(Number(item));
                             }}
                           >
                             {item}
@@ -444,9 +455,7 @@ export function ProductsPage({
                         href="/products"
                         onClick={(event) => {
                           event.preventDefault();
-                          if (page < totalPages) {
-                            setPage(page + 1);
-                          }
+                          changePage(page + 1);
                         }}
                         aria-disabled={page === totalPages}
                         className={
@@ -456,8 +465,9 @@ export function ProductsPage({
                     </PaginationItem>
                   </PaginationContent>
                 </Pagination>
-              </>
-            )}
+                </>
+              )}
+            </div>
           </div>
         </section>
       </main>
