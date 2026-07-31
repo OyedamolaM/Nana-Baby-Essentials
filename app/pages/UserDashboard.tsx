@@ -1428,9 +1428,6 @@ export function UserDashboard({
                 <CardHeader className="flex flex-row items-start justify-between gap-4">
                   <div>
                     <CardTitle>Profile</CardTitle>
-                    <p className="mt-1 text-sm text-gray-500">
-                      Review your personal details before editing them.
-                    </p>
                   </div>
                   <Button variant="outline" onClick={() => setProfileEditOpen(true)}>
                     <Pencil className="mr-2 h-4 w-4" />
@@ -1468,9 +1465,6 @@ export function UserDashboard({
               <Card>
                 <CardHeader>
                   <CardTitle>Registry Controls</CardTitle>
-                  <p className="mt-1 text-sm text-gray-500">
-                    Keep collecting gifts, mark paid items ready for shipping, or confirm delivery.
-                  </p>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   {registries.length === 0 ? (
@@ -1610,40 +1604,6 @@ export function UserDashboard({
           <TabsContent value="security">
             <Card className="mb-4">
               <CardHeader>
-                <CardTitle>Campaign Emails</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <p className="text-sm text-gray-600">
-                  Customer campaigns are different from newsletters. You can opt out here, or use the unsubscribe link at the bottom of any campaign email.
-                </p>
-                <div className="flex flex-col gap-3 rounded-xl border px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
-                    <p className="font-medium text-gray-900">
-                      {campaignOptOut ? "Campaign emails turned off" : "Campaign emails turned on"}
-                    </p>
-                    <p className="text-sm text-gray-500">
-                      {campaignOptOut
-                        ? "You will stop receiving promotional customer campaigns until you turn them back on."
-                        : "You can still receive order emails. This only controls promotional customer campaigns."}
-                    </p>
-                  </div>
-                  <Button
-                    variant={campaignOptOut ? "default" : "outline"}
-                    disabled={savingCampaignPreference}
-                    onClick={() => void handleToggleCampaignEmails(!campaignOptOut)}
-                  >
-                    {savingCampaignPreference
-                      ? "Saving..."
-                      : campaignOptOut
-                        ? "Turn Campaigns Back On"
-                        : "Opt Out of Campaigns"}
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="mb-4">
-              <CardHeader>
                 <CardTitle>Change Password</CardTitle>
               </CardHeader>
               <CardContent>
@@ -1683,6 +1643,37 @@ export function UserDashboard({
 
                   <Button type="submit">Change Password</Button>
                 </form>
+              </CardContent>
+            </Card>
+
+                        <Card className="mb-4">
+              <CardHeader>
+                <CardTitle>Campaign Emails</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex flex-col gap-3 rounded-xl border px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="font-medium text-gray-900">
+                      {campaignOptOut ? "Campaign emails turned off" : "Campaign emails turned on"}
+                    </p>
+                    <p className="text-sm text-gray-500">
+                      {campaignOptOut
+                        ? "You will stop receiving promotional customer campaigns until you turn them back on."
+                        : ""}
+                    </p>
+                  </div>
+                  <Button
+                    variant={campaignOptOut ? "default" : "outline"}
+                    disabled={savingCampaignPreference}
+                    onClick={() => void handleToggleCampaignEmails(!campaignOptOut)}
+                  >
+                    {savingCampaignPreference
+                      ? "Saving..."
+                      : campaignOptOut
+                        ? "Turn Campaigns Back On"
+                        : "Opt Out of Campaigns"}
+                  </Button>
+                </div>
               </CardContent>
             </Card>
 

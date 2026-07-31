@@ -7,19 +7,28 @@ import {
   ArrowUp,
   BookOpen,
   ChevronDown,
+  ClipboardList,
   DollarSign,
   Edit,
   ExternalLink,
+  FileText,
+  Gift,
   Image as ImageIcon,
+  LayoutDashboard,
   Mail,
   MapPin,
+  Megaphone,
+  Menu,
   MessageSquareQuote,
   Package,
   Plus,
   ShoppingBag,
+  ShoppingCart,
   Sparkles,
   Star,
+  Tags,
   Trash2,
+  Truck,
   Users,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -127,8 +136,218 @@ import {
   TableHeader,
   TableRow,
 } from "../components/ui/table";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from "../components/ui/sheet";
+import { Tabs, TabsContent } from "../components/ui/tabs";
 import { Textarea } from "../components/ui/textarea";
+import { cn } from "../components/ui/utils";
+
+type AdminSectionId =
+  | "overview"
+  | "orders"
+  | "abandoned-carts"
+  | "registries"
+  | "customers"
+  | "products"
+  | "categories"
+  | "deals"
+  | "packages"
+  | "campaigns"
+  | "newsletter"
+  | "reviews"
+  | "blogs"
+  | "content"
+  | "shipping";
+
+type AdminNavigationItem = {
+  description: string;
+  icon: typeof LayoutDashboard;
+  id: AdminSectionId;
+  label: string;
+};
+
+type AdminNavigationGroup = {
+  items: AdminNavigationItem[];
+  label: string;
+};
+
+const ADMIN_NAVIGATION_GROUPS: AdminNavigationGroup[] = [
+  {
+    label: "Overview",
+    items: [
+      {
+        id: "overview",
+        label: "Overview",
+        description: "Store performance and shortcuts",
+        icon: LayoutDashboard,
+      },
+    ],
+  },
+  {
+    label: "Sales & Fulfilment",
+    items: [
+      {
+        id: "orders",
+        label: "Orders",
+        description: "Paid and unfinished orders",
+        icon: ClipboardList,
+      },
+      {
+        id: "abandoned-carts",
+        label: "Abandoned Carts",
+        description: "Follow up incomplete checkouts",
+        icon: ShoppingCart,
+      },
+      {
+        id: "registries",
+        label: "Registries",
+        description: "Gift activity and fulfilment",
+        icon: Gift,
+      },
+      {
+        id: "customers",
+        label: "Customers",
+        description: "Profiles and account access",
+        icon: Users,
+      },
+    ],
+  },
+  {
+    label: "Catalogue",
+    items: [
+      {
+        id: "products",
+        label: "Products",
+        description: "Inventory, images and variants",
+        icon: ShoppingBag,
+      },
+      {
+        id: "categories",
+        label: "Categories",
+        description: "Product catalogue structure",
+        icon: Tags,
+      },
+      {
+        id: "deals",
+        label: "Deals",
+        description: "Homepage promotions",
+        icon: Sparkles,
+      },
+      {
+        id: "packages",
+        label: "Packages",
+        description: "Special product packages",
+        icon: Package,
+      },
+    ],
+  },
+  {
+    label: "Marketing",
+    items: [
+      {
+        id: "campaigns",
+        label: "Campaigns",
+        description: "Customer outreach",
+        icon: Megaphone,
+      },
+      {
+        id: "newsletter",
+        label: "Newsletter",
+        description: "Subscribers and broadcasts",
+        icon: Mail,
+      },
+      {
+        id: "reviews",
+        label: "Reviews",
+        description: "Homepage and registry reviews",
+        icon: MessageSquareQuote,
+      },
+      {
+        id: "blogs",
+        label: "Blog",
+        description: "Editorial content",
+        icon: BookOpen,
+      },
+    ],
+  },
+  {
+    label: "Website & Settings",
+    items: [
+      {
+        id: "content",
+        label: "Website Editor",
+        description: "Homepage and store locations",
+        icon: FileText,
+      },
+      {
+        id: "shipping",
+        label: "Shipping Tiers",
+        description: "Delivery options and pricing",
+        icon: Truck,
+      },
+    ],
+  },
+];
+
+function AdminNavigation({
+  activeSection,
+  onSelect,
+}: {
+  activeSection: AdminSectionId;
+  onSelect: (section: AdminSectionId) => void;
+}) {
+  return (
+    <div className="space-y-5">
+      <p className="px-3 text-lg font-bold text-pink-600">Admin Dashboard</p>
+      <nav aria-label="Admin sections" className="space-y-6">
+        {ADMIN_NAVIGATION_GROUPS.map((group) => (
+          <div key={group.label} className="space-y-2">
+            <p className="px-3 text-xs font-semibold uppercase tracking-[0.16em] text-gray-400">
+              {group.label}
+            </p>
+            <div className="space-y-1">
+              {group.items.map((item) => {
+                const Icon = item.icon;
+                const isActive = item.id === activeSection;
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    aria-current={isActive ? "page" : undefined}
+                    onClick={() => onSelect(item.id)}
+                    className={cn(
+                      "flex w-full items-start gap-3 rounded-xl px-3 py-2.5 text-left transition-colors",
+                      isActive
+                        ? "bg-pink-50 text-pink-700"
+                        : "text-gray-600 hover:bg-gray-100 hover:text-gray-950",
+                    )}
+                  >
+                    <Icon className="mt-0.5 h-4 w-4 shrink-0" />
+                    <span className="min-w-0">
+                      <span className="block text-sm font-semibold">{item.label}</span>
+                      <span
+                        className={cn(
+                          "block text-xs",
+                          isActive ? "text-pink-600" : "text-gray-400",
+                        )}
+                      >
+                        {item.description}
+                      </span>
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </nav>
+    </div>
+  );
+}
 
 type Customer = {
   id: string;
@@ -316,7 +535,8 @@ export function AdminDashboard() {
   const initialAdminLoadKeyRef = useRef<string | null>(null);
   const ORDERS_PAGE_SIZE = 30;
   const [orders, setOrders] = useState<AdminOrderRecord[]>([]);
-  const [activeAdminTab, setActiveAdminTab] = useState("orders");
+  const [activeAdminTab, setActiveAdminTab] = useState<AdminSectionId>("overview");
+  const [mobileNavigationOpen, setMobileNavigationOpen] = useState(false);
   const [ordersLoadingMore, setOrdersLoadingMore] = useState(false);
   const [ordersHasMore, setOrdersHasMore] = useState(true);
   const ordersPageRef = useRef(0);
@@ -3059,6 +3279,11 @@ useEffect(() => {
     }
   };
 
+  const handleAdminSectionChange = (section: AdminSectionId) => {
+    setActiveAdminTab(section);
+    setMobileNavigationOpen(false);
+  };
+
   if (authLoading) {
     return (
       <div className="container mx-auto px-4 py-8">
@@ -3106,81 +3331,159 @@ useEffect(() => {
   }
 
   return (
-    <div className="container mx-auto px-4 py-8">
-      <Tabs value={activeAdminTab} onValueChange={setActiveAdminTab} className="space-y-6">
-        <div className="mb-6 space-y-4">
-          <div className="flex items-center justify-between">
-            <h1 className="text-3xl font-bold">Admin Dashboard</h1>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle className="text-sm font-medium">Total Orders</CardTitle>
-                <Package className="h-4 w-4 text-gray-500" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{orderStats.totalPaidOrders}</div>
-                <p className="text-xs text-gray-500">{orderStats.monthlyPaidOrders} this month</p>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle className="text-sm font-medium">Total Revenue</CardTitle>
-                <DollarSign className="h-4 w-4 text-gray-500" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">
-                  {formatNairaAmount(orderStats.totalRevenue)}
-                </div>
-                <p className="text-xs text-gray-500">
-                  {formatNairaAmount(orderStats.monthlyRevenue)} this month
-                </p>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle className="text-sm font-medium">Customers</CardTitle>
-                <Users className="h-4 w-4 text-gray-500" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{totalCustomerCount}</div>
-                <p className="text-xs text-gray-500">Registered users</p>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle className="text-sm font-medium">Products</CardTitle>
-                <ShoppingBag className="h-4 w-4 text-gray-500" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{totalProductCount}</div>
-              </CardContent>
-            </Card>
-          </div>
-
-          <TabsList className="flex h-14 w-full items-center justify-start gap-2 overflow-x-auto px-2 no-scrollbar sm:h-auto sm:flex-wrap sm:overflow-visible sm:px-0 [&>*]:shrink-0">
-            <TabsTrigger value="orders" className="h-10 px-4 py-3 whitespace-nowrap">Orders</TabsTrigger>
-            <TabsTrigger value="abandoned-carts" className="h-10 px-4 py-3 whitespace-nowrap">Abandoned Carts</TabsTrigger>
-            <TabsTrigger value="registries" className="h-10 px-4 py-3 whitespace-nowrap">Registries</TabsTrigger>
-            <TabsTrigger value="customers" className="h-10 px-4 py-3 whitespace-nowrap">Customers</TabsTrigger>
-            <TabsTrigger value="newsletter" className="h-10 px-4 py-3 whitespace-nowrap">Newsletter</TabsTrigger>
-            <TabsTrigger value="campaigns" className="h-10 px-4 py-3 whitespace-nowrap">Campaigns</TabsTrigger>
-            <TabsTrigger value="products" className="h-10 px-4 py-3 whitespace-nowrap">Products</TabsTrigger>
-            <TabsTrigger value="categories" className="h-10 px-4 py-3 whitespace-nowrap">Categories</TabsTrigger>
-            <TabsTrigger value="deals" className="h-10 px-4 py-3 whitespace-nowrap">Deals</TabsTrigger>
-            <TabsTrigger value="packages" className="h-10 px-4 py-3 whitespace-nowrap">Packages</TabsTrigger>
-            <TabsTrigger value="content" className="h-10 px-4 py-3 whitespace-nowrap">Webpage Editor</TabsTrigger>
-            <TabsTrigger value="reviews" className="h-10 px-4 py-3 whitespace-nowrap">Reviews</TabsTrigger>
-            <TabsTrigger value="shipping" className="h-10 px-4 py-3 whitespace-nowrap">Shipping Tiers</TabsTrigger>
-            <TabsTrigger value="blogs" className="h-10 px-4 py-3 whitespace-nowrap">Blogs</TabsTrigger>
-          </TabsList>
+    <div className="mx-auto w-full max-w-[1600px] px-4 py-6 sm:px-6 lg:px-8">
+      <Tabs
+        value={activeAdminTab}
+        onValueChange={(value) => handleAdminSectionChange(value as AdminSectionId)}
+      >
+        <div className="mb-4 lg:hidden">
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            className="lg:hidden"
+            onClick={() => setMobileNavigationOpen(true)}
+            aria-label="Open admin navigation"
+          >
+            <Menu className="h-5 w-5" />
+          </Button>
         </div>
 
-        <div className="min-h-[55vh]">
+        <Sheet open={mobileNavigationOpen} onOpenChange={setMobileNavigationOpen}>
+          <SheetContent side="left" className="w-[88vw] max-w-sm overflow-y-auto p-0">
+            <SheetHeader className="sr-only">
+              <SheetTitle>Admin Dashboard</SheetTitle>
+            </SheetHeader>
+            <div className="px-3 py-5">
+              <AdminNavigation
+                activeSection={activeAdminTab}
+                onSelect={handleAdminSectionChange}
+              />
+            </div>
+          </SheetContent>
+        </Sheet>
+
+        <div className="grid items-start gap-6 lg:grid-cols-[280px_minmax(0,1fr)]">
+          <aside className="sticky top-24 hidden max-h-[calc(100vh-7rem)] overflow-y-auto rounded-2xl border bg-white p-3 shadow-sm lg:block">
+            <AdminNavigation
+              activeSection={activeAdminTab}
+              onSelect={handleAdminSectionChange}
+            />
+          </aside>
+
+          <main className="min-w-0">
+            <TabsContent value="overview" className="mt-0 space-y-6">
+              <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
+                <Card>
+                  <CardHeader className="flex flex-row items-center justify-between pb-2">
+                    <CardTitle className="text-sm font-medium">Total Orders</CardTitle>
+                    <Package className="h-4 w-4 text-gray-500" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold">{orderStats.totalPaidOrders}</div>
+                    <p className="text-xs text-gray-500">
+                      {orderStats.monthlyPaidOrders} this month
+                    </p>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader className="flex flex-row items-center justify-between pb-2">
+                    <CardTitle className="text-sm font-medium">Total Revenue</CardTitle>
+                    <DollarSign className="h-4 w-4 text-gray-500" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold">
+                      {formatNairaAmount(orderStats.totalRevenue)}
+                    </div>
+                    <p className="text-xs text-gray-500">
+                      {formatNairaAmount(orderStats.monthlyRevenue)} this month
+                    </p>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader className="flex flex-row items-center justify-between pb-2">
+                    <CardTitle className="text-sm font-medium">Customers</CardTitle>
+                    <Users className="h-4 w-4 text-gray-500" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold">{totalCustomerCount}</div>
+                    <p className="text-xs text-gray-500">Registered users</p>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader className="flex flex-row items-center justify-between pb-2">
+                    <CardTitle className="text-sm font-medium">Products</CardTitle>
+                    <ShoppingBag className="h-4 w-4 text-gray-500" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold">{totalProductCount}</div>
+                    <p className="text-xs text-gray-500">Standard catalogue items</p>
+                  </CardContent>
+                </Card>
+              </div>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Management Shortcuts</CardTitle>
+                  <p className="text-sm text-gray-500">
+                    Open a section without loading the rest of the admin workspace.
+                  </p>
+                </CardHeader>
+                <CardContent className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                  {[
+                    {
+                      id: "orders" as const,
+                      label: "Manage Orders",
+                      description: "Paid and unfinished orders",
+                      icon: ClipboardList,
+                    },
+                    {
+                      id: "registries" as const,
+                      label: "Registry Fulfilment",
+                      description: "Ready, shipped and completed",
+                      icon: Gift,
+                    },
+                    {
+                      id: "products" as const,
+                      label: "Manage Products",
+                      description: "Catalogue and inventory",
+                      icon: ShoppingBag,
+                    },
+                    {
+                      id: "content" as const,
+                      label: "Edit Website",
+                      description: "Homepage and locations",
+                      icon: FileText,
+                    },
+                  ].map((shortcut) => {
+                    const Icon = shortcut.icon;
+                    return (
+                      <button
+                        key={shortcut.id}
+                        type="button"
+                        onClick={() => handleAdminSectionChange(shortcut.id)}
+                        className="flex items-start gap-3 rounded-xl border px-4 py-4 text-left transition-colors hover:border-pink-200 hover:bg-pink-50"
+                      >
+                        <Icon className="mt-0.5 h-5 w-5 text-pink-600" />
+                        <span>
+                          <span className="block text-sm font-semibold text-gray-950">
+                            {shortcut.label}
+                          </span>
+                          <span className="block text-xs text-gray-500">
+                            {shortcut.description}
+                          </span>
+                        </span>
+                      </button>
+                    );
+                  })}
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <div className="min-h-[55vh]">
         <TabsContent value="orders">
           <div className="space-y-6">
             <AdminOrdersManager
@@ -4369,6 +4672,8 @@ useEffect(() => {
             </CardContent>
           </Card>
         </TabsContent>
+            </div>
+          </main>
         </div>
       </Tabs>
 
