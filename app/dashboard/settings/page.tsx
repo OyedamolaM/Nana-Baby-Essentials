@@ -3,17 +3,17 @@ import { UserDashboard } from "../../pages/UserDashboard";
 import { buildPageMetadata } from "../../../lib/site";
 
 export const metadata = buildPageMetadata({
-  title: "My Security",
-  description: "Manage campaign email preferences and update your account password.",
-  path: "/dashboard/security",
+  title: "My Settings",
+  description: "Manage communication preferences, security, and your account.",
+  path: "/dashboard/settings",
   noIndex: true,
 });
 
-export default function DashboardSecurityPage() {
+export default function DashboardSettingsPage() {
   return (
     <>
       <SiteHeaderShell />
-      <UserDashboard initialTab="settings" initialSettingsSection="security" />
+      <UserDashboard initialTab="settings" />
     </>
   );
 }

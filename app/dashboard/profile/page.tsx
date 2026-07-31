@@ -14,7 +14,7 @@ export default function DashboardProfilePage() {
   return (
     <>
       <SiteHeaderShell />
-      <UserDashboard initialTab="profile" />
+      <UserDashboard initialTab="account" initialAccountSection="profile" />
     </>
   );
 }

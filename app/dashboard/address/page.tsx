@@ -13,7 +13,7 @@ export default function DashboardAddressPage() {
   return (
     <>
       <SiteHeaderShell />
-      <UserDashboard initialTab="address" />
+      <UserDashboard initialTab="account" initialAccountSection="address" />
     </>
   );
 }
