@@ -32,7 +32,10 @@ export interface RegistryRecord {
 export interface RegistryItemRecord {
   id: string;
   registry_id: string;
-  product_id: number;
+  product_id: number | null;
+  product_name_snapshot?: string | null;
+  product_image_snapshot?: string | null;
+  product_description_snapshot?: string | null;
   requested_quantity?: number | null;
   purchased_quantity?: number | null;
   funded_amount?: number | null;
@@ -45,7 +48,7 @@ export interface RegistryItemRecord {
 export interface RegistryItem {
   id: string;
   registryId: string;
-  productId: number;
+  productId: number | null;
   requestedQuantity: number;
   purchasedQuantity: number;
   fundedAmount: number;
@@ -154,13 +157,30 @@ export function resolveRegistryDashboardLookup(routeParam: string) {
 }
 
 export function mapRegistryItemRecord(record: RegistryItemRecord): RegistryItem {
-  const product = record.products ? mapProductRecord(record.products) : null;
   const fallbackUnitPrice = record.products
     ? getProductSellingPrice(record.products)
     : 0;
   const requestedQuantity = Math.max(1, Number(record.requested_quantity ?? 1));
   const purchasedQuantity = Math.max(0, Number(record.purchased_quantity ?? 0));
   const unitPriceSnapshot = Number(record.unit_price_snapshot ?? fallbackUnitPrice);
+  const snapshotProductName = record.product_name_snapshot?.trim();
+  const product = record.products
+    ? mapProductRecord(record.products)
+    : snapshotProductName
+      ? {
+          id: Number(record.product_id ?? 0),
+          name: snapshotProductName,
+          slug: createSlug(snapshotProductName),
+          price: toNairaAmount(unitPriceSnapshot),
+          sellingPrice: toNairaAmount(unitPriceSnapshot),
+          category: "Archived product",
+          image: record.product_image_snapshot?.trim() ?? "",
+          description: record.product_description_snapshot?.trim() ?? "",
+          inStock: false,
+          isFeatured: false,
+          featuredSortOrder: 0,
+        }
+      : null;
   const targetAmount = toNairaAmount(unitPriceSnapshot) * requestedQuantity;
   const fundedFallback = toNairaAmount(unitPriceSnapshot) * purchasedQuantity;
   const fundedAmount = Math.min(
@@ -171,7 +191,7 @@ export function mapRegistryItemRecord(record: RegistryItemRecord): RegistryItem 
   return {
     id: record.id,
     registryId: record.registry_id,
-    productId: Number(record.product_id),
+    productId: record.product_id === null ? null : Number(record.product_id),
     requestedQuantity,
     purchasedQuantity,
     fundedAmount,

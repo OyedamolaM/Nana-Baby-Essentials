@@ -706,7 +706,7 @@ export function UserDashboard({
     const [itemsResult, ordersResult, contributionsResult] = await Promise.all([
       supabase
         .from("registry_items")
-        .select(`id, registry_id, product_id, requested_quantity, purchased_quantity, funded_amount, unit_price_snapshot, created_at, products(${PRODUCT_LIST_SELECT})`)
+        .select(`id, registry_id, product_id, product_name_snapshot, product_image_snapshot, product_description_snapshot, requested_quantity, purchased_quantity, funded_amount, unit_price_snapshot, created_at, products(${PRODUCT_LIST_SELECT})`)
         .eq("registry_id", registryId)
         .order("created_at", { ascending: false }),
       supabase
