@@ -109,7 +109,8 @@ export function ProductsPage({
   const [productDetailOpen, setProductDetailOpen] = useState(false);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
-  const productResultsRef = useRef<HTMLDivElement | null>(null);
+  const productsSectionRef = useRef<HTMLElement | null>(null);
+  const paginationFrameRef = useRef<number | null>(null);
   const {
     loading,
     page,
@@ -130,11 +131,6 @@ export function ProductsPage({
     initialSelectedCategory,
     initialTotalCount,
   });
-  const pendingPaginationScrollRef = useRef<{
-    page: number;
-    previousProducts: Product[];
-  } | null>(null);
-
   const paginationItems = buildPagination(page, totalPages);
   const visibleRange = getVisibleRange(page, pageSize, totalCount);
   const rangeSuffix =
@@ -151,46 +147,27 @@ export function ProductsPage({
       return;
     }
 
-    pendingPaginationScrollRef.current = {
-      page: nextPage,
-      previousProducts: products,
-    };
-    setPage(nextPage);
-  };
-
-  useEffect(() => {
-    const pendingScroll = pendingPaginationScrollRef.current;
-    if (
-      !pendingScroll ||
-      pendingScroll.page !== page ||
-      loading ||
-      pendingScroll.previousProducts === products
-    ) {
+    const productsSection = productsSectionRef.current;
+    if (!productsSection) {
+      setPage(nextPage);
       return;
     }
 
-    let settledFrameId: number | null = null;
-    const layoutFrameId = window.requestAnimationFrame(() => {
-      settledFrameId = window.requestAnimationFrame(() => {
-        const resultsElement = productResultsRef.current;
-        if (!resultsElement) {
-          return;
-        }
+    if (paginationFrameRef.current !== null) {
+      window.cancelAnimationFrame(paginationFrameRef.current);
+    }
 
-        pendingPaginationScrollRef.current = null;
-        const headerOffset = 96;
-        const sectionTop = resultsElement.getBoundingClientRect().top + window.scrollY - headerOffset;
-        window.scrollTo({ behavior: "smooth", top: Math.max(0, sectionTop) });
+    const headerHeight = document.querySelector("header")?.getBoundingClientRect().height ?? 82;
+    const sectionTop = productsSection.getBoundingClientRect().top + window.scrollY - headerHeight;
+    window.scrollTo({ behavior: "auto", top: Math.max(0, sectionTop) });
+
+    paginationFrameRef.current = window.requestAnimationFrame(() => {
+      paginationFrameRef.current = window.requestAnimationFrame(() => {
+        paginationFrameRef.current = null;
+        setPage(nextPage);
       });
     });
-
-    return () => {
-      window.cancelAnimationFrame(layoutFrameId);
-      if (settledFrameId !== null) {
-        window.cancelAnimationFrame(settledFrameId);
-      }
-    };
-  }, [loading, page, products]);
+  };
 
   useEffect(() => {
     const reopenContext = readProductDetailReturnContext();
@@ -361,7 +338,10 @@ export function ProductsPage({
       />
 
       <main>
-        <section className="bg-gradient-to-b from-white to-gray-50 py-16 sm:py-20">
+        <section
+          ref={productsSectionRef}
+          className="bg-gradient-to-b from-white to-gray-50 py-16 sm:py-20"
+        >
           <div className="container mx-auto px-4">
             <div className="mb-10 text-center">
               <h1 className="section-title mb-2">
@@ -426,7 +406,7 @@ export function ProductsPage({
               </div>
             )}
 
-            <div ref={productResultsRef} className="[overflow-anchor:none]">
+            <div>
               {!loading && totalCount > 0 ? (
                 <p className="mb-6 text-center text-sm leading-6 text-gray-600 md:text-left">
                   {visibleRangeLabel}
