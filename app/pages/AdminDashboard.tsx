@@ -2869,6 +2869,8 @@ useEffect(() => {
     // Now that every variant has a real id, upload each one's pending photos
     // and tag them to that variant so they can slide through on the storefront.
     const savedVariantIds = variantsResult?.savedVariantIds ?? [];
+    let failedVariantImageCount = 0;
+    let variantImageFailureMessage: string | null = null;
     for (let variantIndex = 0; variantIndex < productVariantDrafts.length; variantIndex += 1) {
       const variant = productVariantDrafts[variantIndex];
       const variantId = savedVariantIds[variantIndex];
@@ -2894,9 +2896,9 @@ useEffect(() => {
         const uploadedVariantImage = variantUploadResult?.images?.[0];
 
         if (!variantUploadResponse.ok || !uploadedVariantImage) {
-          toast.error(
-            variantUploadResult?.message ?? "Product saved, but one of the variant photos could not be uploaded.",
-          );
+          failedVariantImageCount += 1;
+          variantImageFailureMessage ??=
+            variantUploadResult?.message ?? "One or more variant photos could not be uploaded.";
           continue;
         }
 
@@ -2919,14 +2921,20 @@ useEffect(() => {
           | null;
 
         if (!attachResponse.ok) {
-          toast.error(
-            attachResult?.message ?? "Product saved, but one of the variant photos could not be attached.",
-          );
+          failedVariantImageCount += 1;
+          variantImageFailureMessage ??=
+            attachResult?.message ?? "One or more variant photos could not be attached.";
         }
       }
     }
 
-    toast.success(editingProduct ? "Product updated." : "Product created.");
+    if (failedVariantImageCount > 0) {
+      toast.error(
+        `${editingProduct ? "Product updated" : "Product created"}, but ${failedVariantImageCount} variant photo${failedVariantImageCount === 1 ? "" : "s"} could not be saved. ${variantImageFailureMessage ?? "Please reopen the product and retry."}`,
+      );
+    } else {
+      toast.success(editingProduct ? "Product updated." : "Product created.");
+    }
     setShowProductModal(false);
     resetProductForm();
     await revalidatePublicTags(["products"]);
@@ -5784,7 +5792,7 @@ useEffect(() => {
                     }
                   >
                     <Plus className="mr-2 h-4 w-4" />
-                    Add Option
+                    Add Variant
                   </Button>
                 </div>
               ) : null}
