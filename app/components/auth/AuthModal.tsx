@@ -6,7 +6,6 @@ import { Eye, EyeOff, Lock, Mail, Phone, User as UserIcon } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "../../contexts/AuthContext";
 import { Button } from "../ui/button";
-import { Checkbox } from "../ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -41,10 +40,6 @@ export function AuthModal({
   const [signupPasswordVisible, setSignupPasswordVisible] = useState(false);
   const [signupFullName, setSignupFullName] = useState("");
   const [signupPhone, setSignupPhone] = useState("");
-  const [acceptTerms, setAcceptTerms] = useState(false);
-  const [acceptPrivacy, setAcceptPrivacy] = useState(false);
-
-  const signupConsentSatisfied = acceptTerms && acceptPrivacy;
 
   const handleLogin = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -65,11 +60,6 @@ export function AuthModal({
   const handleSignup = async (event: React.FormEvent) => {
     event.preventDefault();
 
-    if (!signupConsentSatisfied) {
-      toast.error("Please accept the Terms of Service and Privacy Policy to create an account.");
-      return;
-    }
-
     setLoading(true);
     const acceptedAt = new Date().toISOString();
 
@@ -84,19 +74,14 @@ export function AuthModal({
     if (error) {
       toast.error(error.message);
     } else {
-      toast.success("Account created. Please verify your email.");
+      toast.success("Account created! Check your email and click the link to sign in automatically.");
       onClose();
     }
 
     setLoading(false);
   };
 
-  const handleGoogleSignIn = async (mode: "login" | "signup") => {
-    if (mode === "signup" && !signupConsentSatisfied) {
-      toast.error("Please accept the Terms of Service and Privacy Policy to continue with Google.");
-      return;
-    }
-
+  const handleGoogleSignIn = async () => {
     setLoading(true);
     const { error } = await signInWithGoogle();
 
@@ -217,7 +202,7 @@ export function AuthModal({
                 type="button"
                 variant="outline"
                 className="w-full"
-                onClick={() => handleGoogleSignIn("login")}
+                onClick={handleGoogleSignIn}
                 disabled={loading}
               >
                 <svg className="mr-2 h-4 w-4" viewBox="0 0 24 24">
@@ -323,51 +308,28 @@ export function AuthModal({
                 <p className="text-xs text-gray-500">Minimum 6 characters</p>
               </div>
 
-              <div className="space-y-3">
-                <div className="flex items-start gap-3">
-                  <Checkbox
-                    id="accept-terms"
-                    checked={acceptTerms}
-                    onCheckedChange={(checked) => setAcceptTerms(Boolean(checked))}
-                    className="mt-1"
-                  />
-                  <Label htmlFor="accept-terms" className="text-sm font-medium text-gray-900">
-                    I agree to the{" "}
-                    <Link
-                      href="/terms-of-service"
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-pink-600 hover:text-pink-700"
-                    >
-                      terms and conditions
-                    </Link>
-                    .
-                  </Label>
-                </div>
-
-                <div className="flex items-start gap-3">
-                  <Checkbox
-                    id="accept-privacy"
-                    checked={acceptPrivacy}
-                    onCheckedChange={(checked) => setAcceptPrivacy(Boolean(checked))}
-                    className="mt-1"
-                  />
-                  <Label htmlFor="accept-privacy" className="text-sm font-medium text-gray-900">
-                    I have read the{" "}
-                    <Link
-                      href="/privacy-policy"
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-pink-600 hover:text-pink-700"
-                    >
-                      privacy policy
-                    </Link>
-                    .
-                  </Label>
-                </div>
-              </div>
-
-              <Button type="submit" className="w-full" disabled={loading || !signupConsentSatisfied}>
+              <p className="text-xs leading-relaxed text-gray-500">
+                By continuing you agree to our{" "}
+                <Link
+                  href="/terms-of-service"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-pink-600 hover:text-pink-700"
+                >
+                  Terms and Conditions
+                </Link>{" "}
+                and{" "}
+                <Link
+                  href="/privacy-policy"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-pink-600 hover:text-pink-700"
+                >
+                  Privacy Policy
+                </Link>
+                .
+              </p>
+              <Button type="submit" className="w-full" disabled={loading}>
                 {loading ? "Creating account..." : "Create Account"}
               </Button>
 
@@ -386,8 +348,8 @@ export function AuthModal({
                 type="button"
                 variant="outline"
                 className="w-full"
-                onClick={() => handleGoogleSignIn("signup")}
-                disabled={loading || !signupConsentSatisfied}
+                onClick={handleGoogleSignIn}
+                disabled={loading}
               >
                 <svg className="mr-2 h-4 w-4" viewBox="0 0 24 24">
                   <path
