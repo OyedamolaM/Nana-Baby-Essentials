@@ -79,7 +79,7 @@ export function FeaturedCategoryTabs({
   categories,
   sectionId,
   sectionTitle = "Products",
-  sectionSubtitle = "Browse the full product catalog by category, search what you need, and move through the catalog 10 items at a time.",
+  sectionSubtitle = "Browse the full product catalog by category, search what you need, and move through the catalog 12 items at a time.",
 }: FeaturedCategoryTabsProps) {
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const {
@@ -98,7 +98,7 @@ export function FeaturedCategoryTabs({
     initialProducts,
     initialTotalCount,
     onlyInStock: false,
-    pageSize: 10,
+    pageSize: 12,
   });
   const paginationItems = useMemo(
     () => buildPagination(page, totalPages),

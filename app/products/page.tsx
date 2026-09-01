@@ -37,7 +37,7 @@ export default async function ProductsRoute({ searchParams }: ProductsRouteProps
     getPublicProductCatalogPage({
       featuredOnly: initialFeaturedOnly,
       page: 1,
-      pageSize: 10,
+      pageSize: 12,
       onlyInStock: false,
       selectedCategory: initialSelectedCategory,
       searchQuery: initialSearchQuery,
