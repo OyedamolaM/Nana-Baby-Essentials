@@ -14,6 +14,7 @@ export type Product = StoreProduct;
 interface ProductCardProps {
   product: Product;
   onAddToCart: (product: Product, quantity?: number) => void;
+  onSelectOptions?: (product: Product) => void;
   onViewDetails?: (product: Product) => void;
   addLabel?: string;
 }
@@ -65,6 +66,7 @@ function DeferredProductImage({ product }: { product: Product }) {
 export function ProductCard({
   product,
   onAddToCart,
+  onSelectOptions,
   onViewDetails,
   addLabel = "Add to Cart",
 }: ProductCardProps) {
@@ -87,9 +89,17 @@ export function ProductCard({
       </button>
       <div className="flex min-w-0 flex-1 flex-col p-3 sm:p-4">
         <div className="mb-2 flex flex-wrap gap-2">
-          <Badge variant="secondary" className="text-xs">
+          <Badge
+            variant="secondary"
+            className="max-w-full whitespace-normal break-words text-left leading-snug"
+          >
             {primaryCategory}
           </Badge>
+          {product.hasVariants ? (
+            <Badge variant="outline" className="border-pink-200 bg-pink-50 text-pink-700">
+              Options available
+            </Badge>
+          ) : null}
           {extraCategoryCount > 0 ? (
             <Badge variant="outline" className="text-xs">
               +{extraCategoryCount} more
@@ -118,13 +128,25 @@ export function ProductCard({
             useCompactAddButton &&
               "gap-1 px-2 text-[13px] sm:gap-2 sm:px-4 sm:text-sm",
           )}
-          onClick={() => onAddToCart(product)}
+          onClick={() => {
+            // A variant product must never be added as an unspecified default.
+            // Open its detail dialog, which loads and asks for its combination first.
+            if (product.hasVariants && (onSelectOptions || onViewDetails)) {
+              (onSelectOptions ?? onViewDetails)?.(product);
+              return;
+            }
+            onAddToCart(product);
+          }}
           disabled={!product.inStock}
         >
           <ShoppingCart
             className={cn("h-4 w-4", useCompactAddButton && "h-3.5 w-3.5 sm:h-4 sm:w-4")}
           />
-           {product.inStock ? addLabel : "Out of Stock"}
+           {product.inStock
+             ? product.hasVariants && addLabel === "Add to Cart"
+               ? "Select Options"
+               : addLabel
+             : "Out of Stock"}
         </Button>
         <Button
           type="button"

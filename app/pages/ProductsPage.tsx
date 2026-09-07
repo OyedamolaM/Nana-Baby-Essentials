@@ -107,6 +107,7 @@ export function ProductsPage({
   const [authDefaultTab, setAuthDefaultTab] = useState<AuthTab>("login");
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [productDetailOpen, setProductDetailOpen] = useState(false);
+  const [productModalMode, setProductModalMode] = useState<"details" | "quick-add">("details");
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const productsSectionRef = useRef<HTMLElement | null>(null);
@@ -207,6 +208,12 @@ export function ProductsPage({
   };
 
   const handleAddToCart = (product: Product, quantity = 1, variant?: StoreProductVariant) => {
+    if (product.hasVariants && !variant) {
+      setSelectedProduct(product);
+      setProductModalMode("quick-add");
+      setProductDetailOpen(true);
+      return;
+    }
     addItem(product, quantity, variant);
     toast.success(
       quantity > 1
@@ -240,6 +247,13 @@ export function ProductsPage({
 
   const handleViewProduct = (product: Product) => {
     setSelectedProduct(product);
+    setProductModalMode("details");
+    setProductDetailOpen(true);
+  };
+
+  const handleSelectOptions = (product: Product) => {
+    setSelectedProduct(product);
+    setProductModalMode("quick-add");
     setProductDetailOpen(true);
   };
 
@@ -431,6 +445,7 @@ export function ProductsPage({
                       key={product.id}
                       product={product}
                       onAddToCart={handleAddToCart}
+                      onSelectOptions={handleSelectOptions}
                       onViewDetails={handleViewProduct}
                     />
                   ))}
@@ -508,6 +523,7 @@ export function ProductsPage({
         open={productDetailOpen}
         onClose={() => setProductDetailOpen(false)}
         onAddToCart={handleAddToCart}
+        compact={productModalMode === "quick-add"}
       />
 
       <AuthModal

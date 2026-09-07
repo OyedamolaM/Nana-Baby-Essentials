@@ -6,7 +6,7 @@ import { ChevronLeft, ChevronRight, Heart, Share2, ShoppingCart } from "lucide-r
 import { toast } from "sonner";
 import { useAuth } from "../contexts/AuthContext";
 import { hasSupabaseEnv, supabase } from "../lib/supabase";
-import { formatNaira, type StoreProductVariant } from "../../lib/commerce";
+import { formatNaira, getVariantOptions, type StoreProductVariant } from "../../lib/commerce";
 import {
   getCurrentProductReturnPath,
   persistProductDetailReturnContext,
@@ -23,6 +23,7 @@ interface ProductDetailModalProps {
   onClose: () => void;
   onAddToCart: (product: Product, quantity?: number, variant?: StoreProductVariant) => void;
   addActionLabel?: string;
+  compact?: boolean;
 }
 
 export function ProductDetailModal({
@@ -31,6 +32,7 @@ export function ProductDetailModal({
   onClose,
   onAddToCart,
   addActionLabel = "Add to Cart",
+  compact = false,
 }: ProductDetailModalProps) {
   const [quantity, setQuantity] = useState(1);
   const [isInWishlist, setIsInWishlist] = useState(false);
@@ -56,6 +58,7 @@ export function ProductDetailModal({
   const [fetchedVariants, setFetchedVariants] = useState<StoreProductVariant[]>([]);
   const [selectedSize, setSelectedSize] = useState("");
   const [selectedColor, setSelectedColor] = useState("");
+  const [selectedOptions, setSelectedOptions] = useState<Record<string, string>>({});
 
   const allProductVariants = useMemo(() => {
     const base = product?.variants ?? [];
@@ -68,30 +71,32 @@ export function ProductDetailModal({
   const hasVariantChoices = Boolean(product?.hasVariants);
   const hasSizePicker = productVariants.some((variant) => Boolean(variant.size));
   const hasColorPicker = productVariants.some((variant) => Boolean(variant.color));
+  const optionGroups = useMemo(() => {
+    const groups = new Map<string, string[]>();
+    for (const variant of productVariants) {
+      for (const [label, value] of Object.entries(getVariantOptions(variant))) {
+        groups.set(label, Array.from(new Set([...(groups.get(label) ?? []), value])));
+      }
+    }
+    return Array.from(groups.entries());
+  }, [productVariants]);
 
   const selectedVariant = useMemo(() => {
     if (!hasVariantChoices || productVariants.length === 0) {
       return undefined;
     }
 
-    if (hasSizePicker && !selectedSize) {
-      return undefined;
-    }
-
-    if (hasColorPicker && !selectedColor) {
+    if (optionGroups.some(([label]) => !selectedOptions[label])) {
       return undefined;
     }
 
     return productVariants.find(
       (variant) =>
-        (!hasSizePicker || variant.size === selectedSize) &&
-        (!hasColorPicker || variant.color === selectedColor),
+        optionGroups.every(([label]) => getVariantOptions(variant)[label] === selectedOptions[label]),
     );
-  }, [hasColorPicker, hasSizePicker, hasVariantChoices, productVariants, selectedColor, selectedSize]);
+  }, [hasVariantChoices, optionGroups, productVariants, selectedOptions]);
 
-  const hasStartedSelecting =
-    (hasSizePicker && Boolean(selectedSize)) || (hasColorPicker && Boolean(selectedColor));
-  const needsSelection = hasVariantChoices && hasStartedSelecting && !selectedVariant;
+  const needsSelection = hasVariantChoices && !selectedVariant;
   const selectedVariantInStock = Boolean(selectedVariant && selectedVariant.inStock);
 
   // Slide through the selected variant's own photos when it has any;
@@ -167,10 +172,12 @@ export function ProductDetailModal({
   const chooseSize = (size: string) => {
     if (selectedSize === size) {
       setSelectedSize("");
+      setSelectedOptions((current) => ({ ...current, Size: "" }));
       return;
     }
 
     setSelectedSize(size);
+    setSelectedOptions((current) => ({ ...current, Size: size }));
     if (
       selectedColor &&
       !productVariants.some(
@@ -178,16 +185,19 @@ export function ProductDetailModal({
       )
     ) {
       setSelectedColor("");
+      setSelectedOptions((current) => ({ ...current, Colour: "", Color: "" }));
     }
   };
 
   const chooseColor = (color: string) => {
     if (selectedColor === color) {
       setSelectedColor("");
+      setSelectedOptions((current) => ({ ...current, Colour: "", Color: "" }));
       return;
     }
 
     setSelectedColor(color);
+    setSelectedOptions((current) => ({ ...current, Colour: color, Color: color }));
     if (
       selectedSize &&
       !productVariants.some(
@@ -195,6 +205,7 @@ export function ProductDetailModal({
       )
     ) {
       setSelectedSize("");
+      setSelectedOptions((current) => ({ ...current, Size: "" }));
     }
   };
 
@@ -227,7 +238,7 @@ export function ProductDetailModal({
       const { data, error } = await supabase
         .from("product_variants")
         .select(
-          "id, size, color, sku, price_override, stock_quantity, in_stock, variant_images:product_images(id, url, thumbnail_url, sort_order, is_primary)",
+           "id, size, color, options, sku, price_override, stock_quantity, in_stock, variant_images:product_images(id, url, thumbnail_url, sort_order, is_primary)",
         )
         .eq("product_id", product.id)
         .order("created_at", { ascending: true });
@@ -252,7 +263,8 @@ export function ProductDetailModal({
           return {
             id: String(row.id),
             size: row.size ?? undefined,
-            color: row.color ?? undefined,
+             color: row.color ?? undefined,
+             options: row.options && typeof row.options === "object" ? row.options : undefined,
             sku: row.sku ?? undefined,
             priceOverride:
               row.price_override === null || row.price_override === undefined
@@ -325,6 +337,7 @@ export function ProductDetailModal({
       setSelectedImageIndex(0);
       setSelectedSize("");
       setSelectedColor("");
+      setSelectedOptions({});
     }, 0);
 
     return () => {
@@ -427,16 +440,16 @@ export function ProductDetailModal({
 
   return (
     <Dialog open={open} onOpenChange={(nextOpen) => !nextOpen && onClose()}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto max-w-4xl md:max-w-5xl">
+      <DialogContent className="max-h-[92vh] overflow-y-auto max-w-[calc(100%-1rem)] p-4 sm:max-w-4xl sm:p-6 md:max-w-5xl">
         <DialogHeader className="sr-only">
           <DialogTitle>{product.name}</DialogTitle>
         </DialogHeader>
 
-        <div className="grid gap-8 md:grid-cols-2">
+        <div className="grid gap-5 min-[460px]:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] min-[460px]:gap-5 md:grid-cols-2 md:gap-8">
           {/* Left Column */}
           <div className="space-y-3">
             <div
-              className="relative flex aspect-square items-center justify-center overflow-hidden rounded-lg bg-gray-50"
+              className="relative flex aspect-[4/3] items-center justify-center overflow-hidden rounded-lg bg-gray-50 min-[460px]:aspect-square"
               onTouchStart={(event) => {
                 touchStartXRef.current = event.touches[0]?.clientX ?? null;
               }}
@@ -511,11 +524,11 @@ export function ProductDetailModal({
           </div>
 
           {/* Right Column */}
-          <div className="space-y-6">
+          <div className="space-y-5 min-[460px]:space-y-4">
             {/* Product Info */}
             <div className="space-y-3">
-              <div className="flex items-start justify-between gap-4">
-                <div>
+              <div className="space-y-3">
+                <div className="min-w-0">
                   <h2 className="text-2xl font-semibold text-gray-900">
                     {product.name}
                   </h2>
@@ -524,12 +537,10 @@ export function ProductDetailModal({
                     {formatNaira(selectedVariant?.priceOverride ?? product.price)}
                   </p>
 
-                  <p className="mt-3 text-sm text-gray-600">
-                    {product.description}
-                  </p>
+                   {!compact ? <p className="mt-3 text-sm text-gray-600">{product.description}</p> : null}
                 </div>
 
-                <Badge variant={canAddToCart ? "secondary" : "destructive"}>
+                <Badge className="w-fit" variant={canAddToCart ? "secondary" : "destructive"}>
                   {selectedVariant
                     ? selectedVariantInStock
                       ? "In Stock"
@@ -602,6 +613,37 @@ export function ProductDetailModal({
                 </div>
               ) : null}
 
+              {optionGroups
+                .filter(([label]) => !["Size", "Colour", "Color"].includes(label))
+                .map(([label, values]) => (
+                  <div key={label} className="space-y-2">
+                    <p className="text-sm font-semibold text-gray-900">{label}</p>
+                    <div className="flex flex-wrap gap-2">
+                      {values.map((value) => {
+                        const isAvailable = productVariants.some((variant) => {
+                          const options = getVariantOptions(variant);
+                          return options[label] === value && Object.entries(selectedOptions).every(
+                            ([selectedLabel, selectedValue]) =>
+                              !selectedValue || selectedLabel === label || options[selectedLabel] === selectedValue,
+                          );
+                        });
+                        return (
+                          <Button
+                            key={value}
+                            type="button"
+                            variant={selectedOptions[label] === value ? "default" : "outline"}
+                            size="sm"
+                            disabled={!isAvailable}
+                            onClick={() => setSelectedOptions((current) => ({ ...current, [label]: value }))}
+                          >
+                            {value}
+                          </Button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+
               <div className="flex items-center gap-2">
                 <span className="text-sm font-medium text-gray-700">
                   Quantity
@@ -652,7 +694,7 @@ export function ProductDetailModal({
                     : "Out of Stock"}
               </Button>
 
-              <Button
+              {!compact ? <Button
                 type="button"
                 variant="outline"
                 size="icon"
@@ -664,29 +706,30 @@ export function ProductDetailModal({
                     isInWishlist ? "fill-red-500 text-red-500" : ""
                   }`}
                 />
-              </Button>
+              </Button> : null}
 
-              <Button
+              {!compact ? <Button
                 type="button"
                 variant="outline"
                 size="icon"
                 onClick={handleShare}
               >
                 <Share2 className="h-5 w-5" />
-              </Button>
+              </Button> : null}
             </div>
 
-            <Button asChild type="button" variant="ghost" className="w-full">
+             {!compact ? <Button asChild type="button" variant="ghost" className="w-full">
               <Link
                 href={`/products/${product.slug}`}
                 onClick={handleOpenFullProductPage}
               >
                 Open Full Product Page
               </Link>
-            </Button>
+             </Button> : null}
 
-            {/* Product Details */}
-            <div className="space-y-2 border-t pt-4">
+             {/* Product Details */}
+             {!compact ? <>
+              <div className="space-y-2 border-t pt-4">
               <div className="flex justify-between text-sm">
                 <span className="text-gray-600">SKU:</span>
                 <span className="font-semibold">
@@ -715,8 +758,8 @@ export function ProductDetailModal({
               </div>
             </div>
 
-            {/* Shipping */}
-            <div className="rounded-lg bg-pink-50 p-4">
+             {/* Shipping */}
+             <div className="rounded-lg bg-pink-50 p-4">
               <h4 className="mb-2 font-semibold text-gray-900">
                 Shipping Information
               </h4>
@@ -725,7 +768,8 @@ export function ProductDetailModal({
                 <li>- Delivery within 2–5 days in Lagos</li>
                 <li>- 3–7 days for other locations</li>
               </ul>
-            </div>
+             </div>
+             </> : null}
           </div>
         </div>
       </DialogContent>
