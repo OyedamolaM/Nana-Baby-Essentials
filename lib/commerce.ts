@@ -34,6 +34,8 @@ export interface StoreProductVariant {
   id: string;
   size?: string;
   color?: string;
+  /** A flexible option combination, e.g. { Size: "0–3 months", Colour: "Pink", Sex: "Girl" }. */
+  options?: Record<string, string>;
   sku?: string;
   priceOverride?: number;
   stockQuantity: number;
@@ -56,6 +58,7 @@ export interface ProductVariantRecord {
   id: string;
   size?: string | null;
   color?: string | null;
+  options?: Record<string, unknown> | null;
   sku?: string | null;
   price_override?: number | null;
   stock_quantity?: number | null;
@@ -353,6 +356,7 @@ export function mapProductRecord(record: ProductRecord): StoreProduct {
             id: variant.id,
             size: variant.size?.trim() || undefined,
             color: variant.color?.trim() || undefined,
+            options: normalizeVariantOptions(variant.options, variant.size, variant.color),
             sku: variant.sku?.trim() || undefined,
             priceOverride:
               variant.price_override === null || variant.price_override === undefined
@@ -390,4 +394,27 @@ export function mapProductRecord(record: ProductRecord): StoreProduct {
     featuredSortOrder: Number(record.featured_sort_order ?? 0),
     variants,
   };
+}
+
+/** Converts the stored flexible options and legacy size/color fields into one safe display map. */
+export function normalizeVariantOptions(
+  options: unknown,
+  legacySize?: string | null,
+  legacyColor?: string | null,
+) {
+  const normalized: Record<string, string> = {};
+  if (options && typeof options === "object" && !Array.isArray(options)) {
+    for (const [label, value] of Object.entries(options as Record<string, unknown>)) {
+      const cleanLabel = label.trim();
+      const cleanValue = typeof value === "string" ? value.trim() : "";
+      if (cleanLabel && cleanValue) normalized[cleanLabel] = cleanValue;
+    }
+  }
+  if (legacySize?.trim() && !normalized.Size) normalized.Size = legacySize.trim();
+  if (legacyColor?.trim() && !normalized.Colour && !normalized.Color) normalized.Colour = legacyColor.trim();
+  return Object.keys(normalized).length > 0 ? normalized : undefined;
+}
+
+export function getVariantOptions(variant: StoreProductVariant) {
+  return normalizeVariantOptions(variant.options, variant.size, variant.color) ?? {};
 }

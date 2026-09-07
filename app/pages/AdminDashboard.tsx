@@ -430,6 +430,7 @@ type VariantImageDraft = {
 
 type ProductVariantDraft = {
   color: string;
+  options: string;
   id?: string;
   images: VariantImageDraft[];
   pendingImageFiles: File[];
@@ -2326,7 +2327,7 @@ useEffect(() => {
       supabase
         .from("product_variants")
         .select(
-          "id, size, color, sku, price_override, stock_quantity, in_stock, variant_images:product_images(id, url, thumbnail_url, sort_order)",
+          "id, size, color, options, sku, price_override, stock_quantity, in_stock, variant_images:product_images(id, url, thumbnail_url, sort_order)",
         )
         .eq("product_id", product.id)
         .order("created_at", { ascending: true }),
@@ -2357,6 +2358,7 @@ useEffect(() => {
 
           return {
             color: variant.color ?? "",
+            options: Object.entries(variant.options ?? {}).map(([label, value]) => `${label}=${value}`).join(", "),
             id: variant.id,
             images: variantImages,
             pendingImageFiles: [],
@@ -2628,11 +2630,11 @@ useEffect(() => {
 
     if (productHasVariants) {
       const hasUsableVariant = productVariantDrafts.some(
-        (variant) => variant.size.trim() || variant.color.trim(),
+        (variant) => variant.size.trim() || variant.color.trim() || variant.options.trim(),
       );
       if (!hasUsableVariant) {
         toast.error(
-          "Add at least one size or color option, or uncheck 'selectable size or color options' if this product doesn't need them.",
+          "Add at least one option combination, or turn off selectable options for this product.",
         );
         return;
       }
@@ -2850,6 +2852,7 @@ useEffect(() => {
               ? Number(variant.priceOverride) / 1000
               : null,
             size: variant.size,
+            options: Object.fromEntries(variant.options.split(",").map((part) => part.trim()).filter(Boolean).map((part) => { const separator = part.indexOf("="); return separator > 0 ? [part.slice(0, separator).trim(), part.slice(separator + 1).trim()] : ["", ""]; }).filter(([label, value]) => label && value)),
             sku: variant.sku,
             stockQuantity: variant.stockQuantity,
           })),
@@ -5618,7 +5621,7 @@ useEffect(() => {
                   checked={productHasVariants}
                   onChange={(event) => handleProductVariantsToggle(event.target.checked)}
                 />
-                This product has selectable size or color options
+                This product has selectable options
               </label>
 
               {productHasVariants ? (
@@ -5641,6 +5644,12 @@ useEffect(() => {
                         value={variant.color}
                         onChange={(event) => updateProductVariantDraft(index, { color: event.target.value })}
                         placeholder="Color"
+                      />
+                      <Input
+                        aria-label={`Variant ${index + 1} additional options`}
+                        value={variant.options}
+                        onChange={(event) => updateProductVariantDraft(index, { options: event.target.value })}
+                        placeholder="Age=0–3m, Sex=Girl"
                       />
                       <Input
                         aria-label={`Variant ${index + 1} SKU`}
@@ -5779,6 +5788,7 @@ useEffect(() => {
                         ...currentVariants,
                         {
                           color: "",
+                          options: "",
                           images: [],
                           pendingImageFiles: [],
                           pendingImagePreviews: [],
