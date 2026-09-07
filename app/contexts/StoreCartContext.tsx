@@ -28,6 +28,7 @@ const STORE_CART_STORAGE_KEY = "nbe_store_cart_v1";
 export interface StoreCartItem extends StoreProduct {
   quantity: number;
   variantId?: string;
+  variantOptions?: Record<string, string>;
   size?: string;
   color?: string;
 }
@@ -59,6 +60,7 @@ type ShoppingCartItemRow = {
 
 type ShoppingCartVariantRow = {
   color?: string | null;
+  options?: Record<string, unknown> | null;
   id: string;
   in_stock?: boolean | null;
   price_override?: number | null;
@@ -85,6 +87,16 @@ function normalizeOptionalCartText(value: unknown) {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
 
+function normalizeCartOptions(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const options = Object.fromEntries(
+    Object.entries(value as Record<string, unknown>)
+      .map(([label, option]) => [label.trim(), typeof option === "string" ? option.trim() : ""])
+      .filter(([label, option]) => label && option),
+  );
+  return Object.keys(options).length > 0 ? options : undefined;
+}
+
 export function getStoreCartItemKey(
   item: Pick<StoreCartItem, "id" | "variantId">,
 ) {
@@ -109,6 +121,8 @@ function isStoreCartItem(value: unknown): value is StoreCartItem {
       (typeof item.variantId === "string" && item.variantId.trim().length > 0)) &&
     (item.size === undefined || item.size === null || typeof item.size === "string") &&
     (item.color === undefined || item.color === null || typeof item.color === "string") &&
+    (item.variantOptions === undefined ||
+      (typeof item.variantOptions === "object" && !Array.isArray(item.variantOptions))) &&
     normalizeCartQuantity(item.quantity) > 0
   );
 }
@@ -130,6 +144,7 @@ function sanitizeStoreCartItems(items: unknown[]) {
       ...value,
       color: normalizeOptionalCartText(value.color),
       size: normalizeOptionalCartText(value.size),
+      variantOptions: normalizeCartOptions(value.variantOptions),
       variantId: normalizeOptionalCartText(value.variantId),
       quantity,
     } satisfies StoreCartItem;
@@ -298,7 +313,7 @@ async function loadRemoteCart(userId: string) {
   const { data: itemRows, error } = await supabase
     .from("shopping_cart_items")
     .select(
-      `quantity, variant_id, products(${PRODUCT_LIST_SELECT}), product_variants(id, size, color, price_override, stock_quantity, in_stock, variant_images:product_images(url, thumbnail_url))`,
+      `quantity, variant_id, products(${PRODUCT_LIST_SELECT}), product_variants(id, size, color, options, price_override, stock_quantity, in_stock, variant_images:product_images(url, thumbnail_url))`,
     )
     .eq("cart_id", cart.id);
 
@@ -333,6 +348,9 @@ async function loadRemoteCart(userId: string) {
       return {
         ...product,
         color: normalizeOptionalCartText(variantRecord?.color),
+        variantOptions: variantRecord?.options && typeof variantRecord.options === "object"
+          ? Object.fromEntries(Object.entries(variantRecord.options).filter(([, value]) => typeof value === "string" && value.trim()).map(([key, value]) => [key, (value as string).trim()]))
+          : undefined,
         image: variantImageRecord?.url?.trim() || product.image,
         price,
         sellingPrice: price,
@@ -533,6 +551,7 @@ export function StoreCartProvider({ children }: { children: ReactNode }) {
         {
           ...product,
           color: variant?.color,
+          variantOptions: variant?.options,
           image: variant?.imageUrl || product.image,
           price,
           sellingPrice: price,

@@ -66,7 +66,9 @@ export function ShoppingCartDrawer({
             <div className="space-y-4">
               {cartItems.map((item) => {
                 const itemKey = getStoreCartItemKey(item);
-                const optionLabel = [item.size, item.color].filter(Boolean).join(" / ");
+                const optionLabel = item.variantOptions
+                  ? Object.entries(item.variantOptions).map(([label, value]) => `${label}: ${value}`).join(" · ")
+                  : [item.size, item.color].filter(Boolean).join(" / ");
 
                 return (
                 <div

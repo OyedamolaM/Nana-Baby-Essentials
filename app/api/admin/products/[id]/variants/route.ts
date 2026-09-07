@@ -13,6 +13,7 @@ type RouteProps = {
 
 type VariantInput = {
   color?: unknown;
+  options?: unknown;
   id?: unknown;
   inStock?: unknown;
   priceOverride?: unknown;
@@ -29,6 +30,7 @@ type SaveVariantsPayload = {
 
 type ProductVariantRow = {
   color: string | null;
+  options?: Record<string, unknown> | null;
   id: string;
   in_stock: boolean;
   price_override: number | null;
@@ -39,6 +41,7 @@ type ProductVariantRow = {
 
 type NormalizedVariant = {
   color: string | null;
+  options: Record<string, string>;
   id: string | null;
   in_stock: boolean;
   price_override: number | null;
@@ -54,6 +57,20 @@ function getProductId(value: string) {
 
 function normalizeText(value: unknown) {
   return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function normalizeOptions(value: unknown, size: string | null, color: string | null) {
+  const options: Record<string, string> = {};
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    for (const [label, optionValue] of Object.entries(value as Record<string, unknown>)) {
+      const normalizedLabel = label.trim();
+      const normalizedValue = normalizeText(optionValue);
+      if (normalizedLabel && normalizedValue) options[normalizedLabel] = normalizedValue;
+    }
+  }
+  if (size && !options.Size) options.Size = size;
+  if (color && !options.Colour && !options.Color) options.Colour = color;
+  return options;
 }
 
 function normalizePrice(value: unknown) {
@@ -128,7 +145,7 @@ async function readProductVariants(
 ) {
   return client
     .from("product_variants")
-    .select("id, size, color, sku, price_override, stock_quantity, in_stock")
+    .select("id, size, color, options, sku, price_override, stock_quantity, in_stock")
     .eq("product_id", productId)
     .order("created_at", { ascending: true });
 }
@@ -190,12 +207,15 @@ export async function PUT(request: Request, context: RouteProps) {
       );
     }
 
+    const size = normalizeText(variant.size);
+    const color = normalizeText(variant.color);
     normalizedVariants.push({
-      color: normalizeText(variant.color),
+      color,
       id: normalizeText(variant.id),
       in_stock: variant.inStock !== false,
       price_override: priceOverride,
-      size: normalizeText(variant.size),
+      options: normalizeOptions(variant.options, size, color),
+      size,
       sku: normalizeText(variant.sku),
       stock_quantity: stockQuantity,
     });
@@ -210,10 +230,10 @@ export async function PUT(request: Request, context: RouteProps) {
 
   const combinationKeys = new Set<string>();
   for (const variant of normalizedVariants) {
-    const combinationKey = `${variant.size ?? ""}\u0000${variant.color ?? ""}`;
+    const combinationKey = JSON.stringify(Object.entries(variant.options).sort(([left], [right]) => left.localeCompare(right)));
     if (combinationKeys.has(combinationKey)) {
       return NextResponse.json(
-        { message: "Each size and color combination can only appear once." },
+        { message: "Each option combination can only appear once." },
         { status: 400 },
       );
     }
@@ -299,6 +319,7 @@ export async function PUT(request: Request, context: RouteProps) {
         in_stock: variant.in_stock,
         price_override: variant.price_override,
         product_id: resolved.productId,
+        options: variant.options,
         size: variant.size,
         sku: variant.sku,
         stock_quantity: variant.stock_quantity,

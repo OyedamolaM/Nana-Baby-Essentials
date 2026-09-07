@@ -25,6 +25,7 @@ interface FeaturedCategoryTabsProps {
   onAddToCart: (product: StoreProduct, quantity?: number) => void;
   onViewAll?: () => void;
   onViewProduct: (product: StoreProduct) => void;
+  onSelectOptions?: (product: StoreProduct) => void;
   addLabel?: string;
   categories?: string[];
   sectionId?: string;
@@ -75,6 +76,7 @@ export function FeaturedCategoryTabs({
   onAddToCart,
   onViewAll,
   onViewProduct,
+  onSelectOptions,
   addLabel,
   categories,
   sectionId,
@@ -217,6 +219,7 @@ export function FeaturedCategoryTabs({
                   product={product}
                   addLabel={addLabel}
                   onAddToCart={onAddToCart}
+                  onSelectOptions={onSelectOptions}
                   onViewDetails={onViewProduct}
                 />
               ))}
