@@ -32,6 +32,9 @@ type OrderRecord = {
   rider_pickup_code?: string | null;
   shipping_address?: unknown;
   shipping_tier?: string | null;
+  shipping_label?: string | null;
+  promo_code?: string | null;
+  discount_amount?: number | null;
   status: string;
   total: number | string;
   user_id: string;
@@ -159,7 +162,7 @@ export async function POST(request: Request) {
       adminClient
         .from("orders")
         .select(
-          "id, user_id, total, status, shipping_address, items, payment_method, payment_reference, shipping_tier, created_at, customer_name, customer_email, customer_phone, pickup_code, customer_pickup_code, rider_pickup_code",
+          "id, user_id, total, status, shipping_address, items, payment_method, payment_reference, shipping_tier, shipping_label, promo_code, discount_amount, created_at, customer_name, customer_email, customer_phone, pickup_code, customer_pickup_code, rider_pickup_code",
         )
         .eq("id", orderId)
         .maybeSingle<OrderRecord>(),
@@ -210,7 +213,7 @@ export async function POST(request: Request) {
       order.rider_pickup_code ??
       null,
     shippingAddress: normalizeAddress(order.shipping_address),
-    shippingTier: order.shipping_tier ?? null,
+    shippingTier: order.shipping_label ?? null,
     totalAmount: Number(order.total ?? 0),
   });
 
@@ -242,7 +245,9 @@ export async function POST(request: Request) {
             null,
           riderPickupCode: order.rider_pickup_code ?? null,
           shippingAddress: normalizeAddress(order.shipping_address),
-          shippingTier: order.shipping_tier ?? null,
+          shippingTier: order.shipping_label ?? null,
+          promoCode: order.promo_code,
+          discountAmount: order.discount_amount,
           status: order.status,
           total: Number(order.total ?? 0),
         }),

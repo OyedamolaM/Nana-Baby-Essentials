@@ -32,6 +32,9 @@ type StoreOrderRow = {
   rider_pickup_code?: string | null;
   shipping_address?: unknown;
   shipping_tier?: string | null;
+  shipping_label?: string | null;
+  promo_code?: string | null;
+  discount_amount?: number | null;
   status?: string | null;
   total: number | string;
   user_id: string;
@@ -73,7 +76,7 @@ export async function POST(request: Request) {
 
   const { data: order, error: orderError } = await serviceRoleClient
     .from("orders")
-    .select("id, user_id, created_at, status, payment_method, payment_reference, total, items, shipping_address, shipping_tier, customer_name, customer_email, customer_phone, pickup_code, customer_pickup_code, rider_pickup_code")
+    .select("id, user_id, created_at, status, payment_method, payment_reference, total, items, shipping_address, shipping_tier, shipping_label, promo_code, discount_amount, customer_name, customer_email, customer_phone, pickup_code, customer_pickup_code, rider_pickup_code")
     .eq("id", orderId)
     .maybeSingle<StoreOrderRow>();
 
@@ -191,7 +194,9 @@ export async function POST(request: Request) {
       order.rider_pickup_code ??
       null,
     shippingAddress: order.shipping_address,
-    shippingTier: order.shipping_tier,
+    shippingTier: order.shipping_label,
+    promoCode: order.promo_code,
+    discountAmount: order.discount_amount,
     status: "paid",
     total: order.total,
   }).catch((error) => console.error("Failed to notify order support.", error));

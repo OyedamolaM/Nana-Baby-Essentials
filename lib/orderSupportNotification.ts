@@ -22,6 +22,8 @@ type OrderSupportNotification = {
   pickupCode?: string | null;
   shippingAddress?: unknown;
   shippingTier?: string | null;
+  promoCode?: string | null;
+  discountAmount?: number | null;
   status?: string | null;
   total: number | string;
 };
@@ -108,6 +110,8 @@ export async function notifyOrderSupport(order: OrderSupportNotification) {
         shippingAddress,
         shippingTier: order.shippingTier ?? null,
         status: order.status ?? "paid",
+        promoCode: order.promoCode,
+        discountAmount: order.discountAmount,
         total,
       }),
     ],

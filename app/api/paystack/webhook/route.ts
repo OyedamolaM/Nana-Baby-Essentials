@@ -79,7 +79,7 @@ export async function POST(request: Request) {
   const { data: order, error } = await client
     .from("orders")
     .select(
-      "id, created_at, total, status, payment_method, payment_reference, items, shipping_address, shipping_tier, customer_name, customer_email, customer_phone, pickup_code, customer_pickup_code, rider_pickup_code",
+      "id, created_at, total, status, payment_method, payment_reference, items, shipping_address, shipping_tier, shipping_label, promo_code, discount_amount, customer_name, customer_email, customer_phone, pickup_code, customer_pickup_code, rider_pickup_code",
     )
     .eq("id", orderId)
     .maybeSingle();
@@ -126,7 +126,9 @@ export async function POST(request: Request) {
       order.rider_pickup_code ??
       null,
     shippingAddress: order.shipping_address,
-    shippingTier: order.shipping_tier,
+    shippingTier: order.shipping_label,
+    promoCode: order.promo_code,
+    discountAmount: order.discount_amount,
     status: "paid",
     total: order.total,
   }).catch((notificationError) => {
