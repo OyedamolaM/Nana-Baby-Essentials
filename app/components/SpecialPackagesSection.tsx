@@ -84,7 +84,7 @@ function PackageCarousel({
         </h3>
       </div>
 
-      <Carousel className="px-1 sm:px-0" opts={{ loop: items.length > 1 }}>
+      <Carousel className="px-1 sm:px-0" opts={{ loop: items.length > 1 }} autoAdvanceMs={10000}>
         <CarouselContent>
           {items.map((pkg) => (
             <CarouselItem key={pkg.id}>
@@ -121,7 +121,7 @@ function PackageCarousel({
                     </div>
 
                     <div className="flex flex-col gap-2 sm:flex-row">
-                      <Button type="button" className="flex-1" onClick={() => onAction(pkg)}>
+                      <Button type="button" className="flex-1" disabled={!pkg.product.inStock} onClick={() => onAction(pkg)}>
                         {actionLabel.toLowerCase().includes("registry") ? (
                           <Gift className="mr-2 h-4 w-4" />
                         ) : (

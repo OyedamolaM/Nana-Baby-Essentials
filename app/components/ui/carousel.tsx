@@ -15,6 +15,7 @@ type CarouselOptions = UseCarouselParameters[0];
 type CarouselPlugin = UseCarouselParameters[1];
 
 type CarouselProps = {
+  autoAdvanceMs?: number;
   opts?: CarouselOptions;
   plugins?: CarouselPlugin;
   orientation?: "horizontal" | "vertical";
@@ -43,6 +44,7 @@ function useCarousel() {
 }
 
 function Carousel({
+  autoAdvanceMs,
   orientation = "horizontal",
   opts,
   setApi,
@@ -92,6 +94,26 @@ function Carousel({
     if (!api || !setApi) return;
     setApi(api);
   }, [api, setApi]);
+
+  React.useEffect(() => {
+    if (!api || !autoAdvanceMs || autoAdvanceMs <= 0) return;
+    let dragging = false;
+    const pointerDown = () => { dragging = true; };
+    const pointerUp = () => { dragging = false; };
+    api.on("pointerDown", pointerDown);
+    api.on("pointerUp", pointerUp);
+    const timer = window.setInterval(() => {
+      const root = api.rootNode();
+      if (document.hidden || dragging || api.scrollSnapList().length < 2 || root.matches(":hover") || root.contains(document.activeElement)) return;
+      if (api.canScrollNext()) api.scrollNext();
+      else api.scrollTo(0);
+    }, autoAdvanceMs);
+    return () => {
+      window.clearInterval(timer);
+      api.off("pointerDown", pointerDown);
+      api.off("pointerUp", pointerUp);
+    };
+  }, [api, autoAdvanceMs]);
 
   React.useEffect(() => {
     if (!api) return;

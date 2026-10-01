@@ -79,6 +79,10 @@ export type AdminOrderRecord = {
   rider_pickup_code?: string | null;
   shipping_address?: Partial<ShippingAddress> | null;
   shipping_tier?: string | null;
+  shipping_label?: string | null;
+  promo_code?: string | null;
+  discount_percentage?: number | null;
+  discount_amount?: number | null;
   status: string;
   total: number;
   user_id?: string | null;
@@ -247,8 +251,14 @@ export function AdminOrdersManager({
   }, [draftItems]);
 
   const totalAmount = useMemo(() => {
-    return normalizedItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
-  }, [normalizedItems]);
+    const subtotal = normalizedItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
+    if (!editingOrder?.promo_code) return subtotal;
+    const originalSubtotal = (editingOrder.items ?? []).reduce((sum, item) => sum + Number(item.price ?? 0) * Number(item.quantity ?? 0), 0);
+    const shippingFee = shippingTier !== editingOrder.shipping_tier
+      ? Number(shippingTiers.find(tier => tier.code === shippingTier)?.fee ?? 0)
+      : Math.max(0, Number(editingOrder.total) + Number(editingOrder.discount_amount ?? 0) - originalSubtotal);
+    return subtotal - Math.round(subtotal * Number(editingOrder.discount_percentage ?? 0)) / 100 + shippingFee;
+  }, [normalizedItems, editingOrder, shippingTier, shippingTiers]);
   const selectedShippingTierRecord = useMemo(() => {
     return shippingTiers.find((tier) => tier.code === shippingTier) ?? null;
   }, [shippingTier, shippingTiers]);
@@ -511,7 +521,7 @@ export function AdminOrdersManager({
                 <TableCell>
                   <div className="font-mono text-sm">{order.id.slice(0, 8)}</div>
                   <div className="text-xs text-gray-500">
-                    {order.shipping_tier || "No shipping tier"}
+                    {selectedTier?.label || order.shipping_label || "Delivery option unavailable"}
                   </div>
                   {pickupCode ? (
                     <div className="mt-1 text-xs font-medium text-blue-700">
@@ -570,7 +580,9 @@ export function AdminOrdersManager({
                           pickupCode,
                           riderPickupCode: order.rider_pickup_code,
                           shippingAddress: normalizeShippingAddress(order.shipping_address),
-                          shippingTier: order.shipping_tier,
+                          shippingTier: selectedTier?.label || order.shipping_label,
+                          promoCode: order.promo_code,
+                          discountAmount: order.discount_amount,
                           status: order.status,
                           total: Number(order.total ?? 0),
                         });

@@ -694,8 +694,8 @@ export function ProductDetailModal({
               </h4>
 
               <ul className="space-y-1 text-sm text-gray-600">
-                <li>- Delivery within 2Ã¢â‚¬â€œ5 days in Lagos</li>
-                <li>- 3Ã¢â‚¬â€œ7 days for other locations</li>
+                <li>Delivery within 2-5 days in Lagos</li>
+                <li>3-7 days for other locations</li>
               </ul>
              </div>
              </> : null}

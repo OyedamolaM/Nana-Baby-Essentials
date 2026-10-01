@@ -108,6 +108,25 @@ export async function PATCH(request: Request, context: RouteContext<"/api/admin/
     updatePayload.items = normalizedItems;
   }
 
+  const { data: existingOrder } = await serviceRoleClient.from("orders")
+    .select("items,total,promo_code,discount_percentage,discount_amount,shipping_tier")
+    .eq("id", id).maybeSingle();
+  if (!existingOrder) return NextResponse.json({ message: "Order not found." }, { status: 404 });
+  const shippingCode = payload?.shippingTier?.trim() || existingOrder.shipping_tier;
+  const { data: tier } = await serviceRoleClient.from("shipping_tiers").select("label,fee").eq("code", shippingCode).maybeSingle();
+  if (tier) updatePayload.shipping_label = tier.label;
+  if (existingOrder.promo_code && (normalizedItems || payload?.total !== undefined)) {
+    const originalItems = (existingOrder.items ?? []) as { price?: number; quantity?: number }[];
+    const originalSubtotal = originalItems.reduce((sum, item) => sum + Number(item.price ?? 0) * Number(item.quantity ?? 0), 0);
+    const subtotal = normalizedItems ? normalizedItems.reduce((sum, item) => sum + item.price * item.quantity, 0) : originalSubtotal;
+    const discount = Math.round(subtotal * Number(existingOrder.discount_percentage ?? 0)) / 100;
+    const shippingFee = shippingCode !== existingOrder.shipping_tier && tier
+      ? Number(tier.fee)
+      : Math.max(0, Number(existingOrder.total) + Number(existingOrder.discount_amount ?? 0) - originalSubtotal);
+    updatePayload.discount_amount = discount;
+    updatePayload.total = Math.round((subtotal - discount + shippingFee) * 100) / 100;
+  }
+
   const { data: order, error } = await serviceRoleClient
     .from("orders")
     .update(updatePayload)

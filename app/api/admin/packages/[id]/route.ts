@@ -19,6 +19,8 @@ type UpdatePackagePayload = {
   isActive?: boolean;
   packageType?: "gift_bundle" | "swoop_package";
   price?: number;
+  purchaseLimited?: boolean;
+  remainingQuantity?: number;
   sortOrder?: number;
   subtitle?: string | null;
   title?: string;
@@ -135,6 +137,8 @@ export async function PATCH(
   const packageType =
     payload?.packageType === "gift_bundle" ? "gift_bundle" : "swoop_package";
   const nextPrice = Number(payload?.price ?? 0);
+  const remainingQuantity = Number(payload?.remainingQuantity ?? 0);
+  if (payload?.purchaseLimited && (!Number.isSafeInteger(remainingQuantity) || remainingQuantity < 0)) return NextResponse.json({ message: "Enter a whole-number remaining purchase quantity of zero or more." }, { status: 400 });
 
   if (!title || !subtitle || !details || !primaryImage || !Number.isFinite(nextPrice) || nextPrice <= 0) {
     return NextResponse.json(
@@ -195,6 +199,8 @@ export async function PATCH(
       cost_price: nextPrice,
       description: subtitle || details || title,
       image: primaryImage,
+      stock_limited: payload?.purchaseLimited === true,
+      stock_quantity: payload?.purchaseLimited ? remainingQuantity : 0,
       in_stock: payload?.isActive ?? true,
       name: title,
       price: nextPrice,

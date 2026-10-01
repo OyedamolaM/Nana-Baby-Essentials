@@ -105,6 +105,9 @@ type UserOrder = {
   status: string;
   rider_pickup_code?: string | null;
   shipping_tier?: string | null;
+  shipping_label?: string | null;
+  promo_code?: string | null;
+  discount_amount?: number | null;
   total: number;
   items: OrderItem[];
 };
@@ -618,7 +621,7 @@ export function UserDashboard({
     const requestId = ++ordersRequestIdRef.current;
     let query = supabase
       .from("orders")
-      .select("id, created_at, status, total, items, payment_method, payment_reference, shipping_address, shipping_tier, customer_name, customer_email, customer_phone, pickup_code, customer_pickup_code, rider_pickup_code")
+      .select("id, created_at, status, total, items, payment_method, payment_reference, shipping_address, shipping_tier, shipping_label, promo_code, discount_amount, customer_name, customer_email, customer_phone, pickup_code, customer_pickup_code, rider_pickup_code")
       .eq("user_id", userId)
       .eq("status", "paid");
     let paidCountQuery = supabase
@@ -1102,7 +1105,8 @@ export function UserDashboard({
                   {formatDateTime(order.created_at)}
                 </p>
                 <div className="space-y-1 text-xs text-gray-500">
-                  {order.shipping_tier ? <p>{order.shipping_tier}</p> : null}
+                  {order.shipping_label ? <p>{order.shipping_label}</p> : null}
+                  {order.promo_code ? <p>Promo {order.promo_code}: -{formatNairaAmount(Number(order.discount_amount ?? 0))}</p> : null}
                   <p>
                     Payment: {" "}
                     {formatPaymentMethodLabel(
@@ -1183,7 +1187,9 @@ export function UserDashboard({
                     pickupCode,
                     riderPickupCode: order.rider_pickup_code,
                     shippingAddress: normalizeShippingAddress(order.shipping_address),
-                    shippingTier: order.shipping_tier,
+                    shippingTier: order.shipping_label,
+                    promoCode: order.promo_code,
+                    discountAmount: order.discount_amount,
                     status: order.status,
                     total: Number(order.total ?? 0),
                   })

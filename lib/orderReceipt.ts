@@ -33,6 +33,8 @@ export type OrderReceiptPayload = {
   riderPickupCode?: string | null;
   shippingAddress?: ReceiptAddress | null;
   shippingTier?: string | null;
+  promoCode?: string | null;
+  discountAmount?: number | null;
   status?: string | null;
   total: number;
 };
@@ -422,7 +424,8 @@ function createPdfBytes(order: OrderReceiptPayload) {
         Math.max(0, Number(item?.price ?? 0))
     );
   }, 0);
-  const shippingAmount = Math.max(Number(order.total ?? 0) - itemsSubtotal, 0);
+  const discountAmount = Math.max(0, Number(order.discountAmount ?? 0));
+  const shippingAmount = Math.max(Number(order.total ?? 0) + discountAmount - itemsSubtotal, 0);
 
   let currentPage = createPage();
   let currentY = 620;
@@ -608,7 +611,7 @@ function createPdfBytes(order: OrderReceiptPayload) {
 
   const totalsBoxWidth = 208;
   const totalsBoxHeight =
-    74 + (shippingAmount > 0 ? 18 : 0);
+    74 + (shippingAmount > 0 ? 18 : 0) + (discountAmount > 0 ? 18 : 0);
   const totalsX = PAGE_WIDTH - PAGE_MARGIN - totalsBoxWidth;
   const totalsY = currentY - totalsBoxHeight - 18;
 
@@ -647,6 +650,9 @@ function createPdfBytes(order: OrderReceiptPayload) {
       x: totalsX + 12,
       y: totalsY + totalsBoxHeight - 64,
     });
+  }
+  if (discountAmount > 0) {
+    pushText(currentPage, { color: SLATE_TEXT, size: 10, text: `Discount: -${formatNairaAmount(discountAmount)}`, x: totalsX + 12, y: totalsY + totalsBoxHeight - 64 - (shippingAmount > 0 ? 18 : 0) });
   }
   pushText(currentPage, {
     color: BRAND_DARK,

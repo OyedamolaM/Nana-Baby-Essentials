@@ -144,7 +144,7 @@ export function DealOfTheWeek({
         </div>
 
         <div className="w-full lg:max-w-6xl lg:mx-auto sm:px-6 md:px-10">
-          <Carousel className="px-1 sm:px-0" opts={{ loop: activeDeals.length > 1 }}>
+          <Carousel className="px-1 sm:px-0" opts={{ loop: activeDeals.length > 1 }} autoAdvanceMs={10000}>
             <CarouselContent>
               {activeDeals.map((deal) => {
                 const displayProduct: Product = {

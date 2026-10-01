@@ -62,6 +62,20 @@ export function CheckoutModal({
   const [shippingTiers, setShippingTiers] = useState<ShippingTierOption[]>([]);
   const [shippingTierLoading, setShippingTierLoading] = useState(false);
   const [shippingTierError, setShippingTierError] = useState<string | null>(null);
+  const [promoInput, setPromoInput] = useState("");
+  const [appliedPromo, setAppliedPromo] = useState<{ code: string; percentage: number } | null>(null);
+  const [promoError, setPromoError] = useState("");
+  const [applyingPromo, setApplyingPromo] = useState(false);
+  const promoRequestRef = useRef(0);
+
+  useEffect(() => {
+    const requestId = ++promoRequestRef.current;
+    const timer = window.setTimeout(() => {
+      if (promoRequestRef.current !== requestId) return;
+      setPromoInput(""); setAppliedPromo(null); setPromoError(""); setApplyingPromo(false);
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [open]);
 
   const [shippingName, setShippingName] = useState("");
   const [shippingPhone, setShippingPhone] = useState("");
@@ -200,12 +214,33 @@ export function CheckoutModal({
     0,
   );
   const shippingFee = selectedTier?.fee ?? 0;
-  const totalAmount = subtotalAmount + shippingFee;
+  const discountAmount = appliedPromo ? Math.round(subtotalAmount * appliedPromo.percentage) / 100 : 0;
+  const totalAmount = subtotalAmount - discountAmount + shippingFee;
+  const applyPromo = async () => {
+    const code = promoInput.trim().toUpperCase();
+    if (!code) { setPromoError("Enter a promo code."); return; }
+    const requestId = ++promoRequestRef.current;
+    setApplyingPromo(true); setPromoError(""); setAppliedPromo(null);
+    try {
+      const { data, error } = await supabase.rpc("get_store_promo_discount", { p_code: code, p_subtotal: subtotalAmount });
+      if (promoRequestRef.current !== requestId) return;
+      if (error || !data) throw new Error(error?.message || "Could not apply promo code.");
+      setAppliedPromo({ code: data.code, percentage: Number(data.percentage) });
+    } catch (error) {
+      if (promoRequestRef.current === requestId) setPromoError(error instanceof Error ? error.message : "Could not apply promo code.");
+    } finally {
+      if (promoRequestRef.current === requestId) setApplyingPromo(false);
+    }
+  };
   const preventModalClose = loading || paystackActive;
   const isPickupOrder = selectedTier?.fulfillmentType === "pickup";
 
   const handleCheckout = async (event: React.FormEvent) => {
     event.preventDefault();
+    if (applyingPromo || (promoInput.trim() && !appliedPromo)) {
+      toast.error("Apply your promo code or clear it before continuing.");
+      return;
+    }
 
     if (!user) {
       toast.error("Please sign in to checkout.");
@@ -283,6 +318,7 @@ export function CheckoutModal({
           p_billing_address: shippingAddressData,
           p_items: orderItems,
           p_shipping_tier: shippingTier,
+          p_promo_code: appliedPromo?.code ?? null,
         },
       );
 
@@ -488,7 +524,7 @@ export function CheckoutModal({
                   {item.name} x {item.quantity}
                   {item.variantOptions ? (
                     <span className="block text-xs text-gray-500">
-                      {Object.entries(item.variantOptions).map(([label, value]) => `${label}: ${value}`).join(" ? ")}
+                      {Object.entries(item.variantOptions).map(([label, value]) => `${label}: ${value}`).join(" / ")}
                     </span>
                   ) : null}
                 </span>
@@ -506,11 +542,23 @@ export function CheckoutModal({
               <span>Shipping</span>
               <span>{formatNairaAmount(shippingFee)}</span>
             </div>
+            {appliedPromo ? <div className="flex justify-between text-sm text-green-700"><span>Promo {appliedPromo.code} ({appliedPromo.percentage}% off)</span><span>-{formatNairaAmount(discountAmount)}</span></div> : null}
             <Separator />
             <div className="flex justify-between text-lg font-bold">
               <span>Total</span>
               <span>{formatNairaAmount(totalAmount)}</span>
             </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="checkout-promo">Promo code (optional)</Label>
+            <div className="flex gap-2">
+              <Input id="checkout-promo" value={promoInput} maxLength={40} placeholder="Enter promo code" disabled={loading || paystackActive} onChange={event => { ++promoRequestRef.current; setApplyingPromo(false); setPromoInput(event.target.value.toUpperCase()); setAppliedPromo(null); setPromoError(""); }} />
+              <Button type="button" variant="outline" disabled={loading || paystackActive || applyingPromo} onClick={() => void applyPromo()}>{applyingPromo ? "Applying..." : "Apply"}</Button>
+              {appliedPromo ? <Button type="button" variant="ghost" disabled={loading || paystackActive} onClick={() => { ++promoRequestRef.current; setPromoInput(""); setAppliedPromo(null); setPromoError(""); }}>Remove</Button> : null}
+            </div>
+            {promoError ? <p role="alert" className="text-sm text-red-600">{promoError}</p> : null}
+            <p className="text-xs text-gray-500">Discount applies to items. Delivery is charged separately.</p>
           </div>
 
           {/* {paystackActive ? (

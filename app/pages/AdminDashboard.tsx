@@ -1,5 +1,7 @@
 "use client";
 
+import { AdminPromosManager } from "../components/admin/AdminPromosManager";
+
 import { ColourGalleryEditor, type ColourGalleryDraft } from "../components/admin/ColourGalleryEditor";
 import { isColourOption } from "../../lib/productOptions";
 
@@ -163,6 +165,7 @@ type AdminSectionId =
   | "categories"
   | "deals"
   | "packages"
+  | "promos"
   | "campaigns"
   | "newsletter"
   | "reviews"
@@ -255,6 +258,7 @@ const ADMIN_NAVIGATION_GROUPS: AdminNavigationGroup[] = [
   {
     label: "Marketing",
     items: [
+      { id: "promos", label: "Discounts & Promos", description: "Percentage codes and optional schedules", icon: Tags },
       {
         id: "campaigns",
         label: "Campaigns",
@@ -808,6 +812,8 @@ export function AdminDashboard() {
   const [packageBadgeText, setPackageBadgeText] = useState("");
   const [packageDetails, setPackageDetails] = useState("");
   const [packageVideoUrl, setPackageVideoUrl] = useState("");
+  const [packagePurchaseLimited, setPackagePurchaseLimited] = useState(false);
+  const [packageRemainingQuantity, setPackageRemainingQuantity] = useState("0");
   const [packagePrice, setPackagePrice] = useState("");
   const [packageImages, setPackageImages] = useState<string[]>([]);
   const [packageImageFiles, setPackageImageFiles] = useState<File[]>([]);
@@ -2092,6 +2098,8 @@ useEffect(() => {
     setPackageDetails("");
     setPackageVideoUrl("");
     setPackagePrice("");
+    setPackagePurchaseLimited(false);
+    setPackageRemainingQuantity("0");
     setPackageImages([]);
     setPackageImageFiles([]);
     setPackageSortOrder("0");
@@ -2103,6 +2111,8 @@ useEffect(() => {
       ? (pkg.products[0] ?? null)
       : (pkg.products ?? null);
     setEditingPackage(pkg);
+    setPackagePurchaseLimited(Boolean(packageProduct?.stock_limited));
+    setPackageRemainingQuantity(String(packageProduct?.stock_quantity ?? 0));
     setPackageType(pkg.package_type);
     setPackageTitle(pkg.title);
     setPackageSubtitle(pkg.subtitle ?? "");
@@ -2187,6 +2197,8 @@ useEffect(() => {
             images: nextPackageImages,
             isActive: packageIsActive,
             packageType,
+            purchaseLimited: packagePurchaseLimited,
+            remainingQuantity: Number(packageRemainingQuantity),
             price: nextPrice,
             sortOrder: Number(packageSortOrder || 0),
             subtitle: packageSubtitle,
@@ -4084,6 +4096,7 @@ useEffect(() => {
           </div>
         </TabsContent>
 
+        <TabsContent value="promos"><AdminPromosManager getAdminAccessToken={getAdminAccessToken} /></TabsContent>
         <TabsContent value="campaigns">
           <AdminCampaignManager
             campaigns={newsletterCampaigns}
@@ -4875,7 +4888,7 @@ useEffect(() => {
                         <div className="font-medium">{tier.label}</div>
                         <div className="text-xs text-gray-500">
                           {(tier.fulfillment_type === "pickup" ? "Pickup" : "Delivery") +
-                            (tier.description ? ` Ã¢â‚¬Â¢ ${tier.description}` : "")}
+                            (tier.description ? ` - ${tier.description}` : "")}
                         </div>
                       </TableCell>
                       <TableCell>{formatNairaAmount(Number(tier.fee ?? 0))}</TableCell>
@@ -5227,10 +5240,6 @@ useEffect(() => {
             </DialogTitle>
           </DialogHeader>
           <form onSubmit={handleSavePackage} className="space-y-4">
-            <p className="text-sm text-gray-500">
-              Packages appear in the `Special Packages` section above the deal carousel and can be added directly to cart or registry.
-            </p>
-
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="package-type">Package Type</Label>
@@ -5331,6 +5340,12 @@ useEffect(() => {
             </div>
 
             <div className="space-y-2">
+              <Label htmlFor="package-purchase-limit">Purchase limit (optional)</Label>
+              <label className="flex items-center gap-2 text-sm"><input id="package-purchase-limit" type="checkbox" checked={packagePurchaseLimited} onChange={event => setPackagePurchaseLimited(event.target.checked)} />Use purchase limit</label>
+              {packagePurchaseLimited ? <Input type="number" min="0" step="1" required aria-label="Remaining package purchases" value={packageRemainingQuantity} onChange={event => setPackageRemainingQuantity(event.target.value)} /> : null}
+              <p className="text-xs text-gray-500">When enabled, each purchased package or bundle reduces the remaining quantity. Zero means sold out. Leave disabled to use availability only.</p>
+            </div>
+            <div className="space-y-2">
               <Label htmlFor="package-image">Package Images</Label>
               <Input
                 id="package-image"
@@ -5342,8 +5357,7 @@ useEffect(() => {
                 }
               />
               <p className="text-xs text-gray-500">
-                Upload one or more images up to 500KB each. The first image is the
-                main package photo; the rest show as a gallery.
+                Upload one or more images up to 500KB each.
               </p>
               {packageImages.length > 0 ? (
                 <div className="space-y-2 pt-1">
