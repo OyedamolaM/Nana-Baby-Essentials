@@ -15,6 +15,7 @@ type UpdatePackagePayload = {
   details?: string | null;
   externalVideoUrl?: string | null;
   image?: string | null;
+  images?: string[] | null;
   isActive?: boolean;
   packageType?: "gift_bundle" | "swoop_package";
   price?: number;
@@ -122,11 +123,20 @@ export async function PATCH(
   const subtitle = payload?.subtitle?.trim() ?? "";
   const details = payload?.details?.trim() ?? "";
   const image = payload?.image?.trim() ?? "";
+  const submittedImages = (Array.isArray(payload?.images) ? payload.images : [])
+    .map((url) => (typeof url === "string" ? url.trim() : ""))
+    .filter((url): url is string => Boolean(url));
+  const packageImages = submittedImages.length > 0
+    ? submittedImages
+    : image
+      ? [image]
+      : [];
+  const primaryImage = packageImages[0] ?? "";
   const packageType =
     payload?.packageType === "gift_bundle" ? "gift_bundle" : "swoop_package";
   const nextPrice = Number(payload?.price ?? 0);
 
-  if (!title || !subtitle || !details || !image || !Number.isFinite(nextPrice) || nextPrice <= 0) {
+  if (!title || !subtitle || !details || !primaryImage || !Number.isFinite(nextPrice) || nextPrice <= 0) {
     return NextResponse.json(
       { message: "Title, description, details, image, and a valid price are required." },
       { status: 400 },
@@ -184,7 +194,7 @@ export async function PATCH(
       category: packageType === "swoop_package" ? "Swoop Packages" : "Gift Bundles",
       cost_price: nextPrice,
       description: subtitle || details || title,
-      image,
+      image: primaryImage,
       in_stock: payload?.isActive ?? true,
       name: title,
       price: nextPrice,
@@ -209,7 +219,8 @@ export async function PATCH(
       details,
       external_video_url: normalizeExternalVideoUrl(payload?.externalVideoUrl),
       is_active: payload?.isActive ?? true,
-      override_image: image,
+      override_image: primaryImage,
+      override_images: packageImages,
       package_type: packageType,
       slug: packageSlug,
       sort_order: Math.max(0, Math.round(Number(payload?.sortOrder ?? 0))),

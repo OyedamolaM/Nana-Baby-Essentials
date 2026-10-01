@@ -28,6 +28,40 @@ interface SpecialPackagesSectionProps {
   swoopPackages?: SpecialPackage[];
 }
 
+function PackageGallery({ images, title }: { images: string[]; title: string }) {
+  const galleryImages = images.length > 0 ? images : [""];
+  const [activeIndex, setActiveIndex] = useState(0);
+  const safeIndex = Math.min(activeIndex, galleryImages.length - 1);
+  const activeImage = galleryImages[safeIndex] ?? "";
+
+  return (
+    <div className="space-y-3">
+      <img
+        src={activeImage}
+        alt={title}
+        className="h-64 w-full rounded-[24px] bg-gray-50 object-contain sm:h-80"
+      />
+      {galleryImages.length > 1 ? (
+        <div className="flex gap-2 overflow-x-auto pb-1">
+          {galleryImages.map((image, index) => (
+            <button
+              key={`${image}-${index}`}
+              type="button"
+              aria-label={`Show package image ${index + 1}`}
+              onClick={() => setActiveIndex(index)}
+              className={`h-14 w-14 shrink-0 overflow-hidden rounded-xl border-2 bg-white ${
+                index === safeIndex ? "border-pink-500" : "border-transparent"
+              }`}
+            >
+              <img src={image} alt="" className="h-full w-full object-contain" />
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function PackageCarousel({
   actionLabel,
   items,
@@ -57,13 +91,9 @@ function PackageCarousel({
               <Card className="overflow-hidden rounded-[28px] border border-pink-100 shadow-sm">
                 <div className="grid gap-5 p-4 sm:p-6 lg:grid-cols-[1.05fr_0.95fr]">
                   <div className="space-y-4">
-                    <div className="relative overflow-hidden rounded-[24px] bg-gray-50">
-                      <img
-                        src={pkg.image}
-                        alt={pkg.title}
-                        className="h-64 w-full object-cover sm:h-80"
-                      />
-                      <div className="absolute left-4 top-4 flex flex-wrap gap-2">
+                    <div className="relative">
+                      <PackageGallery images={pkg.images ?? [pkg.image]} title={pkg.title} />
+                      <div className="pointer-events-none absolute left-4 top-4 flex flex-wrap gap-2">
                         <Badge>{pkg.badgeText}</Badge>
                         <Badge variant="secondary">
                           {buildSpecialPackageTypeLabel(pkg.packageType)}

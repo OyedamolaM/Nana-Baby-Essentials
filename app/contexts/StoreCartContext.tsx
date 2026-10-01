@@ -16,6 +16,7 @@ import {
   supabase,
 } from "../lib/supabase";
 import {
+  getVariantOptions,
   mapProductRecord,
   PRODUCT_LIST_SELECT,
   type ProductRecord,
@@ -81,6 +82,13 @@ function normalizeCartQuantity(quantity: unknown) {
   }
 
   return Math.min(normalizedQuantity, 9999);
+}
+
+/** Effective unit cap for a cart line; 0 means stock is not tracked. */
+function getStockCap(product: StoreProduct, variant?: StoreProductVariant) {
+  const raw = variant ? variant.stockQuantity : product.stockQuantity;
+  const cap = Math.floor(Number(raw ?? 0));
+  return Number.isFinite(cap) && cap > 0 ? cap : 0;
 }
 
 function normalizeOptionalCartText(value: unknown) {
@@ -526,21 +534,25 @@ export function StoreCartProvider({ children }: { children: ReactNode }) {
       return false;
     }
 
+    const cap = getStockCap(product, variant);
+    const requested = normalizeCartQuantity(quantity) || 1;
+    const variantId = variant?.id;
+    const itemKey = getStoreCartItemKey({ id: product.id, variantId });
+
     setItems((currentItems) => {
-      const nextQuantity = normalizeCartQuantity(quantity) || 1;
-      const variantId = variant?.id;
-      const itemKey = getStoreCartItemKey({ id: product.id, variantId });
       const existingItem = currentItems.find(
         (item) => getStoreCartItemKey(item) === itemKey,
       );
+      const currentQuantity = existingItem?.quantity ?? 0;
+      const nextQuantity =
+        cap > 0
+          ? Math.min(currentQuantity + requested, cap)
+          : normalizeCartQuantity(currentQuantity + requested) || 1;
 
       if (existingItem) {
         return currentItems.map((item) =>
           getStoreCartItemKey(item) === itemKey
-            ? {
-                ...item,
-                quantity: normalizeCartQuantity(item.quantity + nextQuantity) || 1,
-              }
+            ? { ...item, quantity: nextQuantity, stockQuantity: cap }
             : item,
         );
       }
@@ -551,12 +563,13 @@ export function StoreCartProvider({ children }: { children: ReactNode }) {
         {
           ...product,
           color: variant?.color,
-          variantOptions: variant?.options,
+          variantOptions: variant ? getVariantOptions(variant) : undefined,
           image: variant?.imageUrl || product.image,
           price,
           sellingPrice: price,
           quantity: nextQuantity,
           size: variant?.size,
+          stockQuantity: cap,
           variantId,
         },
       ];
@@ -572,14 +585,20 @@ export function StoreCartProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const updateQuantity = useCallback((itemKey: string, quantity: number) => {
-    const nextQuantity = normalizeCartQuantity(quantity);
     setItems((currentItems) =>
       currentItems
-        .map((item) =>
-          getStoreCartItemKey(item) === itemKey
-            ? { ...item, quantity: nextQuantity }
-            : item,
-        )
+        .map((item) => {
+          if (getStoreCartItemKey(item) !== itemKey) {
+            return item;
+          }
+
+          const cap = Math.max(0, Math.floor(Number(item.stockQuantity ?? 0)));
+          const requested = normalizeCartQuantity(quantity);
+          return {
+            ...item,
+            quantity: cap > 0 ? Math.min(requested, cap) : requested,
+          };
+        })
         .filter((item) => item.quantity > 0),
     );
   }, []);

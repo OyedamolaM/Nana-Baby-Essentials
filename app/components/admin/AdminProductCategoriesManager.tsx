@@ -257,7 +257,7 @@ export function AdminProductCategoriesManager({
                 onChange={(event) => setCategorySortOrder(event.target.value)}
               />
               <p className="text-xs text-gray-500">
-                Lower numbers appear first in product filters and product forms.
+                Lower numbers appear first.
               </p>
             </div>
 

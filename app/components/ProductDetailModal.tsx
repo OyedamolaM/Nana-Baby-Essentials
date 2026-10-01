@@ -56,8 +56,6 @@ export function ProductDetailModal({
   }, [product?.images, fetchedGalleryImages]);
 
   const [fetchedVariants, setFetchedVariants] = useState<StoreProductVariant[]>([]);
-  const [selectedSize, setSelectedSize] = useState("");
-  const [selectedColor, setSelectedColor] = useState("");
   const [selectedOptions, setSelectedOptions] = useState<Record<string, string>>({});
 
   const allProductVariants = useMemo(() => {
@@ -69,8 +67,6 @@ export function ProductDetailModal({
     [allProductVariants],
   );
   const hasVariantChoices = Boolean(product?.hasVariants);
-  const hasSizePicker = productVariants.some((variant) => Boolean(variant.size));
-  const hasColorPicker = productVariants.some((variant) => Boolean(variant.color));
   const optionGroups = useMemo(() => {
     const groups = new Map<string, string[]>();
     for (const variant of productVariants) {
@@ -116,97 +112,66 @@ export function ProductDetailModal({
     };
   }, [selectedVariant?.id]);
 
-  const sizeOptions = useMemo(
-    () =>
-      Array.from(
-        new Set(
-          productVariants
-            .map((variant) => variant.size)
-            .filter((value): value is string => Boolean(value)),
-        ),
-      ),
-    [productVariants],
-  );
-  const colorOptions = useMemo(
-    () =>
-      Array.from(
-        new Set(
-          productVariants
-            .map((variant) => variant.color)
-            .filter((value): value is string => Boolean(value)),
-        ),
-      ),
-    [productVariants],
-  );
-  const visibleSizeOptions = useMemo(
-    () =>
-      sizeOptions.filter((size) =>
-        productVariants.some(
-          (variant) =>
-            variant.size === size &&
-            (!selectedColor || !hasColorPicker || variant.color === selectedColor),
-        ),
-      ),
-    [hasColorPicker, productVariants, selectedColor, sizeOptions],
-  );
-  const visibleColorOptions = useMemo(
-    () =>
-      colorOptions.filter((color) =>
-        productVariants.some(
-          (variant) =>
-            variant.color === color &&
-            (!selectedSize || !hasSizePicker || variant.size === selectedSize),
-        ),
-      ),
-    [colorOptions, hasSizePicker, productVariants, selectedSize],
-  );
+  const isOptionAvailable = (label: string, value: string) =>
+    productVariants.some((variant) => {
+      const options = getVariantOptions(variant);
+      return (
+        options[label] === value &&
+        Object.entries(selectedOptions).every(
+          ([selectedLabel, selectedValue]) =>
+            selectedLabel === label ||
+            !selectedValue ||
+            options[selectedLabel] === selectedValue,
+        )
+      );
+    });
 
-  const getVariantImageForColor = (color: string) =>
-    productVariants.find(
-      (variant) =>
-        variant.color === color &&
-        variant.imageUrl &&
-        (!selectedSize || !hasSizePicker || variant.size === selectedSize),
-    )?.imageUrl;
+  const getVariantImageForOption = (label: string, value: string) =>
+    productVariants.find((variant) => {
+      const options = getVariantOptions(variant);
+      return (
+        options[label] === value &&
+        Boolean(variant.imageUrl) &&
+        Object.entries(selectedOptions).every(
+          ([selectedLabel, selectedValue]) =>
+            selectedLabel === label ||
+            !selectedValue ||
+            options[selectedLabel] === selectedValue,
+        )
+      );
+    })?.imageUrl;
 
-  const chooseSize = (size: string) => {
-    if (selectedSize === size) {
-      setSelectedSize("");
-      setSelectedOptions((current) => ({ ...current, Size: "" }));
-      return;
-    }
+  const chooseOption = (label: string, value: string) => {
+    setSelectedOptions((current) => {
+      if (current[label] === value) {
+        const next = { ...current };
+        delete next[label];
+        return next;
+      }
 
-    setSelectedSize(size);
-    setSelectedOptions((current) => ({ ...current, Size: size }));
-    if (
-      selectedColor &&
-      !productVariants.some(
-        (variant) => variant.size === size && variant.color === selectedColor,
-      )
-    ) {
-      setSelectedColor("");
-      setSelectedOptions((current) => ({ ...current, Colour: "", Color: "" }));
-    }
-  };
+      const next: Record<string, string> = { ...current, [label]: value };
 
-  const chooseColor = (color: string) => {
-    if (selectedColor === color) {
-      setSelectedColor("");
-      setSelectedOptions((current) => ({ ...current, Colour: "", Color: "" }));
-      return;
-    }
+      // Drop any other choice that no longer has a matching combination.
+      for (const otherLabel of Object.keys(next)) {
+        if (otherLabel === label) {
+          continue;
+        }
 
-    setSelectedColor(color);
-    setSelectedOptions((current) => ({ ...current, Colour: color, Color: color }));
-    if (
-      selectedSize &&
-      !productVariants.some(
-        (variant) => variant.color === color && variant.size === selectedSize,
-      )
-    ) {
-      setSelectedSize("");
-      setSelectedOptions((current) => ({ ...current, Size: "" }));
-    }
+        const stillValid = productVariants.some((variant) => {
+          const options = getVariantOptions(variant);
+          return Object.entries(next).every(
+            ([checkLabel, checkValue]) =>
+              !checkValue || options[checkLabel] === checkValue,
+          );
+        });
+
+        if (!stillValid) {
+          delete next[otherLabel];
+        }
+      }
+
+      return next;
+    });
   };
 
   const canAddToCart = selectedVariant
@@ -214,6 +179,9 @@ export function ProductDetailModal({
     : needsSelection
       ? false
       : Boolean(product?.inStock);
+  const availableStock = selectedVariant
+    ? selectedVariant.stockQuantity
+    : Math.max(0, Math.floor(Number(product?.stockQuantity ?? 0)));
 
 
   const showImage = (nextIndex: number) => {
@@ -335,8 +303,6 @@ export function ProductDetailModal({
 
     const resetIndex = window.setTimeout(() => {
       setSelectedImageIndex(0);
-      setSelectedSize("");
-      setSelectedColor("");
       setSelectedOptions({});
     }, 0);
 
@@ -553,88 +519,51 @@ export function ProductDetailModal({
                 </Badge>
               </div>
 
-              {hasSizePicker ? (
-                <div className="space-y-2">
-                  <p className="text-sm font-semibold text-gray-900">Size</p>
-                  <div className="flex flex-wrap gap-2">
-                    {visibleSizeOptions.map((size) => (
-                      <Button
-                        key={size}
-                        type="button"
-                        variant={selectedSize === size ? "default" : "outline"}
-                        size="sm"
-                        onClick={() => chooseSize(size)}
-                      >
-                        {size}
-                      </Button>
-                    ))}
-                  </div>
-                </div>
-              ) : null}
-
-              {hasColorPicker ? (
-                <div className="space-y-2">
-                  <p className="text-sm font-semibold text-gray-900">Color</p>
-                  <div className="flex flex-wrap gap-2">
-                    {visibleColorOptions.map((color) => {
-                      const colorImage = getVariantImageForColor(color);
-                      return colorImage ? (
-                        <button
-                          key={color}
-                          type="button"
-                          onClick={() => chooseColor(color)}
-                          aria-label={color}
-                          className={`flex flex-col items-center gap-1 rounded-lg border-2 p-1 ${
-                            selectedColor === color ? "border-pink-500" : "border-transparent"
-                          }`}
-                        >
-                          <span className="h-12 w-12 overflow-hidden rounded-md bg-gray-100">
-                            <ImageWithFallback
-                              src={colorImage}
-                              alt={color}
-                              className="h-full w-full object-cover"
-                            />
-                          </span>
-                          <span className="text-xs text-gray-700">{color}</span>
-                        </button>
-                      ) : (
-                        <Button
-                          key={color}
-                          type="button"
-                          variant={selectedColor === color ? "default" : "outline"}
-                          size="sm"
-                          onClick={() => chooseColor(color)}
-                        >
-                          {color}
-                        </Button>
-                      );
-                    })}
-                  </div>
-                </div>
-              ) : null}
-
-              {optionGroups
-                .filter(([label]) => !["Size", "Colour", "Color"].includes(label))
-                .map(([label, values]) => (
+              {optionGroups.map(([label, values]) => {
+                const isColorGroup = /^colou?rs?$/i.test(label);
+                return (
                   <div key={label} className="space-y-2">
                     <p className="text-sm font-semibold text-gray-900">{label}</p>
                     <div className="flex flex-wrap gap-2">
                       {values.map((value) => {
-                        const isAvailable = productVariants.some((variant) => {
-                          const options = getVariantOptions(variant);
-                          return options[label] === value && Object.entries(selectedOptions).every(
-                            ([selectedLabel, selectedValue]) =>
-                              !selectedValue || selectedLabel === label || options[selectedLabel] === selectedValue,
+                        const colorImage = isColorGroup
+                          ? getVariantImageForOption(label, value)
+                          : undefined;
+                        const isSelected = selectedOptions[label] === value;
+                        const isAvailable = isOptionAvailable(label, value);
+
+                        if (colorImage) {
+                          return (
+                            <button
+                              key={value}
+                              type="button"
+                              onClick={() => chooseOption(label, value)}
+                              aria-label={value}
+                              disabled={!isAvailable}
+                              className={`flex flex-col items-center gap-1 rounded-lg border-2 p-1 disabled:cursor-not-allowed disabled:opacity-40 ${
+                                isSelected ? "border-pink-500" : "border-transparent"
+                              }`}
+                            >
+                              <span className="h-12 w-12 overflow-hidden rounded-md bg-gray-100">
+                                <ImageWithFallback
+                                  src={colorImage}
+                                  alt={value}
+                                  className="h-full w-full object-cover"
+                                />
+                              </span>
+                              <span className="text-xs text-gray-700">{value}</span>
+                            </button>
                           );
-                        });
+                        }
+
                         return (
                           <Button
                             key={value}
                             type="button"
-                            variant={selectedOptions[label] === value ? "default" : "outline"}
+                            variant={isSelected ? "default" : "outline"}
                             size="sm"
                             disabled={!isAvailable}
-                            onClick={() => setSelectedOptions((current) => ({ ...current, [label]: value }))}
+                            onClick={() => chooseOption(label, value)}
                           >
                             {value}
                           </Button>
@@ -642,7 +571,8 @@ export function ProductDetailModal({
                       })}
                     </div>
                   </div>
-                ))}
+                );
+              })}
 
               <div className="flex items-center gap-2">
                 <span className="text-sm font-medium text-gray-700">
@@ -671,10 +601,17 @@ export function ProductDetailModal({
                     variant="outline"
                     size="sm"
                     onClick={() => setQuantity((current) => current + 1)}
+                    disabled={availableStock > 0 && quantity >= availableStock}
                   >
                     +
                   </Button>
                 </div>
+
+                {availableStock > 0 ? (
+                  <span className="text-xs font-medium text-pink-700">
+                    Only {availableStock} left
+                  </span>
+                ) : null}
               </div>
             </div>
 
@@ -765,8 +702,8 @@ export function ProductDetailModal({
               </h4>
 
               <ul className="space-y-1 text-sm text-gray-600">
-                <li>- Delivery within 2–5 days in Lagos</li>
-                <li>- 3–7 days for other locations</li>
+                <li>- Delivery within 2Ã¢â‚¬â€œ5 days in Lagos</li>
+                <li>- 3Ã¢â‚¬â€œ7 days for other locations</li>
               </ul>
              </div>
              </> : null}

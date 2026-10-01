@@ -51,7 +51,7 @@ import {
 import { type StoreLocationRecord } from "./storeLocations";
 
 const HOMEPAGE_DEAL_SELECT =
-  "id, product_id, title, subtitle, badge_text, override_image, sale_price, compare_at_price, starts_at, ends_at, is_active, sort_order";
+  "id, product_id, title, subtitle, badge_text, override_image, override_images, sale_price, compare_at_price, starts_at, ends_at, is_active, sort_order";
 const HOMEPAGE_REVIEW_SELECT =
   "id, reviewer_name, reviewer_role, review_text, rating, sort_order, is_active";
 const BLOG_SUMMARY_SELECT =
@@ -59,7 +59,7 @@ const BLOG_SUMMARY_SELECT =
 const STORE_LOCATION_SELECT =
   "id, name, slug, address, description, contact_phone, whatsapp_phone, contact_email, opening_hours, hero_image, is_active, sort_order, created_at, updated_at";
 const SPECIAL_PACKAGE_SELECT =
-  "id, product_id, package_type, slug, title, subtitle, badge_text, details, override_image, external_video_url, is_active, sort_order, created_at, updated_at";
+  "id, product_id, package_type, slug, title, subtitle, badge_text, details, override_image, override_images, external_video_url, is_active, sort_order, created_at, updated_at";
 const REGISTRY_SELECT =
   "id, user_id, share_code, name, status, closed_at, closed_note, fulfillment_status, ready_for_shipping_at, shipped_at, completed_at, partner_email, partner_name, whatsapp, due_month, baby_gender, additional_info, created_at";
 const REGISTRY_ITEM_SELECT =
@@ -238,25 +238,6 @@ function isDealActive(deal: HomeDealRecord) {
   return deal.is_active;
 }
 
-function buildFallbackDeals() {
-  return SEED_PRODUCTS.slice(0, 3).map((product, index) => ({
-    id: `fallback-deal-${product.id}`,
-    title: product.name,
-    subtitle:
-      product.description ||
-      "A hand-picked baby essential with a limited-time savings window.",
-    badgeText: index === 0 ? "Best Value" : "Limited-Time Deal",
-    salePrice: product.price,
-    compareAtPrice: Number((product.price * 1.35).toFixed(2)),
-    image: product.image,
-    startsAt: null,
-    endsAt: new Date(
-      Date.now() + (index + 3) * 24 * 60 * 60 * 1000,
-    ).toISOString(),
-    product,
-  })) satisfies HomepageDeal[];
-}
-
 function mapHomepageDeals(data: HomeDealRecord[], productsById?: Record<number, ProductRecord>) {
   return data
     .filter((deal) => isDealActive(deal))
@@ -267,6 +248,12 @@ function mapHomepageDeals(data: HomeDealRecord[], productsById?: Record<number, 
       }
 
       const product = mapProductRecord(productRecord as ProductRecord);
+      const galleryImages = Array.isArray(deal.override_images)
+        ? deal.override_images
+            .map((url) => url?.trim())
+            .filter((url): url is string => Boolean(url))
+        : [];
+      const primaryImage = galleryImages[0] ?? (deal.override_image?.trim() || product.image);
 
       return [{
         id: deal.id,
@@ -280,7 +267,8 @@ function mapHomepageDeals(data: HomeDealRecord[], productsById?: Record<number, 
         compareAtPrice: Number(
           deal.compare_at_price ?? Math.max(product.price, product.price * 1.25),
         ),
-        image: deal.override_image || product.image,
+        image: primaryImage,
+        images: galleryImages.length > 0 ? galleryImages : [primaryImage],
         startsAt: deal.starts_at,
         endsAt: deal.ends_at,
         product,
@@ -494,12 +482,12 @@ const getProductCategoriesCached = unstable_cache(
 const getHomepageDealsCached = unstable_cache(
   async () => {
     if (!hasSupabaseServerEnv) {
-      return buildFallbackDeals();
+      return [] as HomepageDeal[];
     }
 
     const client = createSupabaseServerClient();
     if (!client) {
-      return buildFallbackDeals();
+      return [] as HomepageDeal[];
     }
 
     const { data, error } = await client
@@ -509,7 +497,7 @@ const getHomepageDealsCached = unstable_cache(
       .order("sort_order", { ascending: true });
 
     if (error || !data || data.length === 0) {
-      return buildFallbackDeals();
+      return [] as HomepageDeal[];
     }
 
     const dealRows = data as HomeDealRecord[];
@@ -526,7 +514,7 @@ const getHomepageDealsCached = unstable_cache(
       const { data: productRows } = await client
         .from("products")
         .select(PRODUCT_LIST_SELECT)
-        .eq("product_kind", "standard")
+        .in("product_kind", ["standard", "deal"])
         .in("id", productIds);
 
       productsById = buildProductLookup((productRows as ProductRecord[] | null) ?? []);
@@ -534,7 +522,7 @@ const getHomepageDealsCached = unstable_cache(
 
     const mappedDeals = mapHomepageDeals(dealRows, productsById);
 
-    return mappedDeals.length > 0 ? mappedDeals : buildFallbackDeals();
+    return mappedDeals;
   },
   ["public-homepage-deals"],
   { revalidate: 300, tags: ["products"] },
@@ -693,7 +681,7 @@ const getProductBySlugCached = unstable_cache(
     const { data } = await client
       .from("products")
       .select(`${PRODUCT_LIST_SELECT},brand,age_range`)
-      .eq("product_kind", "standard")
+      .in("product_kind", ["standard", "deal"])
       .eq("slug", slug)
       .maybeSingle();
 
@@ -704,7 +692,7 @@ const getProductBySlugCached = unstable_cache(
     const { data: fallbackRows } = await client
       .from("products")
       .select(PRODUCT_LIST_SELECT)
-      .eq("product_kind", "standard")
+      .in("product_kind", ["standard", "deal"])
       .order("created_at", { ascending: false });
 
     const fallbackMatch = ((fallbackRows as ProductRecord[] | null) ?? []).find((record) => {

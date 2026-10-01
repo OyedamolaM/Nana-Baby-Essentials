@@ -13,7 +13,11 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
-import { type StoreProduct, formatNaira } from "../../../lib/commerce";
+import {
+  type StoreProduct,
+  formatNaira,
+  getVariantOptions,
+} from "../../../lib/commerce";
 import { readProductDetailReturnContext } from "../../../lib/productDetailReturn";
 import { getFullProductImageUrl } from "../../../lib/storefrontProductImage";
 import { Badge } from "../../components/ui/badge";
@@ -38,32 +42,35 @@ export function ProductDetailPageClient({
     [allProductVariants],
   );
   const hasVariantChoices = Boolean(product.hasVariants);
-  const hasSizePicker = productVariants.some((variant) => Boolean(variant.size));
-  const hasColorPicker = productVariants.some((variant) => Boolean(variant.color));
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
-  const [selectedSize, setSelectedSize] = useState("");
-  const [selectedColor, setSelectedColor] = useState("");
+  const [selectedOptions, setSelectedOptions] = useState<Record<string, string>>({});
   const touchStartXRef = useRef<number | null>(null);
+
+  const optionGroups = useMemo(() => {
+    const groups = new Map<string, string[]>();
+    for (const variant of productVariants) {
+      for (const [label, value] of Object.entries(getVariantOptions(variant))) {
+        groups.set(label, Array.from(new Set([...(groups.get(label) ?? []), value])));
+      }
+    }
+    return Array.from(groups.entries());
+  }, [productVariants]);
 
   const selectedVariant = useMemo(() => {
     if (!hasVariantChoices || productVariants.length === 0) {
       return undefined;
     }
 
-    if (hasSizePicker && !selectedSize) {
+    if (optionGroups.some(([label]) => !selectedOptions[label])) {
       return undefined;
     }
 
-    if (hasColorPicker && !selectedColor) {
-      return undefined;
-    }
-
-    return productVariants.find(
-      (variant) =>
-        (!hasSizePicker || variant.size === selectedSize) &&
-        (!hasColorPicker || variant.color === selectedColor),
+    return productVariants.find((variant) =>
+      optionGroups.every(
+        ([label]) => getVariantOptions(variant)[label] === selectedOptions[label],
+      ),
     );
-  }, [hasColorPicker, hasSizePicker, hasVariantChoices, productVariants, selectedColor, selectedSize]);
+  }, [hasVariantChoices, optionGroups, productVariants, selectedOptions]);
 
   // Slide through the selected variant's own photos when it has any;
   // otherwise fall back to the product's general gallery.
@@ -72,106 +79,90 @@ export function ProductDetailPageClient({
       ? selectedVariant.images
       : baseGalleryImages;
 
-  const resetSelectedImageIndex = () => setSelectedImageIndex(0);
+  // Jump back to the first photo whenever the chosen variant changes.
+  useEffect(() => {
+    const resetIndex = window.setTimeout(() => {
+      setSelectedImageIndex(0);
+    }, 0);
 
-  const sizeOptions = useMemo(
-    () =>
-      Array.from(
-        new Set(
-          productVariants
-            .map((variant) => variant.size)
-            .filter((value): value is string => Boolean(value)),
-        ),
-      ),
-    [productVariants],
-  );
-  const colorOptions = useMemo(
-    () =>
-      Array.from(
-        new Set(
-          productVariants
-            .map((variant) => variant.color)
-            .filter((value): value is string => Boolean(value)),
-        ),
-      ),
-    [productVariants],
-  );
+    return () => {
+      window.clearTimeout(resetIndex);
+    };
+  }, [selectedVariant?.id]);
 
   const displayedPrice = selectedVariant?.priceOverride ?? product.price;
   const selectedVariantInStock = Boolean(selectedVariant && selectedVariant.inStock);
-  const hasStartedSelecting =
-    (hasSizePicker && Boolean(selectedSize)) || (hasColorPicker && Boolean(selectedColor));
-  const needsSelection = hasVariantChoices && hasStartedSelecting && !selectedVariant;
+  const needsSelection = hasVariantChoices && !selectedVariant;
   const canAddToCart = selectedVariant
     ? selectedVariantInStock
     : needsSelection
       ? false
       : product.inStock;
   const mainImage = galleryImages[selectedImageIndex]?.url || getFullProductImageUrl(product.image);
+  const availableStock = selectedVariant
+    ? selectedVariant.stockQuantity
+    : Math.max(0, Math.floor(Number(product.stockQuantity ?? 0)));
 
-  const getVariantImageForColor = (color: string) =>
-    productVariants.find(
-      (variant) =>
-        variant.color === color &&
-        variant.imageUrl &&
-        (!selectedSize || !hasSizePicker || variant.size === selectedSize),
-    )?.imageUrl;
+  const isOptionAvailable = (label: string, value: string) =>
+    productVariants.some((variant) => {
+      const options = getVariantOptions(variant);
+      return (
+        options[label] === value &&
+        Object.entries(selectedOptions).every(
+          ([selectedLabel, selectedValue]) =>
+            selectedLabel === label ||
+            !selectedValue ||
+            options[selectedLabel] === selectedValue,
+        )
+      );
+    });
 
-  const visibleColorOptions = useMemo(
-    () =>
-      colorOptions.filter((color) =>
-        productVariants.some(
-          (variant) =>
-            variant.color === color &&
-            (!selectedSize || !hasSizePicker || variant.size === selectedSize),
-        ),
-      ),
-    [colorOptions, hasSizePicker, productVariants, selectedSize],
-  );
-  const visibleSizeOptions = useMemo(
-    () =>
-      sizeOptions.filter((size) =>
-        productVariants.some(
-          (variant) =>
-            variant.size === size &&
-            (!selectedColor || !hasColorPicker || variant.color === selectedColor),
-        ),
-      ),
-    [hasColorPicker, productVariants, selectedColor, sizeOptions],
-  );
+  const getVariantImageForOption = (label: string, value: string) =>
+    productVariants.find((variant) => {
+      const options = getVariantOptions(variant);
+      return (
+        options[label] === value &&
+        Boolean(variant.imageUrl) &&
+        Object.entries(selectedOptions).every(
+          ([selectedLabel, selectedValue]) =>
+            selectedLabel === label ||
+            !selectedValue ||
+            options[selectedLabel] === selectedValue,
+        )
+      );
+    })?.imageUrl;
 
-  const chooseSize = (size: string) => {
-    if (selectedSize === size) {
-      setSelectedSize("");
-      return;
-    }
+  const chooseOption = (label: string, value: string) => {
+    setSelectedOptions((current) => {
+      if (current[label] === value) {
+        const next = { ...current };
+        delete next[label];
+        return next;
+      }
 
-    setSelectedSize(size);
-    if (
-      selectedColor &&
-      !productVariants.some(
-        (variant) => variant.size === size && variant.color === selectedColor,
-      )
-    ) {
-      setSelectedColor("");
-    }
-  };
+      const next: Record<string, string> = { ...current, [label]: value };
 
-  const chooseColor = (color: string) => {
-    if (selectedColor === color) {
-      setSelectedColor("");
-      return;
-    }
+      // Drop any other choice that no longer has a matching combination.
+      for (const otherLabel of Object.keys(next)) {
+        if (otherLabel === label) {
+          continue;
+        }
 
-    setSelectedColor(color);
-    if (
-      selectedSize &&
-      !productVariants.some(
-        (variant) => variant.color === color && variant.size === selectedSize,
-      )
-    ) {
-      setSelectedSize("");
-    }
+        const stillValid = productVariants.some((variant) => {
+          const options = getVariantOptions(variant);
+          return Object.entries(next).every(
+            ([checkLabel, checkValue]) =>
+              !checkValue || options[checkLabel] === checkValue,
+          );
+        });
+
+        if (!stillValid) {
+          delete next[otherLabel];
+        }
+      }
+
+      return next;
+    });
   };
 
   const showImage = (nextIndex: number) => {
@@ -184,7 +175,7 @@ export function ProductDetailPageClient({
 
   const handleAddToCart = () => {
     if (needsSelection) {
-      toast.error("Finish selecting an option, or clear your selection to add the standard product.");
+      toast.error("Choose an option before adding this product to your cart.");
       return;
     }
 
@@ -369,75 +360,74 @@ export function ProductDetailPageClient({
 
               {hasVariantChoices ? (
                 <div className="space-y-5 rounded-2xl border border-pink-100 bg-pink-50/60 p-5">
-                  {hasSizePicker ? (
-                    <div className="space-y-2">
-                      <p className="text-sm font-semibold text-gray-900">Size</p>
-                      <div className="flex flex-wrap gap-2">
-                        {visibleSizeOptions.map((size) => (
-                          <Button
-                            key={size}
-                            type="button"
-                            variant={selectedSize === size ? "default" : "outline"}
-                            onClick={() => chooseSize(size)}
-                          >
-                            {size}
-                          </Button>
-                        ))}
+                  {optionGroups.map(([label, values]) => {
+                    const isColorGroup = /^colou?rs?$/i.test(label);
+                    return (
+                      <div key={label} className="space-y-2">
+                        <p className="text-sm font-semibold text-gray-900">{label}</p>
+                        <div className="flex flex-wrap gap-2">
+                          {values.map((value) => {
+                            const colorImage = isColorGroup
+                              ? getVariantImageForOption(label, value)
+                              : undefined;
+                            const isSelected = selectedOptions[label] === value;
+                            const isAvailable = isOptionAvailable(label, value);
+
+                            if (colorImage) {
+                              return (
+                                <button
+                                  key={value}
+                                  type="button"
+                                  onClick={() => chooseOption(label, value)}
+                                  aria-label={value}
+                                  disabled={!isAvailable}
+                                  className={`flex flex-col items-center gap-1 rounded-lg border-2 p-1 disabled:cursor-not-allowed disabled:opacity-40 ${
+                                    isSelected ? "border-pink-500" : "border-transparent"
+                                  }`}
+                                >
+                                  <span className="h-14 w-14 overflow-hidden rounded-md bg-gray-100">
+                                    <ImageWithFallback
+                                      src={colorImage}
+                                      alt={value}
+                                      className="h-full w-full object-cover"
+                                      loading="lazy"
+                                      decoding="async"
+                                    />
+                                  </span>
+                                  <span className="text-xs text-gray-700">{value}</span>
+                                </button>
+                              );
+                            }
+
+                            return (
+                              <Button
+                                key={value}
+                                type="button"
+                                variant={isSelected ? "default" : "outline"}
+                                disabled={!isAvailable}
+                                onClick={() => chooseOption(label, value)}
+                              >
+                                {value}
+                              </Button>
+                            );
+                          })}
+                        </div>
                       </div>
-                    </div>
-                  ) : null}
-                  {hasColorPicker ? (
-                    <div className="space-y-2">
-                      <p className="text-sm font-semibold text-gray-900">Color</p>
-                      <div className="flex flex-wrap gap-2">
-                        {visibleColorOptions.map((color) => {
-                          const colorImage = getVariantImageForColor(color);
-                          return colorImage ? (
-                            <button
-                              key={color}
-                              type="button"
-                              onClick={() => chooseColor(color)}
-                              aria-label={color}
-                              className={`flex flex-col items-center gap-1 rounded-lg border-2 p-1 ${
-                                selectedColor === color ? "border-pink-500" : "border-transparent"
-                              }`}
-                            >
-                              <span className="h-14 w-14 overflow-hidden rounded-md bg-gray-100">
-                                <ImageWithFallback
-                                  src={colorImage}
-                                  alt={color}
-                                  className="h-full w-full object-cover"
-                                  loading="lazy"
-                                  decoding="async"
-                                />
-                              </span>
-                              <span className="text-xs text-gray-700">{color}</span>
-                            </button>
-                          ) : (
-                            <Button
-                              key={color}
-                              type="button"
-                              variant={selectedColor === color ? "default" : "outline"}
-                              onClick={() => chooseColor(color)}
-                            >
-                              {color}
-                            </Button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  ) : null}
+                    );
+                  })}
                   <p className="text-sm text-gray-600">
                     {needsSelection
-                      ? "Finish selecting an option, or leave it unselected to add the standard product."
+                      ? "Choose an option to continue."
                       : selectedVariant
                         ? selectedVariantInStock
                           ? selectedVariant.stockQuantity > 0
-                            ? `${selectedVariant.stockQuantity} available`
+                            ? `Only ${selectedVariant.stockQuantity} left`
                             : "In stock"
                           : "This selected option is currently unavailable."
                         : product.inStock
-                          ? "In stock"
+                          ? availableStock > 0
+                            ? `Only ${availableStock} left`
+                            : "In stock"
                           : "Currently unavailable"}
                   </p>
                 </div>

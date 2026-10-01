@@ -8,7 +8,6 @@ import {
   type HomepageDeal,
 } from "../../lib/content";
 import {
-  SEED_PRODUCTS,
   PRODUCT_LIST_SELECT,
   mapProductRecord,
   type ProductRecord,
@@ -53,25 +52,6 @@ function isDealActive(deal: HomeDealRecord) {
   return deal.is_active;
 }
 
-function buildFallbackDeals() {
-  return SEED_PRODUCTS.slice(0, 3).map((product, index) => ({
-    id: `fallback-deal-${product.id}`,
-    title: product.name,
-    subtitle:
-      product.description ||
-      "A hand-picked baby essential with a limited-time savings window.",
-    badgeText: index === 0 ? "Best Value" : "Limited-Time Deal",
-    salePrice: product.price,
-    compareAtPrice: Number((product.price * 1.35).toFixed(2)),
-    image: product.image,
-    startsAt: null,
-    endsAt: new Date(
-      Date.now() + (index + 3) * 24 * 60 * 60 * 1000,
-    ).toISOString(),
-    product,
-  }));
-}
-
 function mapHomepageDeals(
   data: HomeDealRecord[],
   productsById?: Record<number, ProductRecord>,
@@ -85,6 +65,12 @@ function mapHomepageDeals(
       }
 
       const product = mapProductRecord(productRecord as ProductRecord);
+      const galleryImages = Array.isArray(deal.override_images)
+        ? deal.override_images
+            .map((url) => url?.trim())
+            .filter((url): url is string => Boolean(url))
+        : [];
+      const primaryImage = galleryImages[0] ?? (deal.override_image?.trim() || product.image);
 
       return [{
         id: deal.id,
@@ -98,7 +84,8 @@ function mapHomepageDeals(
         compareAtPrice: Number(
           deal.compare_at_price ?? Math.max(product.price, product.price * 1.25),
         ),
-        image: deal.override_image || product.image,
+        image: primaryImage,
+        images: galleryImages.length > 0 ? galleryImages : [primaryImage],
         startsAt: deal.starts_at,
         endsAt: deal.ends_at,
         product,
@@ -108,7 +95,7 @@ function mapHomepageDeals(
 
 export function useHomepageDeals(initialDeals?: HomepageDeal[]) {
   const [deals, setDeals] = useState<HomepageDeal[]>(
-    initialDeals && initialDeals.length > 0 ? initialDeals : buildFallbackDeals(),
+    initialDeals && initialDeals.length > 0 ? initialDeals : [],
   );
 
   useEffect(() => {
@@ -129,7 +116,7 @@ export function useHomepageDeals(initialDeals?: HomepageDeal[]) {
 
       if (error || !data || data.length === 0) {
         setDeals((currentDeals) => {
-          return currentDeals.length > 0 ? currentDeals : buildFallbackDeals();
+          return currentDeals.length > 0 ? currentDeals : [];
         });
         return;
       }
@@ -148,7 +135,7 @@ export function useHomepageDeals(initialDeals?: HomepageDeal[]) {
         const { data: productRows } = await supabase
           .from("products")
           .select(PRODUCT_LIST_SELECT)
-          .eq("product_kind", "standard")
+          .in("product_kind", ["standard", "deal"])
           .in("id", productIds);
 
         productsById = buildProductLookup((productRows as ProductRecord[] | null) ?? []);
@@ -161,7 +148,7 @@ export function useHomepageDeals(initialDeals?: HomepageDeal[]) {
           return mappedDeals;
         }
 
-        return currentDeals.length > 0 ? currentDeals : buildFallbackDeals();
+        return currentDeals.length > 0 ? currentDeals : [];
       });
     };
 

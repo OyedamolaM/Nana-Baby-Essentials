@@ -7,6 +7,7 @@ export interface HomeDealRecord {
   subtitle?: string | null;
   badge_text?: string | null;
   override_image?: string | null;
+  override_images?: string[] | null;
   sale_price: number;
   compare_at_price?: number | null;
   starts_at?: string | null;
@@ -14,6 +15,8 @@ export interface HomeDealRecord {
   is_active: boolean;
   sort_order: number;
   created_at?: string;
+  /** Embedded hidden product row that backs the deal. */
+  products?: { name?: string | null; stock_quantity?: number | null } | null;
 }
 
 export interface CollectionRecord {
@@ -52,6 +55,7 @@ export interface HomepageDeal {
   salePrice: number;
   compareAtPrice: number;
   image: string;
+  images: string[];
   startsAt?: string | null;
   endsAt?: string | null;
   product: StoreProduct;
