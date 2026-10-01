@@ -1,5 +1,7 @@
 "use client";
 
+import { getSelectionGallery, getSelectedColour, getStockLimit, isColourOption, isItemAvailable } from "../../../lib/productOptions";
+
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -38,7 +40,7 @@ export function ProductDetailPageClient({
   );
   const allProductVariants = useMemo(() => product.variants ?? [], [product.variants]);
   const productVariants = useMemo(
-    () => allProductVariants.filter((variant) => variant.inStock),
+    () => allProductVariants.filter(isItemAvailable),
     [allProductVariants],
   );
   const hasVariantChoices = Boolean(product.hasVariants);
@@ -48,13 +50,13 @@ export function ProductDetailPageClient({
 
   const optionGroups = useMemo(() => {
     const groups = new Map<string, string[]>();
-    for (const variant of productVariants) {
+    for (const variant of allProductVariants) {
       for (const [label, value] of Object.entries(getVariantOptions(variant))) {
         groups.set(label, Array.from(new Set([...(groups.get(label) ?? []), value])));
       }
     }
     return Array.from(groups.entries());
-  }, [productVariants]);
+  }, [allProductVariants]);
 
   const selectedVariant = useMemo(() => {
     if (!hasVariantChoices || productVariants.length === 0) {
@@ -72,12 +74,9 @@ export function ProductDetailPageClient({
     );
   }, [hasVariantChoices, optionGroups, productVariants, selectedOptions]);
 
-  // Slide through the selected variant's own photos when it has any;
-  // otherwise fall back to the product's general gallery.
-  const galleryImages =
-    selectedVariant?.images && selectedVariant.images.length > 0
-      ? selectedVariant.images
-      : baseGalleryImages;
+  const selectedColour = getSelectedColour(selectedOptions);
+  const selectionGallery = getSelectionGallery(product.colourImages ?? [], selectedOptions, selectedVariant);
+  const galleryImages = selectionGallery.length ? selectionGallery : baseGalleryImages;
 
   // Jump back to the first photo whenever the chosen variant changes.
   useEffect(() => {
@@ -88,20 +87,18 @@ export function ProductDetailPageClient({
     return () => {
       window.clearTimeout(resetIndex);
     };
-  }, [selectedVariant?.id]);
+  }, [selectedVariant?.id, selectedColour]);
 
   const displayedPrice = selectedVariant?.priceOverride ?? product.price;
-  const selectedVariantInStock = Boolean(selectedVariant && selectedVariant.inStock);
+  const selectedVariantInStock = Boolean(selectedVariant && isItemAvailable(selectedVariant) && product.inStock);
   const needsSelection = hasVariantChoices && !selectedVariant;
   const canAddToCart = selectedVariant
     ? selectedVariantInStock
     : needsSelection
       ? false
-      : product.inStock;
+      : isItemAvailable(product);
   const mainImage = galleryImages[selectedImageIndex]?.url || getFullProductImageUrl(product.image);
-  const availableStock = selectedVariant
-    ? selectedVariant.stockQuantity
-    : Math.max(0, Math.floor(Number(product.stockQuantity ?? 0)));
+  const availableStock = selectedVariant ? getStockLimit(selectedVariant) : getStockLimit(product);
 
   const isOptionAvailable = (label: string, value: string) =>
     productVariants.some((variant) => {
@@ -117,20 +114,11 @@ export function ProductDetailPageClient({
       );
     });
 
-  const getVariantImageForOption = (label: string, value: string) =>
-    productVariants.find((variant) => {
-      const options = getVariantOptions(variant);
-      return (
-        options[label] === value &&
-        Boolean(variant.imageUrl) &&
-        Object.entries(selectedOptions).every(
-          ([selectedLabel, selectedValue]) =>
-            selectedLabel === label ||
-            !selectedValue ||
-            options[selectedLabel] === selectedValue,
-        )
-      );
-    })?.imageUrl;
+  const getVariantImageForOption = (label: string, value: string) => {
+    if (!isColourOption(label)) return undefined;
+    return (product.colourImages ?? []).find(image => image.colourValue === value)?.url
+      ?? productVariants.find(variant => getSelectedColour(getVariantOptions(variant)) === value && variant.imageUrl)?.imageUrl;
+  };
 
   const chooseOption = (label: string, value: string) => {
     setSelectedOptions((current) => {
@@ -420,12 +408,12 @@ export function ProductDetailPageClient({
                       ? "Choose an option to continue."
                       : selectedVariant
                         ? selectedVariantInStock
-                          ? selectedVariant.stockQuantity > 0
+                          ? selectedVariant.stockLimited
                             ? `Only ${selectedVariant.stockQuantity} left`
                             : "In stock"
                           : "This selected option is currently unavailable."
                         : product.inStock
-                          ? availableStock > 0
+                          ? availableStock !== undefined
                             ? `Only ${availableStock} left`
                             : "In stock"
                           : "Currently unavailable"}

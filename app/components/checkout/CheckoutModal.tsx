@@ -261,6 +261,7 @@ export function CheckoutModal({
         quantity: item.quantity,
         size: item.size ?? null,
         variant_id: item.variantId ?? null,
+        options: item.variantOptions ?? null,
       }));
 
       const { error: availabilityError } = await supabase.rpc(
@@ -482,9 +483,14 @@ export function CheckoutModal({
           <div className="space-y-2 rounded-lg bg-gray-50 p-4">
             <h3 className="mb-2 font-semibold">Order Summary</h3>
             {cartItems.map((item) => (
-              <div key={item.id} className="flex justify-between text-sm">
+              <div key={`${item.id}-${item.variantId ?? "base"}`} className="flex justify-between text-sm">
                 <span>
                   {item.name} x {item.quantity}
+                  {item.variantOptions ? (
+                    <span className="block text-xs text-gray-500">
+                      {Object.entries(item.variantOptions).map(([label, value]) => `${label}: ${value}`).join(" ? ")}
+                    </span>
+                  ) : null}
                 </span>
                 <span>
                   {formatNairaAmount(toNairaAmount(item.price) * item.quantity)}

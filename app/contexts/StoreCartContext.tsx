@@ -1,5 +1,7 @@
 "use client";
 
+import { getCartGallery, getSelectedColour, getStockLimit, isItemAvailable } from "../../lib/productOptions";
+
 import {
   createContext,
   useCallback,
@@ -18,6 +20,7 @@ import {
 import {
   getVariantOptions,
   mapProductRecord,
+  normalizeVariantOptions,
   PRODUCT_LIST_SELECT,
   type ProductRecord,
   type StoreProduct,
@@ -66,6 +69,7 @@ type ShoppingCartVariantRow = {
   in_stock?: boolean | null;
   price_override?: number | null;
   size?: string | null;
+  stock_limited?: boolean | null;
   stock_quantity?: number | null;
   variant_images?: { url: string; thumbnail_url?: string | null }[] | null;
 };
@@ -84,11 +88,8 @@ function normalizeCartQuantity(quantity: unknown) {
   return Math.min(normalizedQuantity, 9999);
 }
 
-/** Effective unit cap for a cart line; 0 means stock is not tracked. */
 function getStockCap(product: StoreProduct, variant?: StoreProductVariant) {
-  const raw = variant ? variant.stockQuantity : product.stockQuantity;
-  const cap = Math.floor(Number(raw ?? 0));
-  return Number.isFinite(cap) && cap > 0 ? cap : 0;
+  return getStockLimit(variant ?? product);
 }
 
 function normalizeOptionalCartText(value: unknown) {
@@ -321,7 +322,7 @@ async function loadRemoteCart(userId: string) {
   const { data: itemRows, error } = await supabase
     .from("shopping_cart_items")
     .select(
-      `quantity, variant_id, products(${PRODUCT_LIST_SELECT}), product_variants(id, size, color, options, price_override, stock_quantity, in_stock, variant_images:product_images(url, thumbnail_url))`,
+      `quantity, variant_id, products(${PRODUCT_LIST_SELECT},colour_images:product_images(id,url,thumbnail_url,sort_order,colour_value)), product_variants(id, size, color, options, price_override, stock_quantity, stock_limited, in_stock, variant_images:product_images(url, thumbnail_url))`,
     )
     .eq("cart_id", cart.id);
 
@@ -346,20 +347,22 @@ async function loadRemoteCart(userId: string) {
       const variantId = normalizeOptionalCartText(row.variant_id) ?? variantRecord?.id;
       const variantPrice = Number(variantRecord?.price_override);
       const price =
-        Number.isFinite(variantPrice) && variantRecord?.price_override !== null
+        Number.isFinite(variantPrice) && variantRecord?.price_override != null
           ? variantPrice
           : product.price;
       const variantImageRecord = Array.isArray(variantRecord?.variant_images)
         ? variantRecord?.variant_images[0]
         : undefined;
 
+      const variantOptions = normalizeVariantOptions(variantRecord?.options, variantRecord?.size, variantRecord?.color);
       return {
         ...product,
         color: normalizeOptionalCartText(variantRecord?.color),
-        variantOptions: variantRecord?.options && typeof variantRecord.options === "object"
-          ? Object.fromEntries(Object.entries(variantRecord.options).filter(([, value]) => typeof value === "string" && value.trim()).map(([key, value]) => [key, (value as string).trim()]))
-          : undefined,
-        image: variantImageRecord?.url?.trim() || product.image,
+        variantOptions,
+        image: variantImageRecord?.url?.trim() || product.colourImages?.find(image => image.colourValue === getSelectedColour(variantOptions ?? {}))?.url || product.image,
+        stockLimited: variantId ? Boolean(variantRecord?.stock_limited) : product.stockLimited,
+        stockQuantity: variantId ? Math.max(0, Number(variantRecord?.stock_quantity ?? 0)) : product.stockQuantity,
+        inStock: product.inStock && (variantId ? Boolean(variantRecord?.in_stock) && (!variantRecord?.stock_limited || Number(variantRecord.stock_quantity ?? 0) > 0) : true),
         price,
         sellingPrice: price,
         quantity: normalizeCartQuantity(row.quantity),
@@ -526,11 +529,14 @@ export function StoreCartProvider({ children }: { children: ReactNode }) {
   }, [disableRemoteCartSync, hydrated, items, remoteCartSupported, remoteReady, userId]);
 
   const addItem = useCallback((product: StoreProduct, quantity = 1, variant?: StoreProductVariant) => {
+    if (!product.inStock || (product.hasVariants && !variant)) {
+      return false;
+    }
     if (variant) {
-      if (!variant.id || !variant.inStock) {
+      if (!variant.id || !isItemAvailable(variant)) {
         return false;
       }
-    } else if (!product.inStock) {
+    } else if (!isItemAvailable(product)) {
       return false;
     }
 
@@ -545,14 +551,14 @@ export function StoreCartProvider({ children }: { children: ReactNode }) {
       );
       const currentQuantity = existingItem?.quantity ?? 0;
       const nextQuantity =
-        cap > 0
+        cap !== undefined
           ? Math.min(currentQuantity + requested, cap)
           : normalizeCartQuantity(currentQuantity + requested) || 1;
 
       if (existingItem) {
         return currentItems.map((item) =>
           getStoreCartItemKey(item) === itemKey
-            ? { ...item, quantity: nextQuantity, stockQuantity: cap }
+            ? { ...item, quantity: nextQuantity, stockQuantity: cap, stockLimited: cap !== undefined }
             : item,
         );
       }
@@ -564,12 +570,13 @@ export function StoreCartProvider({ children }: { children: ReactNode }) {
           ...product,
           color: variant?.color,
           variantOptions: variant ? getVariantOptions(variant) : undefined,
-          image: variant?.imageUrl || product.image,
+          image: getCartGallery(product, variant)[0]?.url || product.image,
           price,
           sellingPrice: price,
           quantity: nextQuantity,
           size: variant?.size,
           stockQuantity: cap,
+          stockLimited: cap !== undefined,
           variantId,
         },
       ];
@@ -592,11 +599,11 @@ export function StoreCartProvider({ children }: { children: ReactNode }) {
             return item;
           }
 
-          const cap = Math.max(0, Math.floor(Number(item.stockQuantity ?? 0)));
+          const cap = getStockLimit(item);
           const requested = normalizeCartQuantity(quantity);
           return {
             ...item,
-            quantity: cap > 0 ? Math.min(requested, cap) : requested,
+            quantity: cap !== undefined ? Math.min(requested, cap) : requested,
           };
         })
         .filter((item) => item.quantity > 0),

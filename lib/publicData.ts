@@ -649,7 +649,7 @@ const getProductBySlugCached = unstable_cache(
     }
 
     const enrichProductDetail = async (record: ProductRecord) => {
-      const [imagesResult, variantsResult] = await Promise.all([
+      const [imagesResult, variantsResult, coloursResult] = await Promise.all([
         client
           .from("product_images")
           .select("id, url, thumbnail_url, sort_order, is_primary")
@@ -659,14 +659,16 @@ const getProductBySlugCached = unstable_cache(
         client
           .from("product_variants")
           .select(
-            "id, size, color, options, sku, price_override, stock_quantity, in_stock, variant_images:product_images(id, url, thumbnail_url, sort_order, is_primary)",
+            "id, size, color, options, sku, price_override, stock_quantity, stock_limited, in_stock, variant_images:product_images(id, url, thumbnail_url, sort_order, is_primary)",
           )
           .eq("product_id", record.id)
           .order("created_at", { ascending: true }),
+        client.from("product_images").select("id,url,thumbnail_url,sort_order,colour_value").eq("product_id", record.id).not("colour_value", "is", null).order("sort_order"),
       ]);
 
       return mapProductRecord({
         ...record,
+        colour_images: coloursResult.data ?? [],
         product_images:
           imagesResult.error?.code === "42P01" || imagesResult.error
             ? undefined

@@ -1,5 +1,8 @@
 "use client";
 
+import { ColourGalleryEditor, type ColourGalleryDraft } from "../components/admin/ColourGalleryEditor";
+import { isColourOption } from "../../lib/productOptions";
+
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { DateRange } from "react-day-picker";
 import { useDebouncedValue } from "../hooks/useDebounceValue";
@@ -478,7 +481,7 @@ function buildVariantCombinations(groups: ProductOptionGroupDraft[]) {
     }))
     .filter((group) => group.name && group.values.length > 0);
 
-  if (activeGroups.length === 0) {
+  if (activeGroups.length === 0 || activeGroups.reduce((count, group) => count * group.values.length, 1) > 512) {
     return [] as { key: string; options: Record<string, string> }[];
   }
 
@@ -756,6 +759,8 @@ export function AdminDashboard() {
   const [productBrand, setProductBrand] = useState("");
   const [productAgeRange, setProductAgeRange] = useState("");
   const [productHasVariants, setProductHasVariants] = useState(false);
+  const [colourGalleryDrafts, setColourGalleryDrafts] = useState<Record<string, ColourGalleryDraft>>({});
+  const [variantSearch, setVariantSearch] = useState("");
   const [productVariantDrafts, setProductVariantDrafts] = useState<ProductVariantDraft[]>([]);
   const [productOptionGroups, setProductOptionGroups] = useState<ProductOptionGroupDraft[]>([]);
   const [productDescription, setProductDescription] = useState("");
@@ -1106,7 +1111,7 @@ const fetchOrdersPage = useCallback(
     } else if (tab === "deals") {
       const result = await supabase
         .from("homepage_deals")
-        .select("id, product_id, title, subtitle, badge_text, override_image, override_images, sale_price, compare_at_price, starts_at, ends_at, is_active, sort_order, created_at, products(name, stock_quantity)")
+        .select("id, product_id, title, subtitle, badge_text, override_image, override_images, sale_price, compare_at_price, starts_at, ends_at, is_active, sort_order, created_at, products(name, stock_quantity, stock_limited)")
         .order("sort_order", { ascending: true });
       setDeals(((result.error ? [] : result.data) ?? []) as HomeDealRecord[]);
     } else if (tab === "packages") {
@@ -1268,6 +1273,7 @@ useEffect(() => {
     });
   }, [productCategories, products]);
 
+  const combinationCount = productOptionGroups.filter(group => group.name.trim() && parseVariantOptionValues(group.values, group.name).length).reduce((count, group) => count * parseVariantOptionValues(group.values, group.name).length, 1);
   const productVariantCombinations = useMemo(
     () => buildVariantCombinations(productOptionGroups),
     [productOptionGroups],
@@ -2397,6 +2403,8 @@ useEffect(() => {
     setProductAgeRange("");
     setProductHasVariants(false);
     setProductVariantDrafts([]);
+    setColourGalleryDrafts({});
+    setVariantSearch("");
     setProductOptionGroups([]);
     setProductDescription("");
     setProductInStock(true);
@@ -2424,17 +2432,19 @@ useEffect(() => {
     setProductAgeRange(product.age_range ?? "");
     setProductHasVariants(Boolean(product.has_variants));
     setProductVariantDrafts([]);
+    setColourGalleryDrafts({});
+    setVariantSearch("");
     setProductOptionGroups([]);
     setProductDescription(product.description);
     setProductInStock(Boolean(product.in_stock));
     const loadedQuantityLimit = Math.max(0, Math.floor(Number(product.stock_quantity ?? 0)));
-    setProductQuantityLimited(loadedQuantityLimit > 0);
-    setProductStockQuantity(String(loadedQuantityLimit > 0 ? loadedQuantityLimit : 1));
+    setProductQuantityLimited(Boolean(product.stock_limited));
+    setProductStockQuantity(String(loadedQuantityLimit));
     setProductIsFeatured(Boolean(product.is_featured));
     setProductFeaturedSortOrder(String(product.featured_sort_order ?? 0));
     setShowProductModal(true);
 
-    const [imagesResult, variantsResult] = await Promise.all([
+    const [imagesResult, variantsResult, coloursResult] = await Promise.all([
       supabase
         .from("product_images")
         .select("id, url, thumbnail_url, sort_order, is_primary")
@@ -2444,12 +2454,23 @@ useEffect(() => {
       supabase
         .from("product_variants")
         .select(
-          "id, size, color, options, sku, price_override, stock_quantity, in_stock, variant_images:product_images(id, url, thumbnail_url, sort_order)",
+          "id, size, color, options, sku, price_override, stock_quantity, stock_limited, in_stock, variant_images:product_images(id, url, thumbnail_url, sort_order)",
         )
         .eq("product_id", product.id)
         .order("created_at", { ascending: true }),
+      supabase.from("product_images").select("id,url,thumbnail_url,colour_value").eq("product_id", product.id).not("colour_value", "is", null).order("sort_order"),
     ]);
 
+    if (coloursResult.error) toast.error("Could not load colour photos. Apply the latest migration and reopen this product.");
+    else {
+      const galleries: Record<string, ColourGalleryDraft> = {};
+      for (const image of coloursResult.data ?? []) {
+        const colour = image.colour_value as string;
+        galleries[colour] ??= { images: [], pendingImageFiles: [] };
+        galleries[colour].images.push({ id: image.id, url: image.url, thumbnailUrl: image.thumbnail_url ?? undefined });
+      }
+      setColourGalleryDrafts(galleries);
+    }
     if (!imagesResult.error) {
       const images = (imagesResult.data ?? []) as AdminProductImage[];
       setProductGalleryImages(images);
@@ -2496,7 +2517,7 @@ useEffect(() => {
               ? ""
               : String(toNairaAmount(Number(variant.price_override))),
           sku: variant.sku ?? "",
-          limitQuantity: Number(variant.stock_quantity ?? 0) > 0,
+          limitQuantity: Boolean(variant.stock_limited),
           stockQuantity: String(variant.stock_quantity ?? 0),
         } satisfies ProductVariantDraft;
       });
@@ -2723,6 +2744,8 @@ useEffect(() => {
         return;
       }
       setProductVariantDrafts([]);
+    setColourGalleryDrafts({});
+    setVariantSearch("");
       setProductOptionGroups([]);
     }
 
@@ -2777,6 +2800,9 @@ useEffect(() => {
     }
 
     if (productHasVariants) {
+      const names = productOptionGroups.map(group => group.name.trim().toLowerCase()).filter(Boolean).map(name => name === "color" ? "colour" : name);
+      if (new Set(names).size !== names.length) { toast.error("Use a different name for each option. Colour and Color are the same option."); return; }
+      if (combinationCount > 512) { toast.error("Use fewer option values: a product can have up to 512 combinations."); return; }
       if (productVariantCombinations.length === 0) {
         toast.error(
           "Add at least one option name and value, or turn off selectable options for this product.",
@@ -2866,8 +2892,9 @@ useEffect(() => {
       in_stock: productInStock,
       is_featured: productIsFeatured,
       featured_sort_order: Number(productFeaturedSortOrder || 0),
+      stock_limited: productQuantityLimited,
       stock_quantity: productQuantityLimited
-        ? Math.max(1, Math.floor(Number(productStockQuantity || 1)))
+        ? Math.max(0, Math.floor(Number(productStockQuantity || 0)))
         : 0,
       product_kind: "standard",
     };
@@ -3010,8 +3037,9 @@ useEffect(() => {
             size: getVariantLegacyValue(variant.options, "Size"),
             options: variant.options,
             sku: variant.sku,
+            stockLimited: variant.limitQuantity,
             stockQuantity: variant.limitQuantity
-              ? Math.max(1, Math.floor(Number(variant.stockQuantity || 1)))
+              ? Math.max(0, Math.floor(Number(variant.stockQuantity || 0)))
               : 0,
           })),
         }),
@@ -3020,7 +3048,7 @@ useEffect(() => {
     const variantsResult = (await variantsResponse.json().catch(() => null)) as
       | { message?: string; savedVariantIds?: (string | null)[] }
       | null;
-    if (!variantsResponse.ok && variantsResponse.status !== 409) {
+    if (!variantsResponse.ok) {
       toast.error(
         variantsResult?.message ?? "Product saved, but its variants could not be synchronized.",
       );
@@ -3032,10 +3060,14 @@ useEffect(() => {
     const savedVariantIds = variantsResult?.savedVariantIds ?? [];
     let failedVariantImageCount = 0;
     let variantImageFailureMessage: string | null = null;
-    for (let variantIndex = 0; variantIndex < resolvedVariantDrafts.length; variantIndex += 1) {
-      const variant = resolvedVariantDrafts[variantIndex];
-      const variantId = savedVariantIds[variantIndex];
-      if (!variantId || variant.pendingImageFiles.length === 0) {
+    const colourValues = productOptionGroups.filter(group => isColourOption(group.name)).flatMap(group => parseVariantOptionValues(group.values, group.name));
+    const photoDrafts = [
+      ...resolvedVariantDrafts.map((draft, index) => ({ ...draft, variantId: savedVariantIds[index], colourValue: undefined as string | undefined })),
+      ...colourValues.filter(colour => colourGalleryDrafts[colour]).map(colour => ({ ...colourGalleryDrafts[colour], variantId: null, colourValue: colour })),
+    ];
+    for (const variant of photoDrafts) {
+      const variantId = variant.variantId;
+      if ((!variantId && !variant.colourValue) || variant.pendingImageFiles.length === 0) {
         continue;
       }
 
@@ -3074,7 +3106,8 @@ useEffect(() => {
             mode: "append",
             path: uploadedVariantImage.path,
             thumbnailPath: uploadedVariantImage.thumbnailPath,
-            variantId,
+            variantId: variantId ?? undefined,
+            colourValue: variant.colourValue,
           }),
         });
         const attachResult = (await attachResponse.json().catch(() => null)) as
@@ -3166,8 +3199,8 @@ useEffect(() => {
     setDealCompareAtPrice(productPrice);
     setDealImages(product.image ? [product.image] : []);
     const productLimit = Math.max(0, Math.floor(Number(product.stock_quantity ?? 0)));
-    setDealQuantityLimited(productLimit > 0);
-    setDealStockLimit(String(productLimit > 0 ? productLimit : 1));
+    setDealQuantityLimited(Boolean(product.stock_limited));
+    setDealStockLimit(String(productLimit));
     setShowDealModal(true);
   };
 
@@ -3188,8 +3221,8 @@ useEffect(() => {
     );
     setDealImageFiles([]);
     const dealLimit = Math.max(0, Math.floor(Number(deal.products?.stock_quantity ?? 0)));
-    setDealQuantityLimited(dealLimit > 0);
-    setDealStockLimit(String(dealLimit > 0 ? dealLimit : 1));
+    setDealQuantityLimited(Boolean(deal.products?.stock_limited));
+    setDealStockLimit(String(dealLimit));
     setDealSalePrice(String(toNairaAmount(Number(deal.sale_price))));
     setDealCompareAtPrice(
       deal.compare_at_price ? String(toNairaAmount(Number(deal.compare_at_price))) : "",
@@ -3261,7 +3294,7 @@ useEffect(() => {
     }
 
     const quantityLimit = dealQuantityLimited
-      ? Math.max(1, Math.floor(Number(dealStockLimit || 1)))
+      ? Math.max(0, Math.floor(Number(dealStockLimit || 0)))
       : 0;
 
     // Every deal owns a hidden product row so the cart, checkout, stock, and
@@ -3290,6 +3323,7 @@ useEffect(() => {
       in_stock: dealIsActive,
       is_featured: false,
       featured_sort_order: 0,
+      stock_limited: dealQuantityLimited,
       stock_quantity: quantityLimit,
       product_kind: "deal",
     };
@@ -4138,8 +4172,8 @@ useEffect(() => {
                       </TableCell>
                       <TableCell>{formatNaira(getProductCostPrice(product))}</TableCell>
                       <TableCell>
-                        <span className={product.in_stock ? "text-green-600" : "text-red-600"}>
-                          {product.in_stock ? "In Stock" : "Out of Stock"}
+                        <span className={product.in_stock && (product.has_variants || !product.stock_limited || Number(product.stock_quantity) > 0) ? "text-green-600" : "text-red-600"}>
+                          {product.in_stock && (product.has_variants || !product.stock_limited || Number(product.stock_quantity) > 0) ? "In Stock" : "Out of Stock"}
                         </span>
                       </TableCell>
                       <TableCell>
@@ -4223,7 +4257,7 @@ useEffect(() => {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Deal</TableHead>
-                    <TableHead>Quantity limit</TableHead>
+                    <TableHead>Purchase limit</TableHead>
                     <TableHead>Pricing</TableHead>
                     <TableHead>Window</TableHead>
                     <TableHead>Order</TableHead>
@@ -4245,8 +4279,8 @@ useEffect(() => {
                         </div>
                       </TableCell>
                       <TableCell>
-                        {Number(deal.products?.stock_quantity ?? 0) > 0
-                          ? `Max ${Number(deal.products?.stock_quantity)}`
+                        {deal.products?.stock_limited
+                          ? `${Number(deal.products?.stock_quantity ?? 0)} remaining`
                           : "Unlimited"}
                       </TableCell>
                       <TableCell>
@@ -5789,7 +5823,7 @@ useEffect(() => {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="product-limit-quantity">Quantity limit (optional)</Label>
+                <Label htmlFor="product-limit-quantity">Purchase limit (products without options)</Label>
                 <label className="flex items-center gap-2 text-sm text-gray-700">
                   <input
                     id="product-limit-quantity"
@@ -5797,13 +5831,13 @@ useEffect(() => {
                     checked={productQuantityLimited}
                     onChange={(event) => setProductQuantityLimited(event.target.checked)}
                   />
-                  Limit how many customers can buy
+                  Use purchase limit
                 </label>
                 {productQuantityLimited ? (
                   <Input
-                    aria-label="Maximum quantity per customer"
+                    aria-label="Remaining stock"
                     type="number"
-                    min="1"
+                    min="0"
                     step="1"
                     value={productStockQuantity}
                     onChange={(event) => setProductStockQuantity(event.target.value)}
@@ -5811,7 +5845,7 @@ useEffect(() => {
                   />
                 ) : null}
                 <p className="text-xs text-gray-500">
-                  Leave unticked to sell without a limit.
+                  When enabled, purchases reduce remaining stock and zero means sold out. When disabled, the In stock setting controls availability.
                 </p>
               </div>
             </div>
@@ -5973,9 +6007,9 @@ useEffect(() => {
                   <div className="space-y-3 rounded-md border border-pink-200 bg-white p-3">
                     <p className="text-sm font-semibold text-gray-800">Options</p>
                     <p className="text-xs text-gray-500">
-                      Name each choice (for example Size or Colour) and list its values
+                      Name each choice (for example Size, Colour, Age or Sex) and list its values
                       separated by commas. Every value is combined automatically, so
-                      customers can pick a colour then a size, or a size then a colour.
+                      customers can select every option in any order.
                     </p>
 
                     {productOptionGroups.map((group, groupIndex) => (
@@ -6048,8 +6082,23 @@ useEffect(() => {
                     </Button>
                   </div>
 
+                  <ColourGalleryEditor
+                    colours={productOptionGroups.filter(group => isColourOption(group.name)).flatMap(group => parseVariantOptionValues(group.values, group.name))}
+                    drafts={colourGalleryDrafts}
+                    onChange={(colour, draft) => setColourGalleryDrafts(current => ({ ...current, [colour]: draft }))}
+                    onDelete={async (colour, imageId) => {
+                      if (!editingProduct) return;
+                      const token = await getAdminAccessToken();
+                      if (!token) { toast.error("Sign in again to remove photos."); return; }
+                      const response = await fetch(`/api/admin/products/${editingProduct.id}/images?imageId=${encodeURIComponent(imageId)}`, { method: "DELETE", headers: { Authorization: `Bearer ${token}` } });
+                      if (!response.ok) { toast.error("Could not remove the colour photo."); return; }
+                      setColourGalleryDrafts(current => ({ ...current, [colour]: { ...current[colour], images: current[colour].images.filter(image => image.id !== imageId) } }));
+                    }}
+                  />
+                  <p className="text-xs text-gray-500">Only add options that change the item being purchased. A fixed age range or sex can go in the description. Every combination has its own price and stock; keep unavailable combinations disabled.</p>
                   {productVariantCombinations.length === 0 ? (
                     <p className="text-xs text-gray-500">
+                      {combinationCount > 512 ? "Too many combinations. Reduce option values to create no more than 512 combinations. " : ""}
                       Add at least one option value to generate the combinations
                       customers can choose from.
                     </p>
@@ -6061,7 +6110,8 @@ useEffect(() => {
                         saved. Set stock, price, SKU, and photos per combination.
                       </p>
 
-                      {productVariantRows.map(({ combination, draft }) => (
+                      <Input value={variantSearch} onChange={event => setVariantSearch(event.target.value)} placeholder="Find combinations (e.g. Pink or Small)" aria-label="Find combinations" />
+                      {productVariantRows.filter(row => Object.values(row.combination.options).join(" ").toLowerCase().includes(variantSearch.trim().toLowerCase())).map(({ combination, draft }) => (
                         <div
                           key={combination.key}
                           className="space-y-2 rounded-md border bg-white p-3"
@@ -6096,13 +6146,13 @@ useEffect(() => {
                                     })
                                   }
                                 />
-                                Limit quantity
+                                Use purchase limit
                               </label>
                               {draft.limitQuantity ? (
                                 <Input
-                                  aria-label={`${combination.key} quantity limit`}
+                                  aria-label={`${combination.key} remaining stock`}
                                   type="number"
-                                  min="1"
+                                  min="0"
                                   step="1"
                                   value={draft.stockQuantity}
                                   onChange={(event) =>
@@ -6110,7 +6160,7 @@ useEffect(() => {
                                       stockQuantity: event.target.value,
                                     })
                                   }
-                                  placeholder="Max per order"
+                                  placeholder="Remaining stock"
                                 />
                               ) : null}
                             </div>
@@ -6141,6 +6191,7 @@ useEffect(() => {
                           </div>
 
                           <div className="space-y-2">
+                            <p className="text-xs text-gray-500">Combination photos (optional): override the shared colour photos for this combination only.</p>
                             <div className="flex flex-wrap items-center gap-2">
                               {draft.images.map((image) => (
                                 <div
@@ -6289,7 +6340,7 @@ useEffect(() => {
           <form onSubmit={handleSaveDeal} className="space-y-4">
             <p className="text-xs text-gray-500">
               Each deal is created as its own product, with its own price,
-              images, and optional quantity limit.
+              images, and optional purchase limit.
             </p>
 
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -6400,7 +6451,7 @@ useEffect(() => {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="deal-limit-quantity">Quantity limit (optional)</Label>
+              <Label htmlFor="deal-limit-quantity">Purchase limit (optional)</Label>
               <label className="flex items-center gap-2 text-sm text-gray-700">
                 <input
                   id="deal-limit-quantity"
@@ -6408,13 +6459,13 @@ useEffect(() => {
                   checked={dealQuantityLimited}
                   onChange={(event) => setDealQuantityLimited(event.target.checked)}
                 />
-                Limit how many customers can buy
+                Use purchase limit
               </label>
               {dealQuantityLimited ? (
                 <Input
-                  aria-label="Maximum quantity per customer"
+                  aria-label="Remaining stock"
                   type="number"
-                  min="1"
+                  min="0"
                   step="1"
                   value={dealStockLimit}
                   onChange={(event) => setDealStockLimit(event.target.value)}
@@ -6422,7 +6473,7 @@ useEffect(() => {
                 />
               ) : null}
               <p className="text-xs text-gray-500">
-                Leave unticked to sell without a limit.
+                When enabled, purchases reduce remaining stock and zero means sold out. When disabled, the In stock setting controls availability.
               </p>
             </div>
 

@@ -30,6 +30,7 @@ type AddProductImagePayload = {
   path?: string;
   thumbnailPath?: string;
   variantId?: string;
+  colourValue?: string;
 };
 
 type UpdateProductImagesPayload = {
@@ -131,6 +132,7 @@ async function insertProductImageWithRetry(
     thumbnail_url: string;
     url: string;
     variant_id?: string | null;
+    colour_value?: string | null;
   },
   maxAttempts = 5,
 ) {
@@ -145,6 +147,9 @@ async function insertProductImageWithRetry(
       ? currentImagesQuery.eq("variant_id", payload.variant_id)
       : currentImagesQuery.is("variant_id", null);
 
+    currentImagesQuery = payload.colour_value
+      ? currentImagesQuery.eq("colour_value", payload.colour_value)
+      : currentImagesQuery.is("colour_value", null);
     const { data: currentImages } = await currentImagesQuery;
 
     const nextSortOrder =
@@ -218,7 +223,20 @@ export async function POST(request: Request, context: RouteProps) {
 
   const images = (existingImages ?? []) as ProductImageRow[];
   const existingPrimary = images.find((image) => image.is_primary);
-  const isVariantOnly = Boolean(payload?.isVariantOnly);
+  const colourValue = typeof payload?.colourValue === "string" ? payload.colourValue.trim() : null;
+  if (colourValue && payload?.variantId) {
+    return NextResponse.json({ message: "Choose a colour gallery or a combination gallery." }, { status: 400 });
+  }
+  if (colourValue) {
+    const { data: variants, error } = await resolved.client.from("product_variants").select("options,color").eq("product_id", resolved.productId);
+    const exists = variants?.some(variant => Object.entries(variant.options ?? {}).some(([label, value]) => /^(color|colour)$/i.test(label.trim()) && value === colourValue) || variant.color === colourValue);
+    if (error || !exists) return NextResponse.json({ message: "Save this colour as a product option before uploading its photos." }, { status: 400 });
+  }
+  if (payload?.variantId) {
+    const { data: variant } = await resolved.client.from("product_variants").select("id").eq("id", payload.variantId).eq("product_id", resolved.productId).maybeSingle();
+    if (!variant) return NextResponse.json({ message: "This option does not belong to the product." }, { status: 400 });
+  }
+  const isVariantOnly = Boolean(payload?.isVariantOnly || colourValue || payload?.variantId);
   const mode = payload?.mode === "append" ? "append" : "replace-primary";
   const isPrimary =
     !isVariantOnly && (images.length === 0 || mode === "replace-primary" || Boolean(payload?.isPrimary));
@@ -248,6 +266,7 @@ export async function POST(request: Request, context: RouteProps) {
           thumbnail_url: publicThumbnailUrl.publicUrl,
           url: publicImageUrl.publicUrl,
           variant_id: payload?.variantId || null,
+          colour_value: colourValue || null,
   });
 
   if (saveResult.error || !saveResult.data) {

@@ -5,6 +5,7 @@ import {
 } from "./orderPayments";
 
 type ReceiptItem = {
+  options?: Record<string, string> | null;
   name?: string | null;
   price?: number | null;
   quantity?: number | null;
@@ -364,7 +365,8 @@ function buildReceiptRows(order: OrderReceiptPayload): ReceiptTableRow[] {
     .map((item) => {
       const quantity = Math.max(1, Math.floor(Number(item.quantity ?? 1)));
       const unitPrice = Math.max(0, Number(item.price ?? 0));
-      const nameLines = wrapLine(item.name?.trim() || "Order item", 34);
+      const optionLabel = Object.entries(item.options ?? {}).map(([label, value]) => `${label}: ${value}`).join(" / ");
+      const nameLines = wrapLine([item.name?.trim() || "Order item", optionLabel].filter(Boolean).join(" - "), 34);
 
       return {
         amount: formatNairaAmount(quantity * unitPrice),

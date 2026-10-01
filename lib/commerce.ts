@@ -6,6 +6,7 @@ export interface StoreProduct {
   brand?: string;
   ageRange?: string;
   hasVariants?: boolean;
+  colourImages?: StoreProductImage[];
   images?: StoreProductImage[];
   variants?: StoreProductVariant[];
   id: number;
@@ -18,7 +19,8 @@ export interface StoreProduct {
   image: string;
   description: string;
   inStock: boolean;
-  /** Total units available when tracked; 0 means stock is not tracked. */
+  /** Remaining inventory; stockLimited explicitly enables tracking. */
+  stockLimited?: boolean;
   stockQuantity?: number;
   isFeatured: boolean;
   featuredSortOrder: number;
@@ -30,6 +32,7 @@ export interface StoreProductImage {
   thumbnailUrl?: string;
   isPrimary: boolean;
   sortOrder: number;
+  colourValue?: string;
 }
 
 export interface StoreProductVariant {
@@ -40,6 +43,7 @@ export interface StoreProductVariant {
   options?: Record<string, string>;
   sku?: string;
   priceOverride?: number;
+  stockLimited?: boolean;
   stockQuantity: number;
   inStock: boolean;
   images?: StoreProductImage[];
@@ -54,6 +58,7 @@ export interface ProductImageRecord {
   thumbnail_url?: string | null;
   is_primary?: boolean | null;
   sort_order?: number | null;
+  colour_value?: string | null;
 }
 
 export interface ProductVariantRecord {
@@ -63,6 +68,7 @@ export interface ProductVariantRecord {
   options?: Record<string, unknown> | null;
   sku?: string | null;
   price_override?: number | null;
+  stock_limited?: boolean | null;
   stock_quantity?: number | null;
   in_stock?: boolean | null;
   variant_images?: ProductImageRecord[] | null;
@@ -83,9 +89,11 @@ export interface ProductRecord {
   image?: string | null;
   description: string;
   in_stock: boolean;
+  stock_limited?: boolean | null;
   stock_quantity?: number | null;
   is_featured?: boolean | null;
   featured_sort_order?: number | null;
+  colour_images?: ProductImageRecord[] | null;
   product_images?: ProductImageRecord[] | null;
   product_variants?: ProductVariantRecord[] | null;
   created_at?: string;
@@ -93,7 +101,7 @@ export interface ProductRecord {
 
 /** Fields required by product cards, deals, registries, and cart summaries. */
 export const PRODUCT_LIST_SELECT =
-  "id,name,slug,price,cost_price,selling_price,category,image,description,in_stock,stock_quantity,is_featured,featured_sort_order,created_at,has_variants";
+  "id,name,slug,price,cost_price,selling_price,category,image,description,in_stock,stock_limited,stock_quantity,is_featured,featured_sort_order,created_at,has_variants";
   
 export const SEED_PRODUCTS: StoreProduct[] = [
   {
@@ -365,8 +373,9 @@ export function mapProductRecord(record: ProductRecord): StoreProduct {
               variant.price_override === null || variant.price_override === undefined
                 ? undefined
                 : Number(variant.price_override),
+            stockLimited: Boolean(variant.stock_limited),
             stockQuantity: Math.max(0, Math.floor(Number(variant.stock_quantity ?? 0))),
-            inStock: Boolean(variant.in_stock),
+            inStock: Boolean(variant.in_stock) && (!variant.stock_limited || Number(variant.stock_quantity) > 0),
             images: variantImages,
             imageUrl: variantImages[0]?.url,
             imageThumbnailUrl: variantImages[0]?.thumbnailUrl,
@@ -382,6 +391,10 @@ export function mapProductRecord(record: ProductRecord): StoreProduct {
     hasVariants: Boolean(record.has_variants),
     id: Number(record.id),
     images,
+    colourImages: (record.colour_images ?? []).map(image => ({
+      id: image.id, url: image.url, thumbnailUrl: image.thumbnail_url ?? undefined,
+      isPrimary: false, sortOrder: Number(image.sort_order ?? 0), colourValue: image.colour_value ?? undefined,
+    })).sort((a, b) => a.sortOrder - b.sortOrder),
     name: record.name,
     slug: record.slug?.trim() || createProductSlug(record.name) || `product-${record.id}`,
     price: sellingPrice,
@@ -392,7 +405,8 @@ export function mapProductRecord(record: ProductRecord): StoreProduct {
       ? getLegacyProductImageFallbackUrl(Number(record.id))
       : image,
     description: record.description,
-    inStock: Boolean(record.in_stock),
+    inStock: Boolean(record.in_stock) && (Boolean(record.has_variants) || !record.stock_limited || Number(record.stock_quantity) > 0),
+    stockLimited: Boolean(record.stock_limited),
     stockQuantity: Math.max(0, Math.floor(Number(record.stock_quantity ?? 0))),
     isFeatured: Boolean(record.is_featured),
     featuredSortOrder: Number(record.featured_sort_order ?? 0),

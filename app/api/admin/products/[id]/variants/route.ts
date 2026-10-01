@@ -21,6 +21,7 @@ type VariantInput = {
   size?: unknown;
   sku?: unknown;
   stockQuantity?: unknown;
+  stockLimited?: unknown;
 };
 
 type SaveVariantsPayload = {
@@ -38,6 +39,7 @@ type ProductVariantRow = {
   size: string | null;
   sku: string | null;
   stock_quantity: number;
+  stock_limited: boolean;
 };
 
 type NormalizedVariant = {
@@ -49,6 +51,7 @@ type NormalizedVariant = {
   size: string | null;
   sku: string | null;
   stock_quantity: number;
+  stock_limited: boolean;
 };
 
 function getProductId(value: string) {
@@ -88,8 +91,8 @@ function normalizePrice(value: unknown) {
 }
 
 function normalizeStockQuantity(value: unknown) {
-  const quantity = Math.floor(Number(value));
-  return Number.isFinite(quantity) && quantity >= 0 ? quantity : null;
+  const quantity = Number(value);
+  return Number.isSafeInteger(quantity) && quantity >= 0 ? quantity : null;
 }
 
 function isMissingVariantsTable(error: { code?: string } | null) {
@@ -150,7 +153,7 @@ async function readProductVariants(
 ) {
   return client
     .from("product_variants")
-    .select("id, size, color, options, sku, price_override, stock_quantity, in_stock")
+    .select("id, size, color, options, sku, price_override, stock_quantity, stock_limited, in_stock")
     .eq("product_id", productId)
     .order("created_at", { ascending: true });
 }
@@ -192,6 +195,7 @@ export async function PUT(request: Request, context: RouteProps) {
   const hasVariants = payload?.hasVariants === true;
   const deleteExistingVariants = payload?.deleteExistingVariants === true;
   const rawVariants = Array.isArray(payload?.variants) ? payload.variants : [];
+  if (rawVariants.length > 512) return NextResponse.json({ message: "Use no more than 512 combinations per product." }, { status: 400 });
   const normalizedVariants: NormalizedVariant[] = [];
   for (const [index, rawVariant] of rawVariants.entries()) {
     const variant = rawVariant as VariantInput;
@@ -223,6 +227,7 @@ export async function PUT(request: Request, context: RouteProps) {
       size,
       sku: normalizeText(variant.sku),
       stock_quantity: stockQuantity,
+      stock_limited: variant.stockLimited === true,
     });
   }
 
@@ -233,6 +238,11 @@ export async function PUT(request: Request, context: RouteProps) {
     );
   }
 
+  const expectedLabels = Object.keys(normalizedVariants[0]?.options ?? {}).sort();
+  const canonicalLabels = expectedLabels.map(label => label.toLowerCase() === "color" ? "colour" : label.toLowerCase());
+  if (hasVariants && (!expectedLabels.length || new Set(canonicalLabels).size !== expectedLabels.length || normalizedVariants.some(variant => JSON.stringify(Object.keys(variant.options).sort()) !== JSON.stringify(expectedLabels)))) {
+    return NextResponse.json({ message: "Every combination must include the same uniquely named options." }, { status: 400 });
+  }
   const combinationKeys = new Set<string>();
   for (const variant of normalizedVariants) {
     const combinationKey = JSON.stringify(Object.entries(variant.options).sort(([left], [right]) => left.localeCompare(right)));
@@ -328,6 +338,7 @@ export async function PUT(request: Request, context: RouteProps) {
         size: variant.size,
         sku: variant.sku,
         stock_quantity: variant.stock_quantity,
+        stock_limited: variant.stock_limited,
       };
       const isExisting = Boolean(variant.id && existingIds.has(variant.id));
       const saveResult = isExisting

@@ -16,7 +16,7 @@ export interface HomeDealRecord {
   sort_order: number;
   created_at?: string;
   /** Embedded hidden product row that backs the deal. */
-  products?: { name?: string | null; stock_quantity?: number | null } | null;
+  products?: { name?: string | null; stock_limited?: boolean | null; stock_quantity?: number | null } | null;
 }
 
 export interface CollectionRecord {

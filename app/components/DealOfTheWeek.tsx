@@ -1,5 +1,7 @@
 "use client";
 
+import { getStockLimit } from "../../lib/productOptions";
+
 import { useEffect, useMemo, useState } from "react";
 import { Clock, ShoppingCart, Zap } from "lucide-react";
 import { Product } from "./ProductCard";
@@ -150,10 +152,7 @@ export function DealOfTheWeek({
                   price: deal.salePrice,
                 };
 
-                const availableStock = Math.max(
-                  0,
-                  Math.floor(Number(deal.product.stockQuantity ?? 0)),
-                );
+                const availableStock = getStockLimit(deal.product);
 
                 const compareAtPrice = Math.max(
                   deal.compareAtPrice,
@@ -277,9 +276,9 @@ export function DealOfTheWeek({
                           </div>
 
                           <p className="text-center text-[10px] text-gray-500">
-                            {availableStock > 0
+                            {availableStock !== undefined
                               ? `Only ${availableStock} left`
-                              : "Limited stock"}
+                              : "In stock"}
                           </p>
                         </div>
                       </div>
