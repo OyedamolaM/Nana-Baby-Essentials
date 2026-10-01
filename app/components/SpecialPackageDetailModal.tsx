@@ -1,5 +1,7 @@
 "use client";
 
+import { getStockLimit, isItemAvailable } from "../../lib/productOptions";
+
 import { useMemo, useState } from "react";
 import { ExternalLink, Gift, ShoppingCart } from "lucide-react";
 
@@ -37,10 +39,7 @@ export function SpecialPackageDetailModal({
     activeImageIndex,
     Math.max(galleryImages.length - 1, 0),
   );
-  const availableStock = Math.max(
-    0,
-    Math.floor(Number(pkg?.product.stockQuantity ?? 0)),
-  );
+  const availableStock = pkg ? getStockLimit(pkg.product) : undefined;
 
   const detailItems = useMemo(() => splitPackageDetails(pkg?.details), [pkg?.details]);
 
@@ -130,21 +129,21 @@ export function SpecialPackageDetailModal({
                     variant="outline"
                     size="sm"
                     onClick={() => setQuantity((current) => current + 1)}
-                    disabled={availableStock > 0 && quantity >= availableStock}
+                    disabled={availableStock !== undefined && quantity >= availableStock}
                   >
                     +
                   </Button>
                 </div>
               </div>
 
-              {availableStock > 0 ? (
+              {availableStock !== undefined ? (
                 <p className="text-sm font-medium text-pink-700">
                   Only {availableStock} left
                 </p>
               ) : null}
 
               <div className="flex flex-col gap-2 sm:flex-row">
-                <Button type="button" className="flex-1" onClick={() => onAction(pkg, quantity)}>
+                <Button type="button" className="flex-1" disabled={!isItemAvailable(pkg.product)} onClick={() => onAction(pkg, availableStock === undefined ? quantity : Math.min(quantity, availableStock))}>
                   {actionLabel.toLowerCase().includes("registry") ? (
                     <Gift className="mr-2 h-4 w-4" />
                   ) : (

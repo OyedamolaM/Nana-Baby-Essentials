@@ -1,5 +1,7 @@
 "use client";
 
+import { getSelectionGallery, getSelectedColour, getStockLimit, isColourOption, isItemAvailable } from "../../lib/productOptions";
+
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, Heart, Share2, ShoppingCart } from "lucide-react";
@@ -55,6 +57,7 @@ export function ProductDetailModal({
     return (base.length > 0 ? base : fetchedGalleryImages).filter((image) => image.url.trim());
   }, [product?.images, fetchedGalleryImages]);
 
+  const [fetchedColourImages, setFetchedColourImages] = useState<import("../../lib/commerce").StoreProductImage[]>([]);
   const [fetchedVariants, setFetchedVariants] = useState<StoreProductVariant[]>([]);
   const [selectedOptions, setSelectedOptions] = useState<Record<string, string>>({});
 
@@ -63,19 +66,19 @@ export function ProductDetailModal({
     return base.length > 0 ? base : fetchedVariants;
   }, [product?.variants, fetchedVariants]);
   const productVariants = useMemo(
-    () => allProductVariants.filter((variant) => variant.inStock),
+    () => allProductVariants.filter(isItemAvailable),
     [allProductVariants],
   );
   const hasVariantChoices = Boolean(product?.hasVariants);
   const optionGroups = useMemo(() => {
     const groups = new Map<string, string[]>();
-    for (const variant of productVariants) {
+    for (const variant of allProductVariants) {
       for (const [label, value] of Object.entries(getVariantOptions(variant))) {
         groups.set(label, Array.from(new Set([...(groups.get(label) ?? []), value])));
       }
     }
     return Array.from(groups.entries());
-  }, [productVariants]);
+  }, [allProductVariants]);
 
   const selectedVariant = useMemo(() => {
     if (!hasVariantChoices || productVariants.length === 0) {
@@ -93,14 +96,11 @@ export function ProductDetailModal({
   }, [hasVariantChoices, optionGroups, productVariants, selectedOptions]);
 
   const needsSelection = hasVariantChoices && !selectedVariant;
-  const selectedVariantInStock = Boolean(selectedVariant && selectedVariant.inStock);
+  const selectedVariantInStock = Boolean(selectedVariant && isItemAvailable(selectedVariant) && product?.inStock);
 
-  // Slide through the selected variant's own photos when it has any;
-  // otherwise fall back to the product's general gallery.
-  const galleryImages =
-    selectedVariant?.images && selectedVariant.images.length > 0
-      ? selectedVariant.images
-      : baseGalleryImages;
+  const selectedColour = getSelectedColour(selectedOptions);
+  const selectionGallery = getSelectionGallery(product?.colourImages?.length ? product.colourImages : fetchedColourImages, selectedOptions, selectedVariant);
+  const galleryImages = selectionGallery.length ? selectionGallery : baseGalleryImages;
 
   useEffect(() => {
     const resetIndex = window.setTimeout(() => {
@@ -110,7 +110,7 @@ export function ProductDetailModal({
     return () => {
       window.clearTimeout(resetIndex);
     };
-  }, [selectedVariant?.id]);
+  }, [selectedVariant?.id, selectedColour]);
 
   const isOptionAvailable = (label: string, value: string) =>
     productVariants.some((variant) => {
@@ -126,20 +126,11 @@ export function ProductDetailModal({
       );
     });
 
-  const getVariantImageForOption = (label: string, value: string) =>
-    productVariants.find((variant) => {
-      const options = getVariantOptions(variant);
-      return (
-        options[label] === value &&
-        Boolean(variant.imageUrl) &&
-        Object.entries(selectedOptions).every(
-          ([selectedLabel, selectedValue]) =>
-            selectedLabel === label ||
-            !selectedValue ||
-            options[selectedLabel] === selectedValue,
-        )
-      );
-    })?.imageUrl;
+  const getVariantImageForOption = (label: string, value: string) => {
+    if (!isColourOption(label)) return undefined;
+    return (product?.colourImages?.length ? product.colourImages : fetchedColourImages).find(image => image.colourValue === value)?.url
+      ?? productVariants.find(variant => getSelectedColour(getVariantOptions(variant)) === value && variant.imageUrl)?.imageUrl;
+  };
 
   const chooseOption = (label: string, value: string) => {
     setSelectedOptions((current) => {
@@ -178,10 +169,8 @@ export function ProductDetailModal({
     ? selectedVariantInStock
     : needsSelection
       ? false
-      : Boolean(product?.inStock);
-  const availableStock = selectedVariant
-    ? selectedVariant.stockQuantity
-    : Math.max(0, Math.floor(Number(product?.stockQuantity ?? 0)));
+      : Boolean(product && isItemAvailable(product));
+  const availableStock = selectedVariant ? getStockLimit(selectedVariant) : product ? getStockLimit(product) : undefined;
 
 
   const showImage = (nextIndex: number) => {
@@ -206,7 +195,7 @@ export function ProductDetailModal({
       const { data, error } = await supabase
         .from("product_variants")
         .select(
-           "id, size, color, options, sku, price_override, stock_quantity, in_stock, variant_images:product_images(id, url, thumbnail_url, sort_order, is_primary)",
+           "id, size, color, options, sku, price_override, stock_quantity, stock_limited, in_stock, variant_images:product_images(id, url, thumbnail_url, sort_order, is_primary)",
         )
         .eq("product_id", product.id)
         .order("created_at", { ascending: true });
@@ -238,8 +227,9 @@ export function ProductDetailModal({
               row.price_override === null || row.price_override === undefined
                 ? undefined
                 : Number(row.price_override),
+            stockLimited: Boolean(row.stock_limited),
             stockQuantity: Math.max(0, Math.floor(Number(row.stock_quantity ?? 0))),
-            inStock: Boolean(row.in_stock),
+            inStock: Boolean(row.in_stock) && (!row.stock_limited || Number(row.stock_quantity) > 0),
             images: variantImages,
             imageUrl: variantImages[0]?.url,
             imageThumbnailUrl: variantImages[0]?.thumbnailUrl,
@@ -260,26 +250,26 @@ export function ProductDetailModal({
       return;
     }
 
-    if (product.images && product.images.length > 0) {
-      return;
-    }
-
     let isMounted = true;
 
     const loadGalleryImages = async () => {
       const { data, error } = await supabase
         .from("product_images")
-        .select("id, url, thumbnail_url, is_primary, sort_order")
+        .select("id, url, thumbnail_url, is_primary, sort_order, colour_value, is_variant_only")
         .eq("product_id", product.id)
-        .eq("is_variant_only", false)
+        .is("variant_id", null)
         .order("sort_order", { ascending: true });
 
       if (!isMounted || error || !data) {
         return;
       }
 
+      setFetchedColourImages(data.filter(row => row.colour_value).map(row => ({
+        id: String(row.id), url: row.url, thumbnailUrl: row.thumbnail_url ?? undefined,
+        isPrimary: false, sortOrder: Number(row.sort_order ?? 0), colourValue: row.colour_value ?? undefined,
+      })));
       setFetchedGalleryImages(
-        data.map((row) => ({
+        data.filter(row => !row.is_variant_only).map((row) => ({
           id: String(row.id),
           url: row.url,
           thumbnailUrl: row.thumbnail_url ?? undefined,
@@ -304,6 +294,8 @@ export function ProductDetailModal({
     const resetIndex = window.setTimeout(() => {
       setSelectedImageIndex(0);
       setSelectedOptions({});
+      setQuantity(1);
+      setFetchedColourImages([]);
     }, 0);
 
     return () => {
@@ -317,7 +309,7 @@ export function ProductDetailModal({
 
   const handleAddToCart = () => {
     if (needsSelection) {
-      toast.error("Finish selecting an option, or clear your selection to add the standard product.");
+      toast.error("Choose a value for every option before adding this product.");
       return;
     }
 
@@ -330,7 +322,7 @@ export function ProductDetailModal({
       return;
     }
 
-    onAddToCart(product, quantity, selectedVariant);
+    onAddToCart(product, availableStock === undefined ? quantity : Math.min(quantity, availableStock), selectedVariant);
     onClose();
   };
 
@@ -601,13 +593,13 @@ export function ProductDetailModal({
                     variant="outline"
                     size="sm"
                     onClick={() => setQuantity((current) => current + 1)}
-                    disabled={availableStock > 0 && quantity >= availableStock}
+                    disabled={availableStock !== undefined && quantity >= availableStock}
                   >
                     +
                   </Button>
                 </div>
 
-                {availableStock > 0 ? (
+                {availableStock !== undefined ? (
                   <span className="text-xs font-medium text-pink-700">
                     Only {availableStock} left
                   </span>

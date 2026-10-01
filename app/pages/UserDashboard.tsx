@@ -85,6 +85,7 @@ import { Textarea } from "../components/ui/textarea";
 import { cn } from "../components/ui/utils";
 
 type OrderItem = {
+  options?: Record<string, string> | null;
   name: string;
   quantity: number;
   price: number;
@@ -1149,6 +1150,11 @@ export function UserDashboard({
                 >
                   <span>
                     {item.name} x {item.quantity}
+                    {item.options ? (
+                      <span className="block text-xs text-gray-500">
+                        {Object.entries(item.options).map(([label, value]) => `${label}: ${value}`).join(" ? ")}
+                      </span>
+                    ) : null}
                   </span>
                   <span>{formatNairaAmount(item.price * item.quantity)}</span>
                 </div>

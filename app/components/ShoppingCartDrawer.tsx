@@ -1,4 +1,6 @@
-'use client'
+"use client";
+
+import { getStockLimit } from "../../lib/productOptions";
 
 import { Trash2, ShoppingBag } from "lucide-react";
 import { Button } from "./ui/button";
@@ -66,10 +68,7 @@ export function ShoppingCartDrawer({
             <div className="space-y-4">
               {cartItems.map((item) => {
                 const itemKey = getStoreCartItemKey(item);
-                const stockCap = Math.max(
-                  0,
-                  Math.floor(Number(item.stockQuantity ?? 0)),
-                );
+                const stockCap = getStockLimit(item);
                 const optionLabel = item.variantOptions
                   ? Object.entries(item.variantOptions).map(([label, value]) => `${label}: ${value}`).join(" · ")
                   : [item.size, item.color].filter(Boolean).join(" / ");
@@ -95,7 +94,7 @@ export function ShoppingCartDrawer({
                     {optionLabel ? (
                       <p className="mt-0.5 text-xs text-gray-500">{optionLabel}</p>
                     ) : null}
-                    {stockCap > 0 ? (
+                    {!item.inStock ? <p className="text-xs font-medium text-red-600">Currently unavailable</p> : stockCap !== undefined ? (
                       <p className="mt-0.5 text-xs font-medium text-pink-700">
                         Only {stockCap} left
                       </p>
@@ -135,7 +134,7 @@ export function ShoppingCartDrawer({
                         size="sm"
                         type="button"
                         onClick={() => onUpdateQuantity(itemKey, item.quantity + 1)}
-                        disabled={stockCap > 0 && item.quantity >= stockCap}
+                        disabled={!item.inStock || (stockCap !== undefined && item.quantity >= stockCap)}
                         className="h-7 w-7 p-0"
                       >
                         +
