@@ -305,6 +305,17 @@ export function ProductDetailModal({
     };
   }, [product?.id]);
 
+  useEffect(() => {
+    if (open) return;
+    const resetConfirmation = window.setTimeout(() => setAddedSelection(""), 0);
+    return () => window.clearTimeout(resetConfirmation);
+  }, [open]);
+
+  const handleClose = () => {
+    setAddedSelection("");
+    onClose();
+  };
+
   if (!product) {
     return null;
   }
@@ -336,7 +347,7 @@ export function ProductDetailModal({
       setAddedSelection(`${addedQuantity} added to cart - ${label}`);
       setQuantity(1);
     } else {
-      onClose();
+      handleClose();
     }
   };
 
@@ -411,15 +422,15 @@ export function ProductDetailModal({
   };
 
   return (
-    <Dialog open={open} onOpenChange={(nextOpen) => !nextOpen && onClose()}>
-      <DialogContent className="max-h-[92vh] overflow-y-auto max-w-[calc(100%-1rem)] p-4 sm:max-w-4xl sm:p-6 md:max-w-5xl">
+    <Dialog open={open} onOpenChange={(nextOpen) => !nextOpen && handleClose()}>
+      <DialogContent className="max-h-[92vh] min-w-0 overflow-x-hidden overflow-y-auto max-w-[calc(100%-1rem)] p-4 sm:max-w-4xl sm:p-6 md:max-w-5xl">
         <DialogHeader className="sr-only">
           <DialogTitle>{product.name}</DialogTitle>
         </DialogHeader>
 
         <div className="grid gap-5 min-[460px]:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] min-[460px]:gap-5 md:grid-cols-2 md:gap-8">
           {/* Left Column */}
-          <div className="space-y-3">
+          <div className="min-w-0 space-y-3">
             <div
               className="relative flex aspect-[4/3] items-center justify-center overflow-hidden rounded-lg bg-gray-50 min-[460px]:aspect-square"
               onTouchStart={(event) => {
@@ -471,7 +482,7 @@ export function ProductDetailModal({
             </div>
 
             {galleryImages.length > 1 && (
-              <div className="flex gap-2 overflow-x-auto pb-1">
+              <div className="flex flex-wrap gap-2 pb-1">
                 {galleryImages.map((image, index) => (
                   <button
                     key={image.id}
@@ -496,7 +507,7 @@ export function ProductDetailModal({
           </div>
 
           {/* Right Column */}
-          <div className="space-y-5 min-[460px]:space-y-4">
+          <div className="min-w-0 space-y-5 [overflow-wrap:anywhere] min-[460px]:space-y-4">
             {/* Product Info */}
             <div className="space-y-3">
               <div className="space-y-3">
@@ -546,7 +557,7 @@ export function ProductDetailModal({
                               onClick={() => chooseOption(label, value)}
                               aria-label={value}
                               disabled={!isAvailable}
-                              className={`flex flex-col items-center gap-1 rounded-lg border-2 p-1 disabled:cursor-not-allowed disabled:opacity-40 ${
+                              className={`flex min-w-0 max-w-full flex-col items-center gap-1 rounded-lg border-2 p-1 disabled:cursor-not-allowed disabled:opacity-40 ${
                                 isSelected ? "border-pink-500" : "border-transparent"
                               }`}
                             >
@@ -557,7 +568,7 @@ export function ProductDetailModal({
                                   className="h-full w-full object-cover"
                                 />
                               </span>
-                              <span className="text-xs text-gray-700">{value}</span>
+                              <span className="max-w-full whitespace-normal text-xs text-gray-700">{value}</span>
                             </button>
                           );
                         }
@@ -568,6 +579,7 @@ export function ProductDetailModal({
                             type="button"
                             variant={isSelected ? "default" : "outline"}
                             size="sm"
+                            className="h-auto min-h-8 min-w-0 max-w-full whitespace-normal"
                             disabled={!isAvailable}
                             onClick={() => chooseOption(label, value)}
                           >
@@ -580,7 +592,7 @@ export function ProductDetailModal({
                 );
               })}
 
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <span className="text-sm font-medium text-gray-700">
                   Quantity
                 </span>
@@ -626,13 +638,13 @@ export function ProductDetailModal({
               <div className="space-y-2 rounded-lg bg-green-50 p-3 text-sm text-green-800">
                 <p role="status">{addedSelection}</p>
                 <p>Choose another combination above and add it, or finish selecting.</p>
-                <Button type="button" variant="outline" onClick={onClose}>Done selecting</Button>
+                <Button type="button" variant="outline" onClick={handleClose}>Done selecting</Button>
               </div>
             ) : null}
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               <Button
                 type="button"
-                className="flex-1"
+                className="h-auto min-h-9 min-w-0 flex-1 whitespace-normal"
                 onClick={handleAddToCart}
                 disabled={!canAddToCart}
               >
@@ -680,14 +692,14 @@ export function ProductDetailModal({
              {/* Product Details */}
              {!compact ? <>
               <div className="space-y-2 border-t pt-4">
-              <div className="flex justify-between text-sm">
+              <div className="flex flex-wrap justify-between gap-2 text-sm">
                 <span className="text-gray-600">SKU:</span>
                 <span className="font-semibold">
                   BB-{product.id.toString().padStart(6, "0")}
                 </span>
               </div>
 
-              <div className="flex justify-between text-sm">
+              <div className="flex flex-wrap justify-between gap-2 text-sm">
                 <span className="text-gray-600">Availability:</span>
                 <span className={canAddToCart ? "text-green-600" : "text-red-600"}>
                   {selectedVariant
@@ -702,7 +714,7 @@ export function ProductDetailModal({
                 </span>
               </div>
 
-              <div className="flex justify-between text-sm">
+              <div className="flex flex-wrap justify-between gap-2 text-sm">
                 <span className="text-gray-600">Category:</span>
                 <span className="font-semibold">{product.category}</span>
               </div>
