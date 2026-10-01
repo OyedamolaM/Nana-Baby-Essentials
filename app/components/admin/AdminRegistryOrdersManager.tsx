@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { CheckCircle2, Edit, Gift, PackageCheck, Plus, RotateCcw, Trash2, Truck } from "lucide-react";
+import { CheckCircle2, Edit, Gift, Plus, Trash2, Truck } from "lucide-react";
 import { toast } from "sonner";
 
 import { formatNairaAmount } from "../../../lib/commerce";
@@ -18,6 +18,8 @@ import {
   type ShippingAddress,
 } from "../../../lib/userProfile";
 import { Button } from "../ui/button";
+import { RegistryGiftBalance } from "../registry/RegistryGiftBalance";
+import { RegistryDeliveryCheckout } from "../registry/RegistryDeliveryCheckout";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
 import {
   Dialog,
@@ -522,18 +524,8 @@ export function AdminRegistryOrdersManager({
                     </p>
                   </div>
                   <div className="flex flex-wrap gap-2">
-                    {fulfillmentStatus === "collecting" ? (
-                      <Button
-                        size="sm"
-                        onClick={() =>
-                          void handleRegistryFulfillment(registry, "ready_for_shipping")
-                        }
-                        disabled={savingRegistryId === registry.id}
-                      >
-                        <PackageCheck className="mr-2 h-4 w-4" />
-                        Mark Ready
-                      </Button>
-                    ) : null}
+                    <RegistryGiftBalance registryId={registry.id} items={registryItemsByRegistry[registry.id] ?? []} onUpdated={onReload} compact disabled={fulfillmentStatus !== "collecting" || registry.status === "closed"} />
+                    <RegistryDeliveryCheckout registryId={registry.id} onUpdated={onReload} />
                     {fulfillmentStatus === "ready_for_shipping" ? (
                       <>
                         <Button
@@ -543,15 +535,6 @@ export function AdminRegistryOrdersManager({
                         >
                           <Truck className="mr-2 h-4 w-4" />
                           Mark Shipped
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => void handleRegistryFulfillment(registry, "collecting")}
-                          disabled={savingRegistryId === registry.id}
-                        >
-                          <RotateCcw className="mr-2 h-4 w-4" />
-                          Continue Collecting
                         </Button>
                       </>
                     ) : null}

@@ -61,6 +61,18 @@ export async function POST(request: Request) {
     return new NextResponse("Payment verification failed", { status: 502 });
   }
 
+  const deliveryId = getPaystackMetadataValue(payment.metadata, "registry_delivery_id");
+  if (deliveryId) {
+    if (payment.reference !== reference || payment.status !== "success" || payment.currency !== "NGN") return NextResponse.json({ received: true });
+    const client = createSupabaseServiceRoleClient();
+    if (!client) return new NextResponse("Server configuration error", { status: 500 });
+    const { data: delivery, error } = await client.from("registry_delivery_orders").select("id,registry_id,total,payment_reference").eq("id", deliveryId).eq("payment_reference", reference).maybeSingle();
+    if (error) return new NextResponse("Delivery lookup failed", { status: 500 });
+    if (!delivery || !matchesPaystackOrderAmount(payment, delivery.total) || getPaystackMetadataValue(payment.metadata, "registry_id") !== delivery.registry_id) return NextResponse.json({ received: true });
+    const completed = await client.rpc("complete_registry_delivery_payment", { p_reference: reference, p_paid_amount_kobo: Math.round(Number(delivery.total) * 100) });
+    if (completed.error) return new NextResponse("Delivery confirmation failed", { status: 500 });
+    return NextResponse.json({ received: true });
+  }
   const orderId = getPaystackMetadataValue(payment.metadata, "order_id");
   if (
     payment.reference !== reference ||

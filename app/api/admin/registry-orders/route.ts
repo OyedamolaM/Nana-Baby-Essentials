@@ -51,7 +51,7 @@ async function rebuildRegistryItems(serviceRoleClient: ReturnType<typeof createS
   }
 
   for (const registryItemId of Array.from(new Set(registryItemIds.filter(Boolean)))) {
-    await serviceRoleClient.rpc("rebuild_registry_item_funding", {
+    await serviceRoleClient.rpc("rebuild_registry_cash_item_funding", {
       p_registry_item_id: registryItemId,
     });
   }

@@ -31,8 +31,8 @@ export async function POST(request: Request) {
   }
   const appliesToStore = body?.appliesToStore === undefined ? true : body.appliesToStore === true;
   const appliesToRegistry = body?.appliesToRegistry === true;
-  if ((!appliesToStore && !appliesToRegistry) || (promoType !== "products" && appliesToRegistry)) {
-    return NextResponse.json({ message: "Enable at least one checkout. Delivery promos apply to store checkout; registry gifts do not charge a delivery fee." }, { status: 400 });
+  if (!appliesToStore && !appliesToRegistry) {
+    return NextResponse.json({ message: "Enable at least one checkout." }, { status: 400 });
   }
   const minimumInput = body?.minimumPurchaseAmount;
   const minimumPurchaseAmount = minimumInput === undefined || minimumInput === null || minimumInput === "" ? 0 : Number(minimumInput);

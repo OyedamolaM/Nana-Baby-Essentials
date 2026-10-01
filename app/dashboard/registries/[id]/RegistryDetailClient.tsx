@@ -41,6 +41,8 @@ import { AuthModal } from "../../../components/auth/AuthModal";
 import { RegistryCartModal } from "../../../components/registry/RegistryCartModal";
 import { RegistryCreateModal } from "../../../components/registry/RegistryCreateModal";
 import { RegistryHeader } from "../../../components/registry/RegistryHeader";
+import { RegistryGiftBalance } from "../../../components/registry/RegistryGiftBalance";
+import { RegistryDeliveryCheckout } from "../../../components/registry/RegistryDeliveryCheckout";
 import { Button } from "../../../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../../../components/ui/card";
 import {
@@ -745,6 +747,8 @@ export function RegistryDetailClient({ registryId }: { registryId: string }) {
               </Card>
             </div>
 
+            <RegistryGiftBalance registryId={registry.id} items={registryItems} onUpdated={loadRegistry} disabled={registryIsClosed} />
+            <RegistryDeliveryCheckout registryId={registry.id} onUpdated={loadRegistry} />
             <Tabs defaultValue="items" className="space-y-4">
               <TabsList className="grid w-full grid-cols-2">
                 <TabsTrigger value="items" className="cursor-pointer">

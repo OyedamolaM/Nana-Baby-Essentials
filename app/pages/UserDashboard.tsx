@@ -1,4 +1,5 @@
 "use client";
+import { RegistryDeliveryCheckout } from "../components/registry/RegistryDeliveryCheckout";
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -1726,21 +1727,9 @@ export function UserDashboard({
                                  Edit Registry
                                </Link>
                              </Button>
+                             <RegistryDeliveryCheckout registryId={registry.id} onUpdated={loadRegistries} disabled={savingRegistryStatus} />
                              {(registry.fulfillment_status ?? "collecting") === "collecting" ? (
                                <>
-                                 <Button
-                                   size="sm"
-                                   className="w-full px-2 text-xs sm:w-auto sm:text-sm"
-                                   onClick={() =>
-                                     void handleRegistryFulfillment(
-                                       registry,
-                                       "ready_for_shipping",
-                                     )
-                                   }
-                                   disabled={savingRegistryStatus}
-                                 >
-                                   Ready for Shipping
-                                 </Button>
                                  {registry.status === "closed" ? (
                                    <Button
                                      variant="outline"
@@ -1763,19 +1752,6 @@ export function UserDashboard({
                                    </Button>
                                  )}
                                </>
-                             ) : null}
-                             {registry.fulfillment_status === "ready_for_shipping" ? (
-                               <Button
-                                 variant="outline"
-                                 size="sm"
-                                 className="w-full px-2 text-xs sm:w-auto sm:text-sm"
-                                 onClick={() =>
-                                   void handleRegistryFulfillment(registry, "collecting")
-                                 }
-                                 disabled={savingRegistryStatus}
-                               >
-                                 Continue Collecting
-                               </Button>
                              ) : null}
                              {registry.fulfillment_status === "shipped" ? (
                                <Button

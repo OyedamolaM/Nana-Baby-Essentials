@@ -32,8 +32,18 @@ async function main() {
       insert into user_profiles (id,phone,full_name,email) values (auth.uid(),'123','Customer','customer@example.test');
       insert into shipping_tiers values ('lagos_01','Lagos delivery',100,true);
       insert into products(id,name,price,stock_quantity,product_kind) values (1,'Toy',10,0,'standard'), (2,'Gift Bundle',20,3,'special_package'), (3,'Swoop Package',30,2,'special_package');
+      alter table user_profiles add column is_admin boolean default false;
+      alter table shipping_tiers add column fulfillment_type text default 'delivery';
+      alter table shipping_tiers add column sort_order integer default 0;
+      alter table registries add column fulfillment_status text default 'collecting';
+      alter table registries add column closed_at timestamptz;
+      alter table registries add column closed_note text;
+      alter table registries add column ready_for_shipping_at timestamptz;
+      alter table registries add column fulfillment_updated_at timestamptz;
+      alter table registries add column fulfillment_updated_by uuid;
+      create function rebuild_registry_item_funding(p_registry_id uuid) returns void language plpgsql as $$ begin return; end; $$;
     `);
-    for (const name of ["20260510_registry_partial_checkout_payments.sql", "20260805_registry_shipping_address_security.sql", "20261002_colour_galleries_and_explicit_stock_limits.sql", "20261003_promos_and_package_purchase_limits.sql", "20261004_promo_minimum_purchase_amount.sql", "20261005_promo_delivery_caps_and_registry.sql"]) {
+    for (const name of ["20260510_registry_partial_checkout_payments.sql", "20260805_registry_shipping_address_security.sql", "20261002_colour_galleries_and_explicit_stock_limits.sql", "20261003_promos_and_package_purchase_limits.sql", "20261004_promo_minimum_purchase_amount.sql", "20261005_promo_delivery_caps_and_registry.sql", "20261006_registry_gift_balance.sql", "20261007_registry_delivery_checkout.sql"]) {
       await db.exec(fs.readFileSync(path.join(__dirname, "../supabase/migrations", name), "utf8"));
     }
     await db.exec(`insert into store_promos(code,percentage,is_active,starts_at,ends_at) values
@@ -102,7 +112,7 @@ async function main() {
     }
     await db.exec("update store_promos set applies_to_registry=true where code='WELCOME10'");
     await db.exec(`update user_profiles set shipping_address='{"name":"Owner","phone":"123","address":"Street","city":"Lagos","state":"Lagos"}';
-      insert into registries values ('22222222-2222-4222-8222-222222222222',auth.uid(),'active');
+      insert into registries(id,user_id,status) values ('22222222-2222-4222-8222-222222222222',auth.uid(),'active');
       insert into registry_items(id,registry_id,product_id,requested_quantity,unit_price_snapshot) values
       ('33333333-3333-4333-8333-333333333333','22222222-2222-4222-8222-222222222222',1,1,500),
       ('44444444-4444-4444-8444-444444444444','22222222-2222-4222-8222-222222222222',1,1,500);`);
@@ -140,6 +150,7 @@ async function main() {
     assert.equal(Number(funded.funded_amount),500000);
     assert.equal(funded.purchased_quantity,1);
     await db.exec("select set_config('request.jwt.claim.role','authenticated',false)");
+    await require('./test-registry-balance-delivery.cjs')(db);
     await assert.rejects(create([{ product_id: 1, quantity: 1 }], "EXPIRED"), /invalid, inactive/);
     const legacy = (await db.query("select create_store_order('{}','{}','[{\"product_id\":1,\"quantity\":1}]','lagos_01') as id")).rows[0].id;
     assert.equal(Number((await db.query("select total from orders where id=$1", [legacy])).rows[0].total), 10100);
@@ -158,6 +169,8 @@ async function main() {
     await db.exec(fs.readFileSync(path.join(__dirname, "../supabase/migrations/20261003_promos_and_package_purchase_limits.sql"), "utf8"));
     await db.exec(fs.readFileSync(path.join(__dirname, "../supabase/migrations/20261004_promo_minimum_purchase_amount.sql"), "utf8"));
     await db.exec(fs.readFileSync(path.join(__dirname, "../supabase/migrations/20261005_promo_delivery_caps_and_registry.sql"), "utf8"));
+    await db.exec(fs.readFileSync(path.join(__dirname, "../supabase/migrations/20261006_registry_gift_balance.sql"), "utf8"));
+    await db.exec(fs.readFileSync(path.join(__dirname, "../supabase/migrations/20261007_registry_delivery_checkout.sql"), "utf8"));
     assert.equal((await promo("WELCOME10")).percentage, 10);
     await assert.rejects(promo("BIGSHOP", 499999.99), /requires at least/);
     console.log("Promo minimums, caps, delivery discounts, registry funding, deletion snapshots, trusted totals, payment completion, dates, access control and package purchase limits passed.");

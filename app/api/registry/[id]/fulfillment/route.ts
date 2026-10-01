@@ -6,11 +6,6 @@ import {
   createSupabaseServiceRoleClient,
   hasSupabaseServiceRoleEnv,
 } from "@/lib/supabaseServer";
-import {
-  hasSavedShippingAddress,
-  normalizeShippingAddress,
-  type ShippingAddress,
-} from "@/lib/userProfile";
 
 type FulfillmentStatus =
   | "collecting"
@@ -112,6 +107,10 @@ export async function PATCH(
       { status: 403 },
     );
   }
+  if (nextStatus === "shipped") {
+    const delivery = await adminClient.from("registry_delivery_orders").select("id").eq("registry_id", registry.id).eq("status", "paid").maybeSingle();
+    if (delivery.error || !delivery.data) return NextResponse.json({ message: "Registry delivery must be paid before dispatch." }, { status: 400 });
+  }
 
   const updatePayload: Record<string, unknown> = {
     fulfillment_status: nextStatus,
@@ -120,76 +119,9 @@ export async function PATCH(
   };
 
   if (nextStatus === "ready_for_shipping") {
-    const { data: paidOrders, error: paidOrderError } = await adminClient
-      .from("registry_orders")
-      .select("id")
-      .eq("registry_id", registry.id)
-      .eq("status", "paid");
-
-    if (paidOrderError) {
-      return NextResponse.json(
-        { message: paidOrderError.message || "Paid registry items could not be checked." },
-        { status: 400 },
-      );
-    }
-
-    const paidOrderIds =
-      ((paidOrders as Array<{ id: string }> | null) ?? []).map((order) => order.id);
-    const { count: paidItemCount, error: paidItemError } = paidOrderIds.length
-      ? await adminClient
-          .from("registry_order_items")
-          .select("id", { count: "exact", head: true })
-          .in("registry_order_id", paidOrderIds)
-          .not("registry_item_id", "is", null)
-      : { count: 0, error: null };
-
-    if (paidItemError) {
-      return NextResponse.json(
-        { message: paidItemError.message || "Paid registry items could not be checked." },
-        { status: 400 },
-      );
-    }
-
-    if (!paidItemCount) {
-      return NextResponse.json(
-        { message: "This registry has no paid item gifts ready for shipping." },
-        { status: 400 },
-      );
-    }
-
-    const { data: profileData, error: profileError } = await adminClient
-      .from("user_profiles")
-      .select("shipping_address")
-      .eq("id", registry.user_id)
-      .maybeSingle();
-    const shippingAddress = normalizeShippingAddress(
-      (profileData as { shipping_address?: Partial<ShippingAddress> | null } | null)
-        ?.shipping_address,
-    );
-
-    if (profileError || !hasSavedShippingAddress(shippingAddress)) {
-      return NextResponse.json(
-        {
-          message:
-            "The registry owner must save a complete shipping address before this registry is marked ready.",
-        },
-        { status: 400 },
-      );
-    }
-
-    const { error: orderAddressError } = await adminClient
-      .from("registry_orders")
-      .update({ shipping_address: shippingAddress })
-      .eq("registry_id", registry.id)
-      .eq("status", "paid");
-
-    if (orderAddressError) {
-      return NextResponse.json(
-        { message: orderAddressError.message || "Delivery details could not be prepared." },
-        { status: 400 },
-      );
-    }
-
+    const { data: delivery, error: deliveryError } = await adminClient.from("registry_delivery_orders")
+      .select("id").eq("registry_id", registry.id).eq("status", "paid").maybeSingle();
+    if (deliveryError || !delivery) return NextResponse.json({ message: "Pay the registry delivery fee before requesting shipment." }, { status: 400 });
     updatePayload.status = "closed";
     updatePayload.closed_at = new Date().toISOString();
     updatePayload.closed_note = "Registry marked ready for shipping.";

@@ -219,7 +219,7 @@ export function getRegistryItemTargetAmount(item: RegistryItem) {
 export function getRegistryItemFundedAmount(item: RegistryItem) {
   return Math.min(
     getRegistryItemTargetAmount(item),
-    Math.max(0, Math.round(item.fundedAmount)),
+    Math.max(0, Math.round(item.fundedAmount * 100) / 100),
   );
 }
 

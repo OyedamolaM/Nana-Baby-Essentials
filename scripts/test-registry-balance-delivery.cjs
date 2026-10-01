@@ -1,0 +1,98 @@
+/* eslint-disable @typescript-eslint/no-require-imports -- Regression fixture called by test-promo-checkout.cjs. */
+const assert=require('node:assert/strict');
+
+module.exports=async function testRegistryBalanceDelivery(db){
+  const registry='55555555-5555-4555-8555-555555555555';
+  const first='66666666-6666-4666-8666-666666666666';
+  const second='77777777-7777-4777-8777-777777777777';
+  const stranger='88888888-8888-4888-8888-888888888888';
+  const owner='11111111-1111-4111-8111-111111111111';
+  await db.exec("select set_config('request.jwt.claim.role','service_role',false)");
+  await db.query("insert into registries(id,user_id,status) values($1,auth.uid(),'active')",[registry]);
+  for(const item of [first,second]) await db.query("insert into registry_items(id,registry_id,product_id,requested_quantity,unit_price_snapshot) values($1,$2,1,1,500)",[item,registry]);
+  await db.query("insert into user_profiles(id,phone,account_status,is_admin) values($1,'123','active',false)",[stranger]);
+  const create=async(items,amount,ref)=> (await db.query("select create_registry_checkout($1,'Giver','giver@example.test','123',null,$2,$3,$4) as checkout",[registry,JSON.stringify(items.map(item=>({registry_item_id:item,quantity:1}))),amount,ref])).rows[0].checkout;
+  const balance=async(actor=owner)=>(await db.query("select get_registry_cash_balance($1,$2) as balance",[registry,actor])).rows[0].balance;
+  const allocate=async(request,entries,actor=owner)=>(await db.query("select allocate_registry_cash_balance($1,$2,$3,$4) as balance",[registry,actor,request,JSON.stringify(entries.map(([item,amount])=>({registry_item_id:item,amount:String(amount)})))])).rows[0].balance;
+  const gift=await create([],50000,'balance-cash');
+  assert.equal(gift.checkout_type,'cash');
+  assert.equal((await balance()).available,0); // Unpaid money is not spendable.
+  await db.query("select complete_registry_checkout_payment('balance-cash',5000000,null)");
+  assert.equal((await balance()).available,50000);
+  await assert.rejects(balance(stranger),/cannot access/);
+  await db.query('update user_profiles set is_admin=true where id=$1',[stranger]);
+  assert.equal((await balance(stranger)).available,50000);
+  await db.query('update user_profiles set is_admin=false where id=$1',[stranger]);
+  await assert.rejects(allocate('99999999-9999-4999-8999-999999999999',[[first,50000.01]]),/exceeds.*available/);
+  const request='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+  assert.equal((await allocate(request,[[first,20000]])).available,30000);
+  assert.equal((await allocate(request,[[first,20000]])).available,30000); // Retried requests do not spend twice.
+  assert.equal((await balance()).allocated,20000);
+  await assert.rejects(db.query('update registry_items set requested_quantity=0 where id=$1',[first]),/funded value/);
+  await assert.rejects(allocate('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',[[first,10000],['33333333-3333-4333-8333-333333333333',10000]]),/not in the registry/);
+  assert.equal((await balance()).available,30000); // Whole batch rolled back.
+  assert.equal(Number((await db.query('select funded_amount from registry_items where id=$1',[first])).rows[0].funded_amount),20000);
+  await assert.rejects(allocate('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',[[first,1.001]]),/two decimal/);
+  await assert.rejects(allocate('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',[[first,1],[first,1]]),/each product once/);
+  // Allocating existing funds must not change how much new money the registry accepts.
+  await assert.rejects(create([],950000.01,'balance-over-cap'),/remaining registry total/);
+  await create([],950000,'balance-cap');
+  await db.exec("update registry_contributions set status='cancelled' where paystack_reference='balance-cap'");
+  await db.query('select rebuild_registry_cash_item_funding($1)',[first]);
+  await db.query('select rebuild_registry_item_funding($1)',[registry]);
+  assert.equal(Number((await db.query('select funded_amount from registry_items where id=$1',[first])).rows[0].funded_amount),20000);
+  await allocate('cccccccc-cccc-4ccc-8ccc-cccccccccccc',[[first,10000],[second,20000]]);
+  assert.equal((await balance()).available,0);
+  assert.equal((await balance()).received,50000);
+  assert.equal((await balance()).allocated,50000);
+  assert.equal((await balance()).allocations.length,3);
+  await db.query("insert into store_promos(code,percentage,promo_type,maximum_discount_amount,applies_to_store,applies_to_registry) values('REGSHIP',50,'delivery_discount',30,false,true)");
+  const quote=async(code=null)=>(await db.query("select get_registry_delivery_quote($1,$2,'lagos_01',$3) as quote",[registry,owner,code])).rows[0].quote;
+  await assert.rejects(quote(),/partially funded/);
+  await create([first,second],950000,'balance-products');
+  await db.query("select complete_registry_checkout_payment('balance-products',95000000,null)");
+  assert.equal((await quote('REGSHIP')).total,70);
+  await assert.rejects(quote('WELCOME10'),/delivery promo/);
+  await db.query("update shipping_tiers set fulfillment_type='pickup' where code='lagos_01'");
+  await assert.rejects(quote(),/delivery area/);
+  await db.query("update shipping_tiers set fulfillment_type='delivery' where code='lagos_01'");
+  const initiate=async(code,ref)=>(await db.query("select create_registry_delivery_checkout($1,$2,'lagos_01',$3,$4) as checkout",[registry,owner,code,ref])).rows[0].checkout;
+  const session=await initiate('REGSHIP','registry-delivery-one');
+  assert.equal(session.amountKobo,7000);
+  assert.equal((await initiate(null,'registry-delivery-retry')).id,session.id); // One active payment.
+  await assert.rejects(create([],1,'gift-during-delivery'),/closed/);
+  await assert.rejects(allocate('dddddddd-dddd-4ddd-8ddd-dddddddddddd',[[first,1]]),/no longer accepting/);
+  await assert.rejects(db.query("update registries set status='active' where id=$1",[registry]),/pending delivery/);
+  await db.query("select cancel_registry_delivery_checkout($1,$2,'registry-delivery-one')",[registry,owner]);
+  assert.equal((await db.query('select status from registries where id=$1',[registry])).rows[0].status,'active');
+  const paid=await initiate('REGSHIP','registry-delivery-two');
+  await assert.rejects(db.query("select complete_registry_delivery_payment('registry-delivery-two',7001)"),/does not match/);
+  await db.query("select complete_registry_delivery_payment('registry-delivery-two',7000)");
+  await db.query("select complete_registry_delivery_payment('registry-delivery-two',7000)");
+  const paidOrder=(await db.query('select * from registry_delivery_orders where id=$1',[paid.id])).rows[0];
+  assert.equal(paidOrder.status,'paid');
+  assert.equal(paidOrder.shipping_label,'Lagos delivery');
+  assert.equal(paidOrder.shipping_address.name,'Owner');
+  assert.equal(paidOrder.items.length,2);
+  assert.equal((await db.query('select fulfillment_status from registries where id=$1',[registry])).rows[0].fulfillment_status,'ready_for_shipping');
+  await assert.rejects(db.query("update registries set status='active' where id=$1",[registry]),/already paid/);
+  await assert.rejects(initiate(null,'registry-delivery-three'),/already been paid/);
+  await assert.rejects(db.query('update registry_items set requested_quantity=2 where id=$1',[first]),/locked for delivery/);
+  // A delivery promo can reduce the separate delivery payment to zero.
+  const freeRegistry='eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
+  const freeItem='ffffffff-ffff-4fff-8fff-ffffffffffff';
+  await db.query("insert into registries(id,user_id,status) values($1,auth.uid(),'active')",[freeRegistry]);
+  await db.query("insert into registry_items(id,registry_id,product_id,requested_quantity,unit_price_snapshot) values($1,$2,1,1,10)",[freeItem,freeRegistry]);
+  await db.query("select create_registry_checkout($1,'Buyer','buyer@example.test','123',null,$2,10000,'free-delivery-gift')",[freeRegistry,JSON.stringify([{registry_item_id:freeItem,quantity:1}])]);
+  await db.query("select complete_registry_checkout_payment('free-delivery-gift',1000000,null)");
+  const free=(await db.query("select create_registry_delivery_checkout($1,$2,'lagos_01','FREE','free-registry-delivery') as checkout",[freeRegistry,owner])).rows[0].checkout;
+  assert.equal(free.paid,true);assert.equal(free.amountKobo,0);
+  await db.exec("select set_config('request.jwt.claim.role','authenticated',false)");
+  await assert.rejects(db.query('update registry_items set funded_amount=1 where id=$1',['33333333-3333-4333-8333-333333333333']),/managed by the server/);
+  await assert.rejects(balance(),/through the server/);
+  await db.exec('set role authenticated');
+  await assert.rejects(db.query('select * from registry_cash_allocations'),/permission denied/);
+  await assert.rejects(db.query('select * from registry_delivery_orders'),/permission denied/);
+  await db.exec('reset role');
+  console.log('Registry balance allocation, retries, access, funding totals, delivery fees, promos, cancellation, snapshots and payment verification passed.');
+};
