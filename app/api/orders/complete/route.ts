@@ -48,7 +48,7 @@ export async function POST(request: Request) {
 
   if (!hasSupabaseServiceRoleEnv) {
     return NextResponse.json(
-      { message: "Supabase service role credentials are not configured." },
+      { message: "Order confirmation is temporarily unavailable. Please contact support." },
       { status: 500 },
     );
   }
@@ -69,7 +69,7 @@ export async function POST(request: Request) {
   const serviceRoleClient = createSupabaseServiceRoleClient();
   if (!serviceRoleClient) {
     return NextResponse.json(
-      { message: "Supabase service role credentials are not configured." },
+      { message: "Order confirmation is temporarily unavailable. Please contact support." },
       { status: 500 },
     );
   }
@@ -114,7 +114,7 @@ export async function POST(request: Request) {
 
   if (!hasPaystackServerEnv) {
     return NextResponse.json(
-      { message: "Add PAYSTACK_SECRET_KEY to verify Paystack payments." },
+      { message: "Payment verification is temporarily unavailable. Please contact support." },
       { status: 500 },
     );
   }

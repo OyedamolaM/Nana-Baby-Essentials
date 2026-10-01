@@ -73,14 +73,6 @@ function getBearerToken(request: Request) {
   return authHeader.slice("Bearer ".length).trim() || null;
 }
 
-function getErrorMessage(error: unknown, fallback: string) {
-  if (error instanceof Error && error.message.trim()) {
-    return error.message.trim();
-  }
-
-  return fallback;
-}
-
 function normalizeItems(value: unknown) {
   if (!Array.isArray(value)) {
     return [] as StoreOrderItem[];
@@ -117,13 +109,13 @@ function normalizeAddress(value: unknown) {
 export async function POST(request: Request) {
   if (!hasSupabaseServerEnv || !hasSupabaseServiceRoleEnv) {
     return jsonError(
-      "Supabase server credentials are not configured for order emails.",
+      "Your order is placed, but confirmation email is temporarily unavailable. You can view your order in your account.",
       500,
     );
   }
 
   if (!hasBrevoEnv) {
-    return jsonError("Brevo is not configured for order emails.", 500);
+    return jsonError("Your order is placed, but confirmation email is temporarily unavailable. You can view your order in your account.", 500);
   }
 
   const accessToken = getBearerToken(request);
@@ -136,7 +128,7 @@ export async function POST(request: Request) {
 
   if (!authClient || !adminClient) {
     return jsonError(
-      "Supabase server credentials are not configured for order emails.",
+      "Your order is placed, but confirmation email is temporarily unavailable. You can view your order in your account.",
       500,
     );
   }
@@ -271,7 +263,7 @@ export async function POST(request: Request) {
   } catch (error) {
     console.error("Failed to send order confirmation email.", error);
     return jsonError(
-      getErrorMessage(error, "Could not send the order confirmation email."),
+      "Your order is placed, but we could not send the confirmation email. You can view your order in your account.",
       502,
     );
   }

@@ -248,13 +248,13 @@ export function CheckoutModal({
     }
 
     if (!hasSupabaseEnv) {
-      toast.error("Supabase is not configured yet.");
+      toast.error("Checkout is temporarily unavailable. Please try again later.");
       return;
     }
 
     const paystackKey = process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY;
     if (!paystackKey) {
-      toast.error("Add NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY to enable payments.");
+      toast.error("Payments are temporarily unavailable. Please try again later.");
       return;
     }
 
@@ -387,7 +387,7 @@ export function CheckoutModal({
               | null;
 
             successMessage = payload?.sandbox
-              ? "Payment successful. Your order has been placed and Brevo sandbox accepted the confirmation email request."
+              ? "Payment successful. Your order has been placed. You can view it in your account; a confirmation email has not been delivered."
               : "Payment successful. Your order has been placed and your confirmation email is on the way.";
           } else {
             const payload = (await emailResponse.json().catch(() => null)) as
