@@ -49,8 +49,7 @@ export function AdminPromosManager({ getAdminAccessToken }: { getAdminAccessToke
   const reset = () => { setEditing(null); setCode(""); setPercentage("10"); setStartsAt(""); setEndsAt(""); setActive(true); };
   return <div className="space-y-5">
     <h2 className="text-2xl font-semibold">Discounts & Promos</h2>
-    <p className="text-sm text-gray-600">Create a percentage discount on the item subtotal. Delivery is charged separately. Customers can apply one code per order.</p>
-    {error ? <p role="alert" className="text-red-600">{error}</p> : null}
+   {error ? <p role="alert" className="text-red-600">{error}</p> : null}
     <form className="space-y-4 rounded-lg border bg-white p-4" onSubmit={async event => {
       event.preventDefault(); setSaving(true);
       try {
@@ -72,7 +71,6 @@ export function AdminPromosManager({ getAdminAccessToken }: { getAdminAccessToke
         <AdminDateTimeField id="promo-start" label="Starts at (optional)" value={startsAt} onChange={setStartsAt} />
         <AdminDateTimeField id="promo-end" label="Expires at (optional)" value={endsAt} onChange={setEndsAt} />
       </div>
-      <p className="text-xs text-gray-500">Leave start empty to allow immediate use. Leave expiry empty for no expiry. Times use your device’s timezone.</p>
       <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={active} onChange={event => setActive(event.target.checked)} /> Enable promo code</label>
       <div className="flex gap-2"><Button disabled={saving} type="submit">{saving ? "Saving…" : "Save promo"}</Button>{editing ? <Button type="button" variant="outline" onClick={reset}>Cancel edit</Button> : null}</div>
     </form>
