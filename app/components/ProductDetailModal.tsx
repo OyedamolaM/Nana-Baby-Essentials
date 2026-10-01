@@ -23,7 +23,7 @@ interface ProductDetailModalProps {
   product: Product | null;
   open: boolean;
   onClose: () => void;
-  onAddToCart: (product: Product, quantity?: number, variant?: StoreProductVariant) => void;
+  onAddToCart: (product: Product, quantity?: number, variant?: StoreProductVariant) => boolean | void;
   addActionLabel?: string;
   compact?: boolean;
 }
@@ -37,6 +37,7 @@ export function ProductDetailModal({
   compact = false,
 }: ProductDetailModalProps) {
   const [quantity, setQuantity] = useState(1);
+  const [addedSelection, setAddedSelection] = useState("");
   const [isInWishlist, setIsInWishlist] = useState(false);
   const [loading, setLoading] = useState(false);
   const { user } = useAuth();
@@ -295,6 +296,7 @@ export function ProductDetailModal({
       setSelectedImageIndex(0);
       setSelectedOptions({});
       setQuantity(1);
+      setAddedSelection("");
       setFetchedColourImages([]);
     }, 0);
 
@@ -322,8 +324,20 @@ export function ProductDetailModal({
       return;
     }
 
-    onAddToCart(product, availableStock === undefined ? quantity : Math.min(quantity, availableStock), selectedVariant);
-    onClose();
+    const addedQuantity = availableStock === undefined ? quantity : Math.min(quantity, availableStock);
+    const result = onAddToCart(
+      { ...product, colourImages: product.colourImages?.length ? product.colourImages : fetchedColourImages },
+      addedQuantity,
+      selectedVariant,
+    );
+    if (result === false) return;
+    if (selectedVariant && addActionLabel === "Add to Cart") {
+      const label = Object.entries(getVariantOptions(selectedVariant)).map(([name, value]) => `${name}: ${value}`).join(" / ");
+      setAddedSelection(`${addedQuantity} added to cart - ${label}`);
+      setQuantity(1);
+    } else {
+      onClose();
+    }
   };
 
   const toggleWishlist = async () => {
@@ -608,6 +622,13 @@ export function ProductDetailModal({
             </div>
 
             {/* Actions */}
+            {addedSelection ? (
+              <div className="space-y-2 rounded-lg bg-green-50 p-3 text-sm text-green-800">
+                <p role="status">{addedSelection}</p>
+                <p>Choose another combination above and add it, or finish selecting.</p>
+                <Button type="button" variant="outline" onClick={onClose}>Done selecting</Button>
+              </div>
+            ) : null}
             <div className="flex gap-2">
               <Button
                 type="button"

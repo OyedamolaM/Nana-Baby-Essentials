@@ -214,7 +214,10 @@ export function ProductsPage({
       setProductDetailOpen(true);
       return;
     }
-    addItem(product, quantity, variant);
+    if (!addItem(product, quantity, variant)) {
+      toast.error("This selection is unavailable or exceeds its purchase limit. Try a lower quantity or another option.");
+      return false;
+    }
     toast.success(
       quantity > 1
         ? `${quantity} ${product.name} items added to cart.`

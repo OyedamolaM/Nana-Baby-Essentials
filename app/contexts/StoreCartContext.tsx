@@ -544,6 +544,8 @@ export function StoreCartProvider({ children }: { children: ReactNode }) {
     const requested = normalizeCartQuantity(quantity) || 1;
     const variantId = variant?.id;
     const itemKey = getStoreCartItemKey({ id: product.id, variantId });
+    const existingQuantity = items.find(item => getStoreCartItemKey(item) === itemKey)?.quantity ?? 0;
+    if (cap !== undefined && existingQuantity + requested > cap) return false;
 
     setItems((currentItems) => {
       const existingItem = currentItems.find(
@@ -583,7 +585,7 @@ export function StoreCartProvider({ children }: { children: ReactNode }) {
     });
 
     return true;
-  }, []);
+  }, [items]);
 
   const removeItem = useCallback((itemKey: string) => {
     setItems((currentItems) =>
