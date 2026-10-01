@@ -43,7 +43,7 @@ async function main() {
       alter table registries add column fulfillment_updated_by uuid;
       create function rebuild_registry_item_funding(p_registry_id uuid) returns void language plpgsql as $$ begin return; end; $$;
     `);
-    for (const name of ["20260510_registry_partial_checkout_payments.sql", "20260805_registry_shipping_address_security.sql", "20261002_colour_galleries_and_explicit_stock_limits.sql", "20261003_promos_and_package_purchase_limits.sql", "20261004_promo_minimum_purchase_amount.sql", "20261005_promo_delivery_caps_and_registry.sql", "20261006_registry_gift_balance.sql", "20261007_registry_delivery_checkout.sql"]) {
+    for (const name of ["20260510_registry_partial_checkout_payments.sql", "20260805_registry_shipping_address_security.sql", "20261002_colour_galleries_and_explicit_stock_limits.sql", "20261003_promos_and_package_purchase_limits.sql", "20261004_promo_minimum_purchase_amount.sql", "20261005_promo_delivery_caps_and_registry.sql", "20261006_registry_gift_balance.sql", "20261007_registry_delivery_checkout.sql", "20261008_registry_deletion.sql"]) {
       await db.exec(fs.readFileSync(path.join(__dirname, "../supabase/migrations", name), "utf8"));
     }
     await db.exec(`insert into store_promos(code,percentage,is_active,starts_at,ends_at) values

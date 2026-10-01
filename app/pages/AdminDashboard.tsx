@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+
 import { AdminPromosManager } from "../components/admin/AdminPromosManager";
 
 import { ColourGalleryEditor, type ColourGalleryDraft } from "../components/admin/ColourGalleryEditor";
@@ -617,7 +619,7 @@ function buildAboutImageDrafts(images?: HomepageImageAsset[]) {
   }));
 }
 
-export function AdminDashboard() {
+export function AdminDashboard({ registryAccountId, initialSection = "overview" }: { registryAccountId?: string; initialSection?: "overview" | "registries" }) {
   const { user, session, loading: authLoading } = useAuth();
   const userId = user?.id ?? null;
   const [loading, setLoading] = useState(Boolean(userId));
@@ -627,7 +629,7 @@ export function AdminDashboard() {
   const initialAdminLoadKeyRef = useRef<string | null>(null);
   const ORDERS_PAGE_SIZE = 30;
   const [orders, setOrders] = useState<AdminOrderRecord[]>([]);
-  const [activeAdminTab, setActiveAdminTab] = useState<AdminSectionId>("overview");
+  const [activeAdminTab, setActiveAdminTab] = useState<AdminSectionId>(registryAccountId ? "registries" : initialSection);
   const [mobileNavigationOpen, setMobileNavigationOpen] = useState(false);
   const [ordersLoadingMore, setOrdersLoadingMore] = useState(false);
   const [ordersHasMore, setOrdersHasMore] = useState(true);
@@ -3661,6 +3663,18 @@ useEffect(() => {
     return <div className="container mx-auto px-4 py-8">Loading...</div>;
   }
 
+  if (registryAccountId) {
+    return <div className="mx-auto max-w-6xl space-y-4 px-4 py-6">
+      <Button variant="outline" asChild><Link href="/admin?section=registries">Back to registries</Link></Button>
+      {registries.some(registry => registry.user_id === registryAccountId) ? <AdminRegistryAccountsManager
+        customers={customers} detailAccountId={registryAccountId}
+        registries={registries.filter(registry => registry.user_id === registryAccountId)}
+        registryItemsByRegistry={registryItemsByRegistry} registryPaymentActivities={registryPaymentActivities}
+        registrySummaries={registrySummaries} onReload={() => loadAdminTabData("registries", true)}
+      /> : <p>No registries found.</p>}
+    </div>;
+  }
+
   return (
     <div className="mx-auto w-full max-w-[1600px] px-4 py-6 sm:px-6 lg:px-8">
       <Tabs
@@ -3854,6 +3868,7 @@ useEffect(() => {
 
         <TabsContent value="registries">
           <AdminRegistryAccountsManager
+            onReload={() => loadAdminTabData("registries", true)}
             customers={customers}
             registries={registries}
             registryItemsByRegistry={registryItemsByRegistry}

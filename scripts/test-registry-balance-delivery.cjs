@@ -94,5 +94,17 @@ module.exports=async function testRegistryBalanceDelivery(db){
   await assert.rejects(db.query('select * from registry_cash_allocations'),/permission denied/);
   await assert.rejects(db.query('select * from registry_delivery_orders'),/permission denied/);
   await db.exec('reset role');
+  await db.exec("select set_config('request.jwt.claim.role','service_role',false)");
+  await assert.rejects(db.query('select delete_unfunded_registry($1)',[registry]),/gifts or active payments/);
+  const emptyRegistry='12345678-1234-4234-8234-123456789012';
+  await db.query("insert into registries(id,user_id,status) values($1,auth.uid(),'active')",[emptyRegistry]);
+  await db.query("insert into registry_items(id,registry_id,product_id,requested_quantity,unit_price_snapshot) values('12345678-1234-4234-8234-123456789013',$1,1,1,10)",[emptyRegistry]);
+  await db.exec("select set_config('request.jwt.claim.role','authenticated',false)");
+  await assert.rejects(db.query('select delete_unfunded_registry($1)',[emptyRegistry]),/requires admin/);
+  await db.exec("select set_config('request.jwt.claim.role','service_role',false)");
+  await db.query('select delete_unfunded_registry($1)',[emptyRegistry]);
+  assert.equal((await db.query('select count(*) as count from registries where id=$1',[emptyRegistry])).rows[0].count,0);
+  assert.equal((await db.query('select count(*) as count from registry_items where registry_id=$1',[emptyRegistry])).rows[0].count,0);
+  await assert.rejects(db.query('select delete_unfunded_registry($1)',[emptyRegistry]),/not found/);
   console.log('Registry balance allocation, retries, access, funding totals, delivery fees, promos, cancellation, snapshots and payment verification passed.');
 };

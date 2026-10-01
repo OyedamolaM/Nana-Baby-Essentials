@@ -1,7 +1,11 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ChevronDown, ChevronRight } from "lucide-react";
+import Link from "next/link";
+import { toast } from "sonner";
+import { Button } from "../ui/button";
+import { supabase } from "../../lib/supabase";
+import { Trash2 } from "lucide-react";
 
 import { formatNairaAmount } from "../../../lib/commerce";
 import {
@@ -83,18 +87,22 @@ function formatDate(value?: string | null) {
 
 export function AdminRegistryAccountsManager({
   customers,
+  detailAccountId,
+  onReload,
   registries,
   registryItemsByRegistry,
   registryPaymentActivities,
   registrySummaries,
 }: {
   customers: CustomerRecord[];
+  detailAccountId?: string;
+  onReload: () => Promise<void>;
   registries: RegistryRecord[];
   registryItemsByRegistry: Record<string, RegistryItem[]>;
   registryPaymentActivities: Record<string, RegistryPaymentActivity[]>;
   registrySummaries: Record<string, RegistrySummary>;
 }) {
-  const [expandedAccountIds, setExpandedAccountIds] = useState<string[]>([]);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const customerLookup = useMemo(() => {
     return Object.fromEntries(customers.map((customer) => [customer.id, customer])) as Record<
@@ -136,12 +144,22 @@ export function AdminRegistryAccountsManager({
       .sort((left, right) => right.registries.length - left.registries.length);
   }, [customerLookup, registries]);
 
-  const toggleAccount = (accountId: string) => {
-    setExpandedAccountIds((current) =>
-      current.includes(accountId)
-        ? current.filter((id) => id !== accountId)
-        : [...current, accountId],
-    );
+  const deleteRegistry = async (registry: RegistryRecord) => {
+    if (!window.confirm('Delete "' + registry.name + '"?')) return;
+    setDeletingId(registry.id);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error("Sign in again to delete registries.");
+      const response = await fetch('/api/admin/registries/' + registry.id, {
+        method: "DELETE", headers: { Authorization: 'Bearer ' + session.access_token },
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.message || "Could not delete the registry.");
+      toast.success("Registry deleted.");
+      await onReload();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not delete the registry.");
+    } finally { setDeletingId(null); }
   };
 
   return (
@@ -154,7 +172,7 @@ export function AdminRegistryAccountsManager({
           <p className="text-sm text-gray-500">No registry accounts yet.</p>
         ) : (
           groupedAccounts.map((account) => {
-            const isExpanded = expandedAccountIds.includes(account.userId);
+            const isExpanded = detailAccountId === account.userId;
             const totalRegistries = account.registries.length;
             const totalRequested = account.registries.reduce((sum, registry) => {
               return sum + (registrySummaries[registry.id]?.requested ?? 0);
@@ -162,10 +180,8 @@ export function AdminRegistryAccountsManager({
 
             return (
               <div key={account.userId} className="rounded-2xl border p-4">
-                <button
-                  type="button"
+                <div
                   className="flex w-full flex-col gap-4 text-left md:flex-row md:items-center md:justify-between"
-                  onClick={() => toggleAccount(account.userId)}
                 >
                   <div>
                     <p className="text-lg font-semibold text-gray-900">
@@ -183,12 +199,9 @@ export function AdminRegistryAccountsManager({
                     <span className="rounded-full bg-gray-50 px-3 py-2">
                       Requested: {totalRequested}
                     </span>
-                    <span className="inline-flex items-center gap-2 rounded-full bg-pink-50 px-3 py-2 font-medium text-pink-700">
-                      {isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-                      {isExpanded ? "Hide details" : "Show details"}
-                    </span>
+                    {!isExpanded ? <Link href={`/admin/registry-accounts/${account.userId}`} className="inline-flex items-center gap-2 rounded-full bg-pink-50 px-3 py-2 font-medium text-pink-700">View details</Link> : null}
                   </div>
-                </button>
+                </div>
 
                 {isExpanded ? (
                   <div className="mt-5 space-y-4">
@@ -222,6 +235,7 @@ export function AdminRegistryAccountsManager({
                               <p className="text-xs font-semibold uppercase tracking-[0.16em] text-gray-500">
                                 Share Code
                               </p>
+                              <Button variant="destructive" size="sm" disabled={deletingId !== null} onClick={() => void deleteRegistry(registry)}><Trash2 className="mr-2 h-4 w-4" />Delete registry</Button>
                               <p className="mt-1 font-mono text-lg font-bold text-pink-600">
                                 {registry.share_code}
                               </p>

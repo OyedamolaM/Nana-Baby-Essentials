@@ -9,11 +9,12 @@ export const metadata = buildPageMetadata({
   noIndex: true,
 });
 
-export default function AdminPage() {
+export default async function AdminPage({ searchParams }: { searchParams: Promise<{ section?: string }> }) {
+  const { section } = await searchParams;
   return (
     <>
       <SiteHeaderShell />
-      <AdminDashboard />
+      <AdminDashboard initialSection={section === "registries" ? "registries" : "overview"} />
     </>
   );
 }
