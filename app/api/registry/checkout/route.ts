@@ -26,6 +26,7 @@ type InitiateRegistryCheckoutPayload = {
   paymentAmount?: number | string;
   registryId?: string;
   selectedItems?: RegistryCheckoutItemInput[];
+  promoCode?: string;
 };
 
 type VerifyRegistryCheckoutPayload = {
@@ -280,6 +281,10 @@ async function handleInitiateCheckout(
   const buyerMessage = payload.buyerMessage?.trim() ?? "";
   const selectedItems = normalizeSelectedItems(payload.selectedItems);
   const paymentAmount = normalizePaymentAmount(payload.paymentAmount);
+  const promoCode = typeof payload.promoCode === "string" ? payload.promoCode.trim().toUpperCase() : "";
+  if (promoCode && selectedItems.length === 0) {
+    return jsonError("Promo codes apply to registry product gifts, not cash contributions.", 400);
+  }
   if (!registryId) {
     return jsonError("Registry id is required.", 400);
   }
@@ -399,7 +404,7 @@ async function handleInitiateCheckout(
   }
 
   const reference = createPaystackReference();
-  const { data, error } = await adminClient.rpc("create_registry_checkout", {
+  const { data, error } = await adminClient.rpc(promoCode ? "create_registry_checkout_with_promo" : "create_registry_checkout", {
     p_cash_amount: paymentAmount,
     p_buyer_email: buyerEmail,
     p_buyer_message: buyerMessage || null,
@@ -408,9 +413,11 @@ async function handleInitiateCheckout(
     p_paystack_reference: reference,
     p_registry_id: registryId,
     p_selected_items: selectedItems,
+    ...(promoCode ? { p_promo_code: promoCode } : {}),
   });
 
   if (error) {
+    if (promoCode) return jsonError(getErrorMessage(error, "Could not apply this registry promo."), 400);
     if (shouldFallbackRegistryCheckoutRpc(error, "create_registry_checkout")) {
       if (selectedItems.length > 0 && paymentAmount < selectedItemsTotal) {
         return jsonError(
@@ -477,6 +484,7 @@ async function handleInitiateCheckout(
       currency: "NGN",
       metadata: checkout.metadata,
       reference: checkout.paystack_reference,
+      promo: isRecord(data) ? data.promo ?? null : null,
     });
   } catch (error) {
     return jsonError(getErrorMessage(error, "Registry checkout could not be started."), 500);

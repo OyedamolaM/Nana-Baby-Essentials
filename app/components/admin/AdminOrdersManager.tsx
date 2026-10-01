@@ -27,6 +27,7 @@ import {
   type PaymentMethod,
 } from "../../../lib/orderPayments";
 import { downloadOrderReceipt } from "../../../lib/orderReceipt";
+import { calculatePromoDiscount, type PromoType } from "../../../lib/promos";
 import {
   normalizeShippingAddress,
   type ShippingAddress,
@@ -83,6 +84,8 @@ export type AdminOrderRecord = {
   promo_code?: string | null;
   discount_percentage?: number | null;
   discount_amount?: number | null;
+  promo_type?: PromoType | null;
+  maximum_discount_amount?: number | null;
   status: string;
   total: number;
   user_id?: string | null;
@@ -257,7 +260,8 @@ export function AdminOrdersManager({
     const shippingFee = shippingTier !== editingOrder.shipping_tier
       ? Number(shippingTiers.find(tier => tier.code === shippingTier)?.fee ?? 0)
       : Math.max(0, Number(editingOrder.total) + Number(editingOrder.discount_amount ?? 0) - originalSubtotal);
-    return subtotal - Math.round(subtotal * Number(editingOrder.discount_percentage ?? 0)) / 100 + shippingFee;
+    const discount = calculatePromoDiscount({ promoType: editingOrder.promo_type ?? "products", percentage: Number(editingOrder.discount_percentage ?? 0), maximumDiscountAmount: editingOrder.maximum_discount_amount === null || editingOrder.maximum_discount_amount === undefined ? null : Number(editingOrder.maximum_discount_amount) }, subtotal, shippingFee);
+    return subtotal - discount + shippingFee;
   }, [normalizedItems, editingOrder, shippingTier, shippingTiers]);
   const selectedShippingTierRecord = useMemo(() => {
     return shippingTiers.find((tier) => tier.code === shippingTier) ?? null;

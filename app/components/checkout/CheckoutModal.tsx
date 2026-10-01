@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { useAuth } from "../../contexts/AuthContext";
 import { type StoreCartItem } from "../../contexts/StoreCartContext";
 import { hasSupabaseEnv, supabase } from "../../lib/supabase";
+import type { PromoType } from "../../../lib/promos";
 import { loadPaystackScript } from "../../lib/loadPaystack";
 import { formatNairaAmount, toNairaAmount } from "../../../lib/commerce";
 import { normalizeShippingAddress } from "../../../lib/userProfile";
@@ -63,7 +64,7 @@ export function CheckoutModal({
   const [shippingTierLoading, setShippingTierLoading] = useState(false);
   const [shippingTierError, setShippingTierError] = useState<string | null>(null);
   const [promoInput, setPromoInput] = useState("");
-  const [appliedPromo, setAppliedPromo] = useState<{ code: string; percentage: number } | null>(null);
+  const [appliedPromo, setAppliedPromo] = useState<{ code: string; percentage: number; subtotal: number; shippingFee: number; minimumPurchaseAmount: number; promoType: PromoType; discountAmount: number } | null>(null);
   const [promoError, setPromoError] = useState("");
   const [applyingPromo, setApplyingPromo] = useState(false);
   const promoRequestRef = useRef(0);
@@ -214,7 +215,8 @@ export function CheckoutModal({
     0,
   );
   const shippingFee = selectedTier?.fee ?? 0;
-  const discountAmount = appliedPromo ? Math.round(subtotalAmount * appliedPromo.percentage) / 100 : 0;
+  const promoMatchesSubtotal = appliedPromo?.subtotal === subtotalAmount && appliedPromo?.shippingFee === shippingFee;
+  const discountAmount = appliedPromo && promoMatchesSubtotal ? appliedPromo.discountAmount : 0;
   const totalAmount = subtotalAmount - discountAmount + shippingFee;
   const applyPromo = async () => {
     const code = promoInput.trim().toUpperCase();
@@ -222,10 +224,10 @@ export function CheckoutModal({
     const requestId = ++promoRequestRef.current;
     setApplyingPromo(true); setPromoError(""); setAppliedPromo(null);
     try {
-      const { data, error } = await supabase.rpc("get_store_promo_discount", { p_code: code, p_subtotal: subtotalAmount });
+      const { data, error } = await supabase.rpc("get_checkout_promo_discount", { p_code: code, p_subtotal: subtotalAmount, p_shipping_fee: shippingFee, p_context: "store" });
       if (promoRequestRef.current !== requestId) return;
       if (error || !data) throw new Error(error?.message || "Could not apply promo code.");
-      setAppliedPromo({ code: data.code, percentage: Number(data.percentage) });
+      setAppliedPromo({ code: data.code, percentage: Number(data.percentage), subtotal: subtotalAmount, shippingFee, minimumPurchaseAmount: Number(data.minimum_purchase_amount ?? 0), promoType: data.promo_type, discountAmount: Number(data.discount_amount) });
     } catch (error) {
       if (promoRequestRef.current === requestId) setPromoError(error instanceof Error ? error.message : "Could not apply promo code.");
     } finally {
@@ -237,7 +239,7 @@ export function CheckoutModal({
 
   const handleCheckout = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (applyingPromo || (promoInput.trim() && !appliedPromo)) {
+    if (applyingPromo || (promoInput.trim() && (!appliedPromo || !promoMatchesSubtotal))) {
       toast.error("Apply your promo code or clear it before continuing.");
       return;
     }
@@ -542,7 +544,7 @@ export function CheckoutModal({
               <span>Shipping</span>
               <span>{formatNairaAmount(shippingFee)}</span>
             </div>
-            {appliedPromo ? <div className="flex justify-between text-sm text-green-700"><span>Promo {appliedPromo.code} ({appliedPromo.percentage}% off)</span><span>-{formatNairaAmount(discountAmount)}</span></div> : null}
+            {appliedPromo && promoMatchesSubtotal ? <div className="flex flex-wrap justify-between gap-2 text-sm text-green-700"><span>Promo {appliedPromo.code} ({appliedPromo.promoType === "free_delivery" ? "delivery fee discount" : `${appliedPromo.percentage}% off ${appliedPromo.promoType === "products" ? "products" : "delivery"}`})</span><span>-{formatNairaAmount(discountAmount)}</span></div> : null}
             <Separator />
             <div className="flex justify-between text-lg font-bold">
               <span>Total</span>
@@ -558,6 +560,8 @@ export function CheckoutModal({
               {appliedPromo ? <Button type="button" variant="ghost" disabled={loading || paystackActive} onClick={() => { ++promoRequestRef.current; setPromoInput(""); setAppliedPromo(null); setPromoError(""); }}>Remove</Button> : null}
             </div>
             {promoError ? <p role="alert" className="text-sm text-red-600">{promoError}</p> : null}
+            {appliedPromo && !promoMatchesSubtotal ? <p role="alert" className="text-sm text-amber-700">Your products total or delivery fee changed. Apply the promo code again before continuing.</p> : null}
+            {appliedPromo && promoMatchesSubtotal && appliedPromo.minimumPurchaseAmount > 0 ? <p className="text-sm text-gray-600">Minimum products total: {formatNairaAmount(appliedPromo.minimumPurchaseAmount)}, excluding delivery.</p> : null}
             <p className="text-xs text-gray-500">Discount applies to items. Delivery is charged separately.</p>
           </div>
 

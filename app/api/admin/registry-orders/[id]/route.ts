@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { revalidateTag } from "next/cache";
 
 import { requireAdminRoute } from "@/lib/authServer";
+import { calculatePromoDiscount } from "@/lib/promos";
 import { createSupabaseServiceRoleClient, hasSupabaseServiceRoleEnv } from "@/lib/supabaseServer";
 import { normalizeShippingAddress, type ShippingAddress } from "@/lib/userProfile";
 
@@ -106,6 +107,19 @@ export async function PATCH(request: Request, context: RouteContext<"/api/admin/
     );
   }
 
+  const normalizedItems = normalizeRegistryOrderItems(payload?.items);
+  const { data: existingOrder, error: existingOrderError } = await serviceRoleClient.from("registry_orders")
+    .select("promo_code,discount_percentage,maximum_discount_amount,total_amount,discount_amount").eq("id", id).maybeSingle();
+  if (existingOrderError || !existingOrder) return NextResponse.json({ message: "Could not load this registry order." }, { status: 400 });
+  if (existingOrder.promo_code && (normalizedItems || payload?.totalAmount !== undefined)) {
+    const subtotal = normalizedItems
+      ? normalizedItems.reduce((sum, item) => sum + item.amount, 0)
+      : Number(existingOrder.total_amount) + Number(existingOrder.discount_amount ?? 0);
+    const discount = calculatePromoDiscount({ promoType: "products", percentage: Number(existingOrder.discount_percentage ?? 0), maximumDiscountAmount: existingOrder.maximum_discount_amount === null ? null : Number(existingOrder.maximum_discount_amount) }, subtotal, 0);
+    updatePayload.discount_amount = discount;
+    updatePayload.total_amount = Math.round((subtotal - discount) * 100) / 100;
+  }
+
   const { data: order, error } = await serviceRoleClient
     .from("registry_orders")
     .update(updatePayload)
@@ -120,7 +134,6 @@ export async function PATCH(request: Request, context: RouteContext<"/api/admin/
     );
   }
 
-  const normalizedItems = normalizeRegistryOrderItems(payload?.items);
   const previousRegistryItemIds =
     ((existingOrderItems as Array<{ registry_item_id?: string | null }> | null) ?? [])
       .map((item) => item.registry_item_id)

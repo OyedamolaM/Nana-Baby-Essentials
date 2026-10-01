@@ -853,6 +853,7 @@ export function RegistryDetailClient({ registryId }: { registryId: string }) {
                                 {formatNairaAmount(payment.totalAmount)}
                               </p>
                               <p>{payment.type === "item" ? "Registry item gift" : "Cash gift"}</p>
+                              {payment.promoCode ? <p className="text-green-700">Promo {payment.promoCode}: -{formatNairaAmount(payment.discountAmount ?? 0)}<br />Gift value credited: {formatNairaAmount(payment.totalAmount + (payment.discountAmount ?? 0))}</p> : null}
                               <p>{formatDateTime(payment.paidAt ?? payment.createdAt)}</p>
                               {payment.paystackReference ? (
                                 <p className="font-mono text-xs text-gray-500">

@@ -66,6 +66,10 @@ export interface RegistryOrderRecord {
   buyer_phone?: string | null;
   buyer_message?: string | null;
   total_amount: number;
+  promo_code?: string | null;
+  discount_percentage?: number | null;
+  discount_amount?: number | null;
+  maximum_discount_amount?: number | null;
   contribution_type: "items" | "cash" | "mixed";
   status: string;
   paystack_reference?: string | null;
@@ -120,6 +124,8 @@ export interface RegistryPaymentActivity {
   paidAt?: string | null;
   status: string;
   totalAmount: number;
+  promoCode?: string | null;
+  discountAmount?: number;
   type: "item" | "cash";
 }
 
@@ -320,6 +326,8 @@ export function buildRegistryPaymentActivities({
       paidAt: order.paid_at ?? null,
       status: order.status,
       totalAmount: Math.max(0, Number(order.total_amount ?? 0)),
+      promoCode: order.promo_code,
+      discountAmount: Number(order.discount_amount ?? 0),
       type: "item",
     };
   });

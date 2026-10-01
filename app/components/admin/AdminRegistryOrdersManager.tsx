@@ -5,6 +5,7 @@ import { CheckCircle2, Edit, Gift, PackageCheck, Plus, RotateCcw, Trash2, Truck 
 import { toast } from "sonner";
 
 import { formatNairaAmount } from "../../../lib/commerce";
+import { calculatePromoDiscount } from "../../../lib/promos";
 import {
   getRegistryItemSelectionAmount,
   getRemainingRegistryQuantity,
@@ -183,8 +184,10 @@ export function AdminRegistryOrdersManager({
   }, [draftItems]);
 
   const totalAmount = useMemo(() => {
-    return normalizedItems.reduce((sum, item) => sum + item.amount, 0);
-  }, [normalizedItems]);
+    const subtotal = normalizedItems.reduce((sum, item) => sum + item.amount, 0);
+    if (!editingOrder?.promo_code) return subtotal;
+    return subtotal - calculatePromoDiscount({ promoType: "products", percentage: Number(editingOrder.discount_percentage ?? 0), maximumDiscountAmount: editingOrder.maximum_discount_amount === null || editingOrder.maximum_discount_amount === undefined ? null : Number(editingOrder.maximum_discount_amount) }, subtotal, 0);
+  }, [normalizedItems, editingOrder]);
 
   const applyRegistryShipping = (registryId: string) => {
     setSelectedRegistryId(registryId);
@@ -635,7 +638,7 @@ export function AdminRegistryOrdersManager({
                           ? `${savedAddress.address}, ${savedAddress.city}, ${savedAddress.state}`
                           : "N/A"}
                       </TableCell>
-                      <TableCell>{formatNairaAmount(Number(order.total_amount ?? 0))}</TableCell>
+                      <TableCell>{formatNairaAmount(Number(order.total_amount ?? 0))}{order.promo_code ? <p className="text-xs text-green-700">Promo {order.promo_code}: -{formatNairaAmount(Number(order.discount_amount ?? 0))}</p> : null}</TableCell>
                       <TableCell>{order.status}</TableCell>
                       <TableCell>{formatDateTime(order.created_at)}</TableCell>
                       <TableCell>

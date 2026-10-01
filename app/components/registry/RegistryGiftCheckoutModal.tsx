@@ -65,6 +65,16 @@ export function RegistryGiftCheckoutModal({
   const [buyerEmail, setBuyerEmail] = useState("");
   const [buyerPhone, setBuyerPhone] = useState("");
   const [buyerMessage, setBuyerMessage] = useState("");
+  const [promoInput, setPromoInput] = useState("");
+  const [promoError, setPromoError] = useState("");
+  const [applyingPromo, setApplyingPromo] = useState(false);
+  const [appliedPromo, setAppliedPromo] = useState<{ code: string; discountAmount: number; giftAmount: number } | null>(null);
+  const promoRequestRef = useRef(0);
+  useEffect(() => {
+    ++promoRequestRef.current;
+    const timer = window.setTimeout(() => { setPromoInput(""); setAppliedPromo(null); setPromoError(""); setApplyingPromo(false); }, 0);
+    return () => window.clearTimeout(timer);
+  }, [open, paymentAmount, registry.id]);
   const activeReferenceRef = useRef<string | null>(null);
   const completedRef = useRef(false);
   const pendingHandlerRef = useRef<PaystackHandler | null>(null);
@@ -136,11 +146,29 @@ export function RegistryGiftCheckoutModal({
     }, 0);
   }, [selectedItems]);
 
-  const totalAmount = paymentAmount;
+  const promoMatchesAmount = appliedPromo?.giftAmount === paymentAmount;
+  const discountAmount = promoMatchesAmount && selectedItems.length > 0 ? appliedPromo.discountAmount : 0;
+  const totalAmount = paymentAmount - discountAmount;
+  const applyPromo = async () => {
+    const requestId = ++promoRequestRef.current;
+    setApplyingPromo(true); setAppliedPromo(null); setPromoError("");
+    try {
+      const response = await fetch("/api/registry/promo", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code: promoInput, subtotal: paymentAmount }) });
+      const data = await response.json();
+      if (promoRequestRef.current !== requestId) return;
+      if (!response.ok) throw new Error(data.message);
+      setAppliedPromo({ code: data.promo.code, discountAmount: Number(data.promo.discount_amount), giftAmount: paymentAmount });
+    } catch (error) { if (promoRequestRef.current === requestId) setPromoError(error instanceof Error ? error.message : "Could not apply promo."); }
+    finally { if (promoRequestRef.current === requestId) setApplyingPromo(false); }
+  };
   const preventModalClose = loading || paystackActive;
 
   const handleCheckout = async (event: React.FormEvent) => {
     event.preventDefault();
+    if (applyingPromo || (promoInput.trim() && (!appliedPromo || !promoMatchesAmount))) {
+      toast.error("Apply your promo code or clear it before continuing.");
+      return;
+    }
 
     if (totalAmount <= 0) {
       toast.error("Select registry items or enter a contribution amount.");
@@ -188,6 +216,7 @@ export function RegistryGiftCheckoutModal({
           buyerPhone,
           paymentAmount,
           registryId: registry.id,
+          promoCode: appliedPromo && promoMatchesAmount ? appliedPromo.code : undefined,
           selectedItems: checkoutItems.map((item) => ({
             quantity: item.quantity,
             registryItemId: item.registry_item_id,
@@ -361,11 +390,14 @@ export function RegistryGiftCheckoutModal({
             ) : null}
 
             <Separator />
+            {discountAmount > 0 ? <div className="flex flex-wrap justify-between gap-2 text-sm text-green-700"><span>Promo {appliedPromo?.code}</span><span>-{formatNairaAmount(discountAmount)}</span></div> : null}
             <div className="flex justify-between font-semibold">
               <span>You are paying now</span>
               <span>{formatNairaAmount(totalAmount)}</span>
             </div>
           </div>
+
+          {selectedItems.length > 0 ? <div className="space-y-2"><Label htmlFor="registry-promo">Promo code (optional)</Label><div className="flex flex-wrap gap-2"><Input id="registry-promo" className="min-w-0 flex-1" value={promoInput} maxLength={40} disabled={loading || paystackActive} onChange={event => { ++promoRequestRef.current; setApplyingPromo(false); setPromoInput(event.target.value.toUpperCase()); setAppliedPromo(null); setPromoError(""); }} /><Button type="button" variant="outline" disabled={loading || paystackActive || applyingPromo} onClick={() => void applyPromo()}>{applyingPromo ? "Applying..." : "Apply"}</Button><Button type="button" variant="ghost" disabled={loading || paystackActive} onClick={() => { ++promoRequestRef.current; setApplyingPromo(false); setPromoInput(""); setAppliedPromo(null); setPromoError(""); }}>Clear</Button></div>{promoError ? <p role="alert" className="text-sm text-red-600">{promoError}</p> : null}<p className="text-xs text-gray-500">Eligible codes reduce what you pay. The full gift amount before discount is credited toward the selected products.</p></div> : null}
 
           {/* {paystackActive ? (
             <div className="rounded-lg border border-emerald-100 bg-emerald-50 p-4 text-sm text-emerald-900">
