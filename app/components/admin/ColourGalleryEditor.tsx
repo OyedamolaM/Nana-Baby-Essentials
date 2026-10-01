@@ -18,7 +18,6 @@ export function ColourGalleryEditor({ colours, drafts, onChange, onDelete }: {
   if (!colours.length) return null;
   return <div className="space-y-3 rounded-md border bg-white p-3">
     <p className="text-sm font-semibold">Photos by colour</p>
-    <p className="text-xs text-gray-500">Upload once for each colour. These photos apply to every size, age and other option in that colour. Save the product to upload new photos.</p>
     {colours.map(colour => {
       const draft = drafts[colour] ?? { images: [], pendingImageFiles: [] };
       return <div key={colour} className="space-y-2 rounded-md border p-3">

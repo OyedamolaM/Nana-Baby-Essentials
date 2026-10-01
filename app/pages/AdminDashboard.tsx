@@ -5183,7 +5183,7 @@ useEffect(() => {
                   onChange={(event) => setShippingTierSortOrder(event.target.value)}
                 />
                 <p className="text-xs text-gray-500">
-                  Lower numbers appear first. Use this to keep Lagos options or pickup choices where you want them.
+                  Lower numbers appear first.
                 </p>
               </div>
             </div>
@@ -5798,7 +5798,7 @@ useEffect(() => {
                   </DropdownMenuContent>
                 </DropdownMenu>
                 <p className="text-xs text-gray-500">
-                  Choose one or more categories. The first selected one stays the primary product category.
+                  Choose one or more categories.
                 </p>
               </div>
             </div>
@@ -5823,7 +5823,6 @@ useEffect(() => {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="product-limit-quantity">Purchase limit (products without options)</Label>
                 <label className="flex items-center gap-2 text-sm text-gray-700">
                   <input
                     id="product-limit-quantity"
@@ -5831,7 +5830,7 @@ useEffect(() => {
                     checked={productQuantityLimited}
                     onChange={(event) => setProductQuantityLimited(event.target.checked)}
                   />
-                  Use purchase limit
+                  Purchase limit
                 </label>
                 {productQuantityLimited ? (
                   <Input
@@ -5844,9 +5843,6 @@ useEffect(() => {
                     placeholder="e.g. 10"
                   />
                 ) : null}
-                <p className="text-xs text-gray-500">
-                  When enabled, purchases reduce remaining stock and zero means sold out. When disabled, the In stock setting controls availability.
-                </p>
               </div>
             </div>
 
@@ -6007,9 +6003,7 @@ useEffect(() => {
                   <div className="space-y-3 rounded-md border border-pink-200 bg-white p-3">
                     <p className="text-sm font-semibold text-gray-800">Options</p>
                     <p className="text-xs text-gray-500">
-                      Name each choice (for example Size, Colour, Age or Sex) and list its values
-                      separated by commas. Every value is combined automatically, so
-                      customers can select every option in any order.
+                      (Size, Colour, Age or Sex) only variants
                     </p>
 
                     {productOptionGroups.map((group, groupIndex) => (
@@ -6095,19 +6089,17 @@ useEffect(() => {
                       setColourGalleryDrafts(current => ({ ...current, [colour]: { ...current[colour], images: current[colour].images.filter(image => image.id !== imageId) } }));
                     }}
                   />
-                  <p className="text-xs text-gray-500">Only add options that change the item being purchased. A fixed age range or sex can go in the description. Every combination has its own price and stock; keep unavailable combinations disabled.</p>
                   {productVariantCombinations.length === 0 ? (
                     <p className="text-xs text-gray-500">
                       {combinationCount > 512 ? "Too many combinations. Reduce option values to create no more than 512 combinations. " : ""}
-                      Add at least one option value to generate the combinations
-                      customers can choose from.
+                      Add at least one option value.
                     </p>
                   ) : (
                     <div className="space-y-3">
                       <p className="text-xs text-gray-500">
                         {productVariantCombinations.length} combination
                         {productVariantCombinations.length === 1 ? "" : "s"} will be
-                        saved. Set stock, price, SKU, and photos per combination.
+                        saved. Set stock, price, SKU, and photos.
                       </p>
 
                       <Input value={variantSearch} onChange={event => setVariantSearch(event.target.value)} placeholder="Find combinations (e.g. Pink or Small)" aria-label="Find combinations" />
@@ -6146,7 +6138,7 @@ useEffect(() => {
                                     })
                                   }
                                 />
-                                Use purchase limit
+                                Purchase limit
                               </label>
                               {draft.limitQuantity ? (
                                 <Input
@@ -6191,7 +6183,6 @@ useEffect(() => {
                           </div>
 
                           <div className="space-y-2">
-                            <p className="text-xs text-gray-500">Combination photos (optional): override the shared colour photos for this combination only.</p>
                             <div className="flex flex-wrap items-center gap-2">
                               {draft.images.map((image) => (
                                 <div
@@ -6338,11 +6329,6 @@ useEffect(() => {
             <DialogTitle>{editingDeal ? "Edit Deal" : "Add Deal"}</DialogTitle>
           </DialogHeader>
           <form onSubmit={handleSaveDeal} className="space-y-4">
-            <p className="text-xs text-gray-500">
-              Each deal is created as its own product, with its own price,
-              images, and optional purchase limit.
-            </p>
-
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="deal-title">Deal Title</Label>
@@ -6459,7 +6445,7 @@ useEffect(() => {
                   checked={dealQuantityLimited}
                   onChange={(event) => setDealQuantityLimited(event.target.checked)}
                 />
-                Use purchase limit
+                Purchase limit
               </label>
               {dealQuantityLimited ? (
                 <Input
@@ -6472,9 +6458,6 @@ useEffect(() => {
                   placeholder="e.g. 10"
                 />
               ) : null}
-              <p className="text-xs text-gray-500">
-                When enabled, purchases reduce remaining stock and zero means sold out. When disabled, the In stock setting controls availability.
-              </p>
             </div>
 
             <div className="space-y-4">
@@ -6506,7 +6489,7 @@ useEffect(() => {
                   onChange={(event) => setDealSortOrder(event.target.value)}
                 />
                 <p className="text-xs text-gray-500">
-                  Lower numbers appear first in the homepage deals carousel.
+                  Lower numbers appear first.
                 </p>
               </div>
             </div>
