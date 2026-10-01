@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { revalidateTag } from "next/cache";
 
 import { requireAdminRoute } from "@/lib/authServer";
+import { cleanVariantOptionValue } from "@/lib/commerce";
 import {
   createSupabaseServiceRoleClient,
   hasSupabaseServiceRoleEnv,
@@ -65,11 +66,15 @@ function normalizeOptions(value: unknown, size: string | null, color: string | n
     for (const [label, optionValue] of Object.entries(value as Record<string, unknown>)) {
       const normalizedLabel = label.trim();
       const normalizedValue = normalizeText(optionValue);
-      if (normalizedLabel && normalizedValue) options[normalizedLabel] = normalizedValue;
+      if (normalizedLabel && normalizedValue) {
+        options[normalizedLabel] = cleanVariantOptionValue(normalizedLabel, normalizedValue);
+      }
     }
   }
-  if (size && !options.Size) options.Size = size;
-  if (color && !options.Colour && !options.Color) options.Colour = color;
+  if (size && !options.Size) options.Size = cleanVariantOptionValue("Size", size);
+  if (color && !options.Colour && !options.Color) {
+    options.Colour = cleanVariantOptionValue("Colour", color);
+  }
   return options;
 }
 

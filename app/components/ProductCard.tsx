@@ -53,7 +53,7 @@ function DeferredProductImage({ product }: { product: Product }) {
         <ImageWithFallback
           src={product.image}
           alt={product.name}
-          className="block h-full w-full object-cover"
+          className="block h-full w-full object-contain p-2 sm:p-3"
           decoding="async"
           loading="lazy"
           srcSet={getProductImageSrcSet(product.image)}

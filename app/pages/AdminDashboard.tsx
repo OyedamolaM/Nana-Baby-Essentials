@@ -41,11 +41,13 @@ import {
   type HomeDealRecord,
 } from "../../lib/content";
 import {
+  cleanVariantOptionValue,
   createProductSlug,
   formatNaira,
   formatNairaAmount,
   getProductCostPrice,
   getProductSellingPrice,
+  normalizeVariantOptions,
   PRODUCT_LIST_SELECT,
   toNairaAmount,
   type ProductRecord,
@@ -101,6 +103,7 @@ import { AdminDateTimeField } from "../components/admin/AdminDateTimeField";
 import { useAuth } from "../contexts/AuthContext";
 import { hasSupabaseEnv, supabase } from "../lib/supabase";
 import { Button } from "../components/ui/button";
+import { Badge } from "../components/ui/badge";
 import { ImageWithFallback } from "../components/figma/ImageWithFallback";
 import {
   Card,
@@ -429,18 +432,98 @@ type VariantImageDraft = {
 };
 
 type ProductVariantDraft = {
-  color: string;
-  options: string;
+  key: string;
+  options: Record<string, string>;
   id?: string;
   images: VariantImageDraft[];
   pendingImageFiles: File[];
   pendingImagePreviews: string[];
   inStock: boolean;
   priceOverride: string;
-  size: string;
   sku: string;
+  limitQuantity: boolean;
   stockQuantity: string;
 };
+
+type ProductOptionGroupDraft = {
+  id: string;
+  name: string;
+  values: string;
+};
+
+function getVariantCombinationKey(options: Record<string, string>) {
+  return Object.keys(options)
+    .sort()
+    .map((label) => `${label}=${options[label]}`)
+    .join("|");
+}
+
+function parseVariantOptionValues(value: string, label = "") {
+  // Strip any "Size=" style prefix so pasted legacy values stay clean.
+  return Array.from(
+    new Set(
+      value
+        .split(",")
+        .map((entry) => (label ? cleanVariantOptionValue(label, entry) : entry.trim()))
+        .filter(Boolean),
+    ),
+  );
+}
+
+function buildVariantCombinations(groups: ProductOptionGroupDraft[]) {
+  const activeGroups = groups
+    .map((group) => ({
+      name: group.name.trim(),
+      values: parseVariantOptionValues(group.values, group.name.trim()),
+    }))
+    .filter((group) => group.name && group.values.length > 0);
+
+  if (activeGroups.length === 0) {
+    return [] as { key: string; options: Record<string, string> }[];
+  }
+
+  return activeGroups.reduce<{ key: string; options: Record<string, string> }[]>(
+    (combinations, group) => {
+      const next: { key: string; options: Record<string, string> }[] = [];
+      for (const combination of combinations) {
+        for (const value of group.values) {
+          const options = { ...combination.options, [group.name]: value };
+          next.push({ key: getVariantCombinationKey(options), options });
+        }
+      }
+      return next;
+    },
+    [{ key: "", options: {} }],
+  );
+}
+
+function createEmptyVariantDraft(combination: {
+  key: string;
+  options: Record<string, string>;
+}): ProductVariantDraft {
+  return {
+    key: combination.key,
+    options: combination.options,
+    images: [],
+    pendingImageFiles: [],
+    pendingImagePreviews: [],
+    inStock: true,
+    priceOverride: "",
+    sku: "",
+    limitQuantity: false,
+    stockQuantity: "0",
+  };
+}
+
+function getVariantLegacyValue(options: Record<string, string>, ...labels: string[]) {
+  for (const label of labels) {
+    const value = options[label]?.trim();
+    if (value) {
+      return value;
+    }
+  }
+  return "";
+}
 
 type UploadedProductImage = {
   path: string;
@@ -578,8 +661,6 @@ export function AdminDashboard() {
   const productsPageRef = useRef(0);
   const loadedProductQueryRef = useRef<string | null>(null);
   const productsSentinelRef = useRef<HTMLDivElement | null>(null);
-  const [allProductOptions, setAllProductOptions] = useState<{ id: number; name: string }[]>([]);
-
   const CUSTOMERS_PAGE_SIZE = 200;
   const [customerSearchInput, setCustomerSearchInput] = useState("");
   const customerSearchQuery = useDebouncedValue(customerSearchInput, 400);
@@ -676,26 +757,30 @@ export function AdminDashboard() {
   const [productAgeRange, setProductAgeRange] = useState("");
   const [productHasVariants, setProductHasVariants] = useState(false);
   const [productVariantDrafts, setProductVariantDrafts] = useState<ProductVariantDraft[]>([]);
+  const [productOptionGroups, setProductOptionGroups] = useState<ProductOptionGroupDraft[]>([]);
   const [productDescription, setProductDescription] = useState("");
   const [productInStock, setProductInStock] = useState(true);
   const [productIsFeatured, setProductIsFeatured] = useState(false);
   const [productFeaturedSortOrder, setProductFeaturedSortOrder] = useState("0");
+  const [productStockQuantity, setProductStockQuantity] = useState("0");
+  const [productQuantityLimited, setProductQuantityLimited] = useState(false);
   const [savingProduct, setSavingProduct] = useState(false);
 
   const [showDealModal, setShowDealModal] = useState(false);
   const [editingDeal, setEditingDeal] = useState<HomeDealRecord | null>(null);
-  const [dealProductId, setDealProductId] = useState("");
   const [dealTitle, setDealTitle] = useState("");
   const [dealSubtitle, setDealSubtitle] = useState("");
   const [dealBadgeText, setDealBadgeText] = useState("");
-  const [dealImage, setDealImage] = useState("");
+  const [dealImages, setDealImages] = useState<string[]>([]);
+  const [dealStockLimit, setDealStockLimit] = useState("0");
+  const [dealQuantityLimited, setDealQuantityLimited] = useState(false);
   const [dealSalePrice, setDealSalePrice] = useState("");
   const [dealCompareAtPrice, setDealCompareAtPrice] = useState("");
   const [dealStartsAt, setDealStartsAt] = useState("");
   const [dealEndsAt, setDealEndsAt] = useState("");
   const [dealSortOrder, setDealSortOrder] = useState("0");
   const [dealIsActive, setDealIsActive] = useState(true);
-  const [dealImageFile, setDealImageFile] = useState<File | null>(null);
+  const [dealImageFiles, setDealImageFiles] = useState<File[]>([]);
 
   const [showShippingTierModal, setShowShippingTierModal] = useState(false);
   const [editingShippingTier, setEditingShippingTier] = useState<ShippingTier | null>(null);
@@ -719,8 +804,8 @@ export function AdminDashboard() {
   const [packageDetails, setPackageDetails] = useState("");
   const [packageVideoUrl, setPackageVideoUrl] = useState("");
   const [packagePrice, setPackagePrice] = useState("");
-  const [packageImage, setPackageImage] = useState("");
-  const [packageImageFile, setPackageImageFile] = useState<File | null>(null);
+  const [packageImages, setPackageImages] = useState<string[]>([]);
+  const [packageImageFiles, setPackageImageFiles] = useState<File[]>([]);
   const [packageSortOrder, setPackageSortOrder] = useState("0");
   const [packageIsActive, setPackageIsActive] = useState(true);
   const [savingPackage, setSavingPackage] = useState(false);
@@ -1019,14 +1104,13 @@ const fetchOrdersPage = useCallback(
       const result = await supabase.from("product_categories").select("id, label, slug, is_active, sort_order, created_at").order("sort_order", { ascending: true });
       setProductCategories(((result.error ? [] : result.data) ?? []) as ProductCategoryRecord[]);
     } else if (tab === "deals") {
-      const [dealsResult, productsResult] = await Promise.all([
-        supabase.from("homepage_deals").select("id, product_id, title, subtitle, badge_text, override_image, sale_price, compare_at_price, starts_at, ends_at, is_active, sort_order, created_at").order("sort_order", { ascending: true }),
-        supabase.from("products").select("id, name").eq("product_kind", "standard").order("name", { ascending: true }),
-      ]);
-      setDeals(((dealsResult.error ? [] : dealsResult.data) ?? []) as HomeDealRecord[]);
-      setAllProductOptions(((productsResult.error ? [] : productsResult.data) ?? []) as { id: number; name: string }[]);
+      const result = await supabase
+        .from("homepage_deals")
+        .select("id, product_id, title, subtitle, badge_text, override_image, override_images, sale_price, compare_at_price, starts_at, ends_at, is_active, sort_order, created_at, products(name, stock_quantity)")
+        .order("sort_order", { ascending: true });
+      setDeals(((result.error ? [] : result.data) ?? []) as HomeDealRecord[]);
     } else if (tab === "packages") {
-      const result = await supabase.from("special_packages").select(`id, product_id, package_type, slug, title, subtitle, badge_text, details, override_image, external_video_url, is_active, sort_order, created_at, updated_at, products(${PRODUCT_LIST_SELECT})`).order("package_type", { ascending: false }).order("sort_order", { ascending: true });
+      const result = await supabase.from("special_packages").select(`id, product_id, package_type, slug, title, subtitle, badge_text, details, override_image, override_images, external_video_url, is_active, sort_order, created_at, updated_at, products(${PRODUCT_LIST_SELECT})`).order("package_type", { ascending: false }).order("sort_order", { ascending: true });
       setSpecialPackages(((result.error ? [] : result.data) ?? []) as SpecialPackageRecord[]);
     } else if (tab === "content") {
       const [settings, locations] = await Promise.all([
@@ -1174,13 +1258,6 @@ useEffect(() => {
     return () => observer.disconnect();
   }, [customersHasMore]);
 
-  const productLookup = useMemo(() => {
-    return Object.fromEntries(products.map((product) => [product.id, product])) as Record<
-      number,
-      ProductRecord
-    >;
-  }, [products]);
-
   const productCategoryOptions = useMemo(() => {
     return buildProductCategoryOptions({
       includeInactive: true,
@@ -1190,6 +1267,21 @@ useEffect(() => {
       records: productCategories,
     });
   }, [productCategories, products]);
+
+  const productVariantCombinations = useMemo(
+    () => buildVariantCombinations(productOptionGroups),
+    [productOptionGroups],
+  );
+
+  const productVariantRows = useMemo(() => {
+    const draftsByKey = new Map(
+      productVariantDrafts.map((draft) => [draft.key, draft]),
+    );
+    return productVariantCombinations.map((combination) => ({
+      combination,
+      draft: draftsByKey.get(combination.key) ?? createEmptyVariantDraft(combination),
+    }));
+  }, [productVariantCombinations, productVariantDrafts]);
 
  
 
@@ -1994,8 +2086,8 @@ useEffect(() => {
     setPackageDetails("");
     setPackageVideoUrl("");
     setPackagePrice("");
-    setPackageImage("");
-    setPackageImageFile(null);
+    setPackageImages([]);
+    setPackageImageFiles([]);
     setPackageSortOrder("0");
     setPackageIsActive(true);
   };
@@ -2016,8 +2108,17 @@ useEffect(() => {
         ? String(toNairaAmount(Number(packageProduct.selling_price ?? packageProduct.price ?? 0)))
         : "",
     );
-    setPackageImage(pkg.override_image ?? "");
-    setPackageImageFile(null);
+    const packageGallery = (pkg.override_images ?? [])
+      .map((url) => url?.trim())
+      .filter((url): url is string => Boolean(url));
+    setPackageImages(
+      packageGallery.length > 0
+        ? packageGallery
+        : pkg.override_image?.trim()
+          ? [pkg.override_image.trim()]
+          : [],
+    );
+    setPackageImageFiles([]);
     setPackageSortOrder(String(pkg.sort_order ?? 0));
     setPackageIsActive(Boolean(pkg.is_active));
     setShowPackageModal(true);
@@ -2038,23 +2139,31 @@ useEffect(() => {
       return;
     }
 
-    const nextStoredPackageImage =
-      typeof packageImage === "string" && packageImage.trim().length > 0
-        ? packageImage.trim()
-        : null;
-    let nextPackageImage = nextStoredPackageImage;
+    const existingPackageImages = packageImages
+      .map((url) => url.trim())
+      .filter((url) => Boolean(url));
+    let uploadedPackageImages: string[] = [];
 
-    if (!packageImageFile && !nextPackageImage) {
-      toast.error("Upload a package image file that is 500KB or smaller.");
+    if (packageImageFiles.length === 0 && existingPackageImages.length === 0) {
+      toast.error("Upload at least one package image that is 500KB or smaller.");
       return;
     }
 
     setSavingPackage(true);
 
     try {
-      if (packageImageFile) {
-        nextPackageImage = await uploadAdminContentImage(accessToken, packageImageFile, "packages");
+      if (packageImageFiles.length > 0) {
+        uploadedPackageImages = await Promise.all(
+          packageImageFiles.map((file) =>
+            uploadAdminContentImage(accessToken, file, "packages"),
+          ),
+        );
       }
+
+      const nextPackageImages = [
+        ...existingPackageImages,
+        ...uploadedPackageImages,
+      ];
 
       const response = await fetch(
         editingPackage ? `/api/admin/packages/${editingPackage.id}` : "/api/admin/packages",
@@ -2068,7 +2177,8 @@ useEffect(() => {
             badgeText: packageBadgeText,
             details: packageDetails,
             externalVideoUrl: packageVideoUrl,
-            image: nextPackageImage,
+            image: nextPackageImages[0],
+            images: nextPackageImages,
             isActive: packageIsActive,
             packageType,
             price: nextPrice,
@@ -2287,8 +2397,11 @@ useEffect(() => {
     setProductAgeRange("");
     setProductHasVariants(false);
     setProductVariantDrafts([]);
+    setProductOptionGroups([]);
     setProductDescription("");
     setProductInStock(true);
+    setProductStockQuantity("0");
+    setProductQuantityLimited(false);
     setProductIsFeatured(false);
     setProductFeaturedSortOrder("0");
   };
@@ -2311,8 +2424,12 @@ useEffect(() => {
     setProductAgeRange(product.age_range ?? "");
     setProductHasVariants(Boolean(product.has_variants));
     setProductVariantDrafts([]);
+    setProductOptionGroups([]);
     setProductDescription(product.description);
     setProductInStock(Boolean(product.in_stock));
+    const loadedQuantityLimit = Math.max(0, Math.floor(Number(product.stock_quantity ?? 0)));
+    setProductQuantityLimited(loadedQuantityLimit > 0);
+    setProductStockQuantity(String(loadedQuantityLimit > 0 ? loadedQuantityLimit : 1));
     setProductIsFeatured(Boolean(product.is_featured));
     setProductFeaturedSortOrder(String(product.featured_sort_order ?? 0));
     setShowProductModal(true);
@@ -2345,34 +2462,52 @@ useEffect(() => {
     }
 
     if (!variantsResult.error) {
-      setProductVariantDrafts(
-        (variantsResult.data ?? []).map((variant) => {
-          const variantImages = (Array.isArray(variant.variant_images) ? variant.variant_images : [])
-            .slice()
-            .sort((left, right) => Number(left.sort_order ?? 0) - Number(right.sort_order ?? 0))
-            .map((image) => ({
-              id: String(image.id),
-              url: image.url,
-              thumbnailUrl: image.thumbnail_url ?? undefined,
-            }));
+      const loadedOptionValues = new Map<string, string[]>();
+      const loadedDrafts = (variantsResult.data ?? []).map((variant) => {
+        const variantImages = (Array.isArray(variant.variant_images) ? variant.variant_images : [])
+          .slice()
+          .sort((left, right) => Number(left.sort_order ?? 0) - Number(right.sort_order ?? 0))
+          .map((image) => ({
+            id: String(image.id),
+            url: image.url,
+            thumbnailUrl: image.thumbnail_url ?? undefined,
+          }));
 
-          return {
-            color: variant.color ?? "",
-            options: Object.entries(variant.options ?? {}).map(([label, value]) => `${label}=${value}`).join(", "),
-            id: variant.id,
-            images: variantImages,
-            pendingImageFiles: [],
-            pendingImagePreviews: [],
-            inStock: Boolean(variant.in_stock),
-            priceOverride:
-              variant.price_override === null || variant.price_override === undefined
-                ? ""
-                : String(toNairaAmount(Number(variant.price_override))),
-            size: variant.size ?? "",
-            sku: variant.sku ?? "",
-            stockQuantity: String(variant.stock_quantity ?? 0),
-          };
-        }),
+        const options =
+          normalizeVariantOptions(variant.options, variant.size, variant.color) ?? {};
+
+        for (const [label, value] of Object.entries(options)) {
+          loadedOptionValues.set(
+            label,
+            Array.from(new Set([...(loadedOptionValues.get(label) ?? []), value])),
+          );
+        }
+
+        return {
+          key: getVariantCombinationKey(options),
+          options,
+          id: variant.id,
+          images: variantImages,
+          pendingImageFiles: [],
+          pendingImagePreviews: [],
+          inStock: Boolean(variant.in_stock),
+          priceOverride:
+            variant.price_override === null || variant.price_override === undefined
+              ? ""
+              : String(toNairaAmount(Number(variant.price_override))),
+          sku: variant.sku ?? "",
+          limitQuantity: Number(variant.stock_quantity ?? 0) > 0,
+          stockQuantity: String(variant.stock_quantity ?? 0),
+        } satisfies ProductVariantDraft;
+      });
+
+      setProductVariantDrafts(loadedDrafts);
+      setProductOptionGroups(
+        Array.from(loadedOptionValues.entries()).map(([name, values], index) => ({
+          id: `option-${index}-${name}`,
+          name,
+          values: values.join(", "),
+        })),
       );
     } else if (variantsResult.error.code !== "42P01") {
       toast.error("Could not load product variants.");
@@ -2519,7 +2654,7 @@ useEffect(() => {
     }
   };
 
-  const handleDeleteVariantImage = async (variantIndex: number, imageId: string) => {
+  const handleDeleteVariantImage = async (variantKey: string, imageId: string) => {
     if (!editingProduct || !window.confirm("Remove this photo from the option?")) {
       return;
     }
@@ -2545,8 +2680,8 @@ useEffect(() => {
       }
 
       setProductVariantDrafts((currentVariants) =>
-        currentVariants.map((variant, index) =>
-          index === variantIndex
+        currentVariants.map((variant) =>
+          variant.key === variantKey
             ? { ...variant, images: variant.images.filter((image) => image.id !== imageId) }
             : variant,
         ),
@@ -2559,15 +2694,27 @@ useEffect(() => {
     }
   };
 
-  const updateProductVariantDraft = (
-    index: number,
+  const updateVariantDraft = (
+    variantKey: string,
     patch: Partial<ProductVariantDraft>,
   ) => {
-    setProductVariantDrafts((currentVariants) =>
-      currentVariants.map((variant, variantIndex) =>
-        variantIndex === index ? { ...variant, ...patch } : variant,
-      ),
-    );
+    setProductVariantDrafts((currentVariants) => {
+      const existing = currentVariants.find((variant) => variant.key === variantKey);
+      if (existing) {
+        return currentVariants.map((variant) =>
+          variant.key === variantKey ? { ...variant, ...patch } : variant,
+        );
+      }
+
+      const combination = productVariantCombinations.find(
+        (entry) => entry.key === variantKey,
+      );
+      if (!combination) {
+        return currentVariants;
+      }
+
+      return [...currentVariants, { ...createEmptyVariantDraft(combination), ...patch }];
+    });
   };
 
   const handleProductVariantsToggle = (nextHasVariants: boolean) => {
@@ -2576,6 +2723,7 @@ useEffect(() => {
         return;
       }
       setProductVariantDrafts([]);
+      setProductOptionGroups([]);
     }
 
     setProductHasVariants(nextHasVariants);
@@ -2629,12 +2777,9 @@ useEffect(() => {
     }
 
     if (productHasVariants) {
-      const hasUsableVariant = productVariantDrafts.some(
-        (variant) => variant.size.trim() || variant.color.trim() || variant.options.trim(),
-      );
-      if (!hasUsableVariant) {
+      if (productVariantCombinations.length === 0) {
         toast.error(
-          "Add at least one option combination, or turn off selectable options for this product.",
+          "Add at least one option name and value, or turn off selectable options for this product.",
         );
         return;
       }
@@ -2721,6 +2866,9 @@ useEffect(() => {
       in_stock: productInStock,
       is_featured: productIsFeatured,
       featured_sort_order: Number(productFeaturedSortOrder || 0),
+      stock_quantity: productQuantityLimited
+        ? Math.max(1, Math.floor(Number(productStockQuantity || 1)))
+        : 0,
       product_kind: "standard",
     };
 
@@ -2833,6 +2981,14 @@ useEffect(() => {
       return;
     }
 
+    const resolvedVariantDrafts = productHasVariants
+      ? productVariantCombinations.map(
+          (combination) =>
+            productVariantDrafts.find((draft) => draft.key === combination.key) ??
+            createEmptyVariantDraft(combination),
+        )
+      : [];
+
     const variantsResponse = await fetch(
       `/api/admin/products/${savedProduct.id}/variants`,
       {
@@ -2844,17 +3000,19 @@ useEffect(() => {
         body: JSON.stringify({
           deleteExistingVariants: !productHasVariants,
           hasVariants: productHasVariants,
-          variants: productVariantDrafts.map((variant) => ({
-            color: variant.color,
+          variants: resolvedVariantDrafts.map((variant) => ({
+            color: getVariantLegacyValue(variant.options, "Colour", "Color"),
             id: variant.id,
             inStock: variant.inStock,
             priceOverride: variant.priceOverride
               ? Number(variant.priceOverride) / 1000
               : null,
-            size: variant.size,
-            options: Object.fromEntries(variant.options.split(",").map((part) => part.trim()).filter(Boolean).map((part) => { const separator = part.indexOf("="); return separator > 0 ? [part.slice(0, separator).trim(), part.slice(separator + 1).trim()] : ["", ""]; }).filter(([label, value]) => label && value)),
+            size: getVariantLegacyValue(variant.options, "Size"),
+            options: variant.options,
             sku: variant.sku,
-            stockQuantity: variant.stockQuantity,
+            stockQuantity: variant.limitQuantity
+              ? Math.max(1, Math.floor(Number(variant.stockQuantity || 1)))
+              : 0,
           })),
         }),
       },
@@ -2874,8 +3032,8 @@ useEffect(() => {
     const savedVariantIds = variantsResult?.savedVariantIds ?? [];
     let failedVariantImageCount = 0;
     let variantImageFailureMessage: string | null = null;
-    for (let variantIndex = 0; variantIndex < productVariantDrafts.length; variantIndex += 1) {
-      const variant = productVariantDrafts[variantIndex];
+    for (let variantIndex = 0; variantIndex < resolvedVariantDrafts.length; variantIndex += 1) {
+      const variant = resolvedVariantDrafts[variantIndex];
       const variantId = savedVariantIds[variantIndex];
       if (!variantId || variant.pendingImageFiles.length === 0) {
         continue;
@@ -2983,12 +3141,13 @@ useEffect(() => {
 
   const resetDealForm = () => {
     setEditingDeal(null);
-    setDealProductId(products[0] ? String(products[0].id) : "");
     setDealTitle("");
     setDealSubtitle("");
     setDealBadgeText("");
-    setDealImage("");
-    setDealImageFile(null);
+    setDealImages([]);
+    setDealImageFiles([]);
+    setDealStockLimit("0");
+    setDealQuantityLimited(false);
     setDealSalePrice("");
     setDealCompareAtPrice("");
     setDealStartsAt("");
@@ -2997,14 +3156,40 @@ useEffect(() => {
     setDealIsActive(true);
   };
 
+  const startDealFromProduct = (product: ProductRecord) => {
+    resetDealForm();
+    setDealTitle(product.name);
+    setDealSubtitle(product.description ?? "");
+    setDealBadgeText("Deal of the Week");
+    const productPrice = String(toNairaAmount(getProductSellingPrice(product)));
+    setDealSalePrice(productPrice);
+    setDealCompareAtPrice(productPrice);
+    setDealImages(product.image ? [product.image] : []);
+    const productLimit = Math.max(0, Math.floor(Number(product.stock_quantity ?? 0)));
+    setDealQuantityLimited(productLimit > 0);
+    setDealStockLimit(String(productLimit > 0 ? productLimit : 1));
+    setShowDealModal(true);
+  };
+
   const handleEditDeal = (deal: HomeDealRecord) => {
     setEditingDeal(deal);
-    setDealProductId(String(deal.product_id));
     setDealTitle(deal.title);
     setDealSubtitle(deal.subtitle ?? "");
     setDealBadgeText(deal.badge_text ?? "");
-    setDealImage(deal.override_image ?? "");
-    setDealImageFile(null);
+    const dealGallery = (deal.override_images ?? [])
+      .map((url) => url?.trim())
+      .filter((url): url is string => Boolean(url));
+    setDealImages(
+      dealGallery.length > 0
+        ? dealGallery
+        : deal.override_image?.trim()
+          ? [deal.override_image.trim()]
+          : [],
+    );
+    setDealImageFiles([]);
+    const dealLimit = Math.max(0, Math.floor(Number(deal.products?.stock_quantity ?? 0)));
+    setDealQuantityLimited(dealLimit > 0);
+    setDealStockLimit(String(dealLimit > 0 ? dealLimit : 1));
     setDealSalePrice(String(toNairaAmount(Number(deal.sale_price))));
     setDealCompareAtPrice(
       deal.compare_at_price ? String(toNairaAmount(Number(deal.compare_at_price))) : "",
@@ -3019,55 +3204,127 @@ useEffect(() => {
   const handleSaveDeal = async (event: React.FormEvent) => {
     event.preventDefault();
 
-    const existingUploadedImage =
-      typeof dealImage === "string" && dealImage.trim().length > 0
-        ? dealImage.trim()
-        : null;
-    let overrideImage = existingUploadedImage;
+    const existingImages = dealImages
+      .map((url) => url.trim())
+      .filter((url) => Boolean(url));
+    const uploadedImages: string[] = [];
 
-    if (!dealImageFile && !overrideImage) {
-      toast.error("Upload a deal image file that is 500KB or smaller.");
-      return;
-    }
-
-    if (dealImageFile) {
+    if (dealImageFiles.length > 0) {
       const accessToken = await getAdminAccessToken();
       if (!accessToken) {
         toast.error("Sign in again to upload deal images.");
         return;
       }
 
-      const uploadFormData = new FormData();
-      uploadFormData.append("image", dealImageFile);
+      for (const file of dealImageFiles) {
+        const uploadFormData = new FormData();
+        uploadFormData.append("image", file);
 
-      const uploadResponse = await fetch("/api/admin/deals/upload", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
-        body: uploadFormData,
-      });
+        const uploadResponse = await fetch("/api/admin/deals/upload", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
+          body: uploadFormData,
+        });
 
-      const uploadResult = (await uploadResponse.json().catch(() => null)) as
-        | { dataUrl?: string; message?: string; path?: string; url?: string }
-        | null;
-      const uploadedImageUrl = uploadResult?.url ?? uploadResult?.dataUrl;
+        const uploadResult = (await uploadResponse.json().catch(() => null)) as
+          | { dataUrl?: string; message?: string; path?: string; url?: string }
+          | null;
+        const uploadedImageUrl = uploadResult?.url ?? uploadResult?.dataUrl;
 
-      if (!uploadResponse.ok || !uploadedImageUrl) {
-        toast.error(uploadResult?.message ?? "Could not upload the deal image.");
+        if (!uploadResponse.ok || !uploadedImageUrl) {
+          toast.error(uploadResult?.message ?? "Could not upload the deal image.");
+          return;
+        }
+
+        uploadedImages.push(uploadedImageUrl);
+      }
+    }
+
+    const nextImages = [...existingImages, ...uploadedImages];
+    if (nextImages.length === 0) {
+      toast.error("Upload at least one deal image that is 500KB or smaller.");
+      return;
+    }
+
+    const dealTitleValue = dealTitle.trim();
+    if (!dealTitleValue) {
+      toast.error("Give the deal a title.");
+      return;
+    }
+
+    const salePriceValue = Number(dealSalePrice) / 1000;
+    if (!Number.isFinite(salePriceValue) || salePriceValue <= 0) {
+      toast.error("Enter a sale price greater than zero.");
+      return;
+    }
+
+    const quantityLimit = dealQuantityLimited
+      ? Math.max(1, Math.floor(Number(dealStockLimit || 1)))
+      : 0;
+
+    // Every deal owns a hidden product row so the cart, checkout, stock, and
+    // order history all have something real to reference. A deal never
+    // overwrites a catalogue product.
+    let targetProductId: number | null = null;
+    if (editingDeal) {
+      const { data: linkedProduct } = await supabase
+        .from("products")
+        .select("id, product_kind")
+        .eq("id", Number(editingDeal.product_id))
+        .maybeSingle();
+      if (linkedProduct?.product_kind === "deal") {
+        targetProductId = Number(linkedProduct.id);
+      }
+    }
+
+    const productPayload = {
+      name: dealTitleValue,
+      description: dealSubtitle.trim() || dealTitleValue,
+      price: salePriceValue,
+      selling_price: salePriceValue,
+      cost_price: salePriceValue,
+      category: "Deals",
+      image: nextImages[0],
+      in_stock: dealIsActive,
+      is_featured: false,
+      featured_sort_order: 0,
+      stock_quantity: quantityLimit,
+      product_kind: "deal",
+    };
+
+    if (targetProductId) {
+      const { error: productError } = await supabase
+        .from("products")
+        .update(productPayload)
+        .eq("id", targetProductId);
+      if (productError) {
+        toast.error("Failed to update the deal details.");
         return;
       }
-
-      overrideImage = uploadedImageUrl;
+    } else {
+      const dealSlug = `${createProductSlug(dealTitleValue) || "deal"}-${Date.now().toString(36)}`;
+      const { data: createdProduct, error: productError } = await supabase
+        .from("products")
+        .insert({ ...productPayload, slug: dealSlug })
+        .select("id")
+        .single();
+      if (productError || !createdProduct) {
+        toast.error("Failed to create the deal.");
+        return;
+      }
+      targetProductId = Number(createdProduct.id);
     }
 
     const payload = {
-      product_id: Number(dealProductId),
-      title: dealTitle,
+      product_id: targetProductId,
+      title: dealTitleValue,
       subtitle: dealSubtitle || null,
       badge_text: dealBadgeText || null,
-      override_image: overrideImage,
-      sale_price: Number(dealSalePrice) / 1000,
+      override_image: nextImages[0],
+      override_images: nextImages,
+      sale_price: salePriceValue,
       compare_at_price: dealCompareAtPrice ? Number(dealCompareAtPrice) / 1000 : null,
       starts_at: dealStartsAt ? new Date(dealStartsAt).toISOString() : null,
       ends_at: dealEndsAt ? new Date(dealEndsAt).toISOString() : null,
@@ -3096,10 +3353,26 @@ useEffect(() => {
       return;
     }
 
+    const deal = deals.find((entry) => entry.id === dealId);
+
     const { error } = await supabase.from("homepage_deals").delete().eq("id", dealId);
     if (error) {
       toast.error("Failed to delete deal.");
       return;
+    }
+
+    // Remove the hidden deal product too, but never a catalogue product that a
+    // legacy deal might still point at.
+    const productId = deal ? Number(deal.product_id) : null;
+    if (productId) {
+      const { data: linkedProduct } = await supabase
+        .from("products")
+        .select("product_kind")
+        .eq("id", productId)
+        .maybeSingle();
+      if (linkedProduct?.product_kind === "deal") {
+        await supabase.from("products").delete().eq("id", productId);
+      }
     }
 
     toast.success("Deal deleted.");
@@ -3874,6 +4147,18 @@ useEffect(() => {
                           <Button
                             variant="outline"
                             size="sm"
+                            title="Add this product to Deals of the Week"
+                            aria-label="Add this product to Deals of the Week"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              startDealFromProduct(product);
+                            }}
+                          >
+                            <Sparkles className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
                             onClick={(event) => {
                             event.stopPropagation();
                             handleEditProduct(product);
@@ -3938,7 +4223,7 @@ useEffect(() => {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Deal</TableHead>
-                    <TableHead>Product</TableHead>
+                    <TableHead>Quantity limit</TableHead>
                     <TableHead>Pricing</TableHead>
                     <TableHead>Window</TableHead>
                     <TableHead>Order</TableHead>
@@ -3959,7 +4244,11 @@ useEffect(() => {
                           {deal.badge_text || "No badge"}
                         </div>
                       </TableCell>
-                      <TableCell>{productLookup[deal.product_id]?.name ?? "N/A"}</TableCell>
+                      <TableCell>
+                        {Number(deal.products?.stock_quantity ?? 0) > 0
+                          ? `Max ${Number(deal.products?.stock_quantity)}`
+                          : "Unlimited"}
+                      </TableCell>
                       <TableCell>
                         {formatNaira(Number(deal.sale_price))}
                         {deal.compare_at_price ? (
@@ -4143,7 +4432,7 @@ useEffect(() => {
                             }
                           />
                           <p className="text-xs text-gray-500">
-                            Upload an image file up to 500KB. The current image stays in place until you save.
+                            Upload an image file up to 500KB..
                           </p>
                         </div>
                         <div className="space-y-2">
@@ -4552,7 +4841,7 @@ useEffect(() => {
                         <div className="font-medium">{tier.label}</div>
                         <div className="text-xs text-gray-500">
                           {(tier.fulfillment_type === "pickup" ? "Pickup" : "Delivery") +
-                            (tier.description ? ` • ${tier.description}` : "")}
+                            (tier.description ? ` Ã¢â‚¬Â¢ ${tier.description}` : "")}
                         </div>
                       </TableCell>
                       <TableCell>{formatNairaAmount(Number(tier.fee ?? 0))}</TableCell>
@@ -5008,26 +5297,55 @@ useEffect(() => {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="package-image">Package Image Upload</Label>
+              <Label htmlFor="package-image">Package Images</Label>
               <Input
                 id="package-image"
                 type="file"
                 accept="image/*"
-                onChange={(event) => setPackageImageFile(event.target.files?.[0] ?? null)}
+                multiple
+                onChange={(event) =>
+                  setPackageImageFiles(Array.from(event.target.files ?? []))
+                }
               />
               <p className="text-xs text-gray-500">
-                Upload an image file up to 500KB. The package image is also used for checkout and registry views.
+                Upload one or more images up to 500KB each. The first image is the
+                main package photo; the rest show as a gallery.
               </p>
-              {packageImage ? (
-                <div className="overflow-hidden rounded-2xl border">
-                  <img
-                    src={packageImage}
-                    alt={packageTitle || "Package preview"}
-                    loading="lazy"
-                    decoding="async"
-                    className="h-56 w-full object-cover"
-                  />
+              {packageImages.length > 0 ? (
+                <div className="space-y-2 pt-1">
+                  <p className="text-xs text-gray-500">
+                    {packageImages.length} saved image{packageImages.length === 1 ? "" : "s"}.
+                    Remove any you no longer want.
+                  </p>
+                  <div className="flex flex-wrap gap-3">
+                    {packageImages.map((image, index) => (
+                      <div key={`${image}-${index}`} className="relative h-20 w-20">
+                        <img
+                          src={image}
+                          alt={`Package image ${index + 1}`}
+                          className="h-full w-full rounded-md border bg-white object-contain"
+                        />
+                        <button
+                          type="button"
+                          aria-label="Remove package image"
+                          className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full border bg-white text-red-600 shadow-sm"
+                          onClick={() =>
+                            setPackageImages((current) =>
+                              current.filter((_, imageIndex) => imageIndex !== index),
+                            )
+                          }
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
                 </div>
+              ) : null}
+              {packageImageFiles.length > 0 ? (
+                <p className="text-xs text-gray-500">
+                  {packageImageFiles.length} new image{packageImageFiles.length === 1 ? "" : "s"} will be added when you save.
+                </p>
               ) : null}
             </div>
 
@@ -5451,7 +5769,7 @@ useEffect(() => {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
               <div className="space-y-2">
                 <Label htmlFor="product-brand">Brand (optional)</Label>
                 <Input
@@ -5469,6 +5787,32 @@ useEffect(() => {
                   onChange={(event) => setProductAgeRange(event.target.value)}
                   placeholder="e.g. 0-6 months"
                 />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="product-limit-quantity">Quantity limit (optional)</Label>
+                <label className="flex items-center gap-2 text-sm text-gray-700">
+                  <input
+                    id="product-limit-quantity"
+                    type="checkbox"
+                    checked={productQuantityLimited}
+                    onChange={(event) => setProductQuantityLimited(event.target.checked)}
+                  />
+                  Limit how many customers can buy
+                </label>
+                {productQuantityLimited ? (
+                  <Input
+                    aria-label="Maximum quantity per customer"
+                    type="number"
+                    min="1"
+                    step="1"
+                    value={productStockQuantity}
+                    onChange={(event) => setProductStockQuantity(event.target.value)}
+                    placeholder="e.g. 10"
+                  />
+                ) : null}
+                <p className="text-xs text-gray-500">
+                  Leave unticked to sell without a limit.
+                </p>
               </div>
             </div>
 
@@ -5625,185 +5969,274 @@ useEffect(() => {
               </label>
 
               {productHasVariants ? (
-                <div className="space-y-3">
-                  {productVariantDrafts.map((variant, index) => {
-                    return (
-                    <div
-                      key={variant.id ?? `new-variant-${index}`}
-                      className="space-y-2 rounded-md border bg-white p-3"
-                    >
-                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_1fr_0.8fr_0.9fr_auto]">
-                      <Input
-                        aria-label={`Variant ${index + 1} size`}
-                        value={variant.size}
-                        onChange={(event) => updateProductVariantDraft(index, { size: event.target.value })}
-                        placeholder="Size"
-                      />
-                      <Input
-                        aria-label={`Variant ${index + 1} color`}
-                        value={variant.color}
-                        onChange={(event) => updateProductVariantDraft(index, { color: event.target.value })}
-                        placeholder="Color"
-                      />
-                      <Input
-                        aria-label={`Variant ${index + 1} additional options`}
-                        value={variant.options}
-                        onChange={(event) => updateProductVariantDraft(index, { options: event.target.value })}
-                        placeholder="Age=0–3m, Sex=Girl"
-                      />
-                      <Input
-                        aria-label={`Variant ${index + 1} SKU`}
-                        value={variant.sku}
-                        onChange={(event) => updateProductVariantDraft(index, { sku: event.target.value })}
-                        placeholder="SKU"
-                      />
-                      <Input
-                        aria-label={`Variant ${index + 1} stock quantity`}
-                        type="number"
-                        min="0"
-                        value={variant.stockQuantity}
-                        onChange={(event) => updateProductVariantDraft(index, { stockQuantity: event.target.value })}
-                        placeholder="Stock (optional)"
-                      />
-                      <Input
-                        aria-label={`Variant ${index + 1} price override in Naira`}
-                        type="number"
-                        min="0"
-                        value={variant.priceOverride}
-                        onChange={(event) => updateProductVariantDraft(index, { priceOverride: event.target.value })}
-                        placeholder="Price override (NGN)"
-                      />
-                      <div className="flex items-center gap-2">
-                        <label className="flex items-center gap-1 text-xs text-gray-600">
-                          <input
-                            type="checkbox"
-                            checked={variant.inStock}
-                            onChange={(event) => updateProductVariantDraft(index, { inStock: event.target.checked })}
-                          />
-                          In stock
-                        </label>
+                <div className="space-y-4">
+                  <div className="space-y-3 rounded-md border border-pink-200 bg-white p-3">
+                    <p className="text-sm font-semibold text-gray-800">Options</p>
+                    <p className="text-xs text-gray-500">
+                      Name each choice (for example Size or Colour) and list its values
+                      separated by commas. Every value is combined automatically, so
+                      customers can pick a colour then a size, or a size then a colour.
+                    </p>
+
+                    {productOptionGroups.map((group, groupIndex) => (
+                      <div
+                        key={group.id}
+                        className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-[0.8fr_1.4fr_auto]"
+                      >
+                        <Input
+                          aria-label={`Option ${groupIndex + 1} name`}
+                          value={group.name}
+                          onChange={(event) =>
+                            setProductOptionGroups((current) =>
+                              current.map((entry) =>
+                                entry.id === group.id
+                                  ? { ...entry, name: event.target.value }
+                                  : entry,
+                              ),
+                            )
+                          }
+                          placeholder="Name (e.g. Size)"
+                        />
+                        <Input
+                          aria-label={`Option ${groupIndex + 1} values`}
+                          value={group.values}
+                          onChange={(event) =>
+                            setProductOptionGroups((current) =>
+                              current.map((entry) =>
+                                entry.id === group.id
+                                  ? { ...entry, values: event.target.value }
+                                  : entry,
+                              ),
+                            )
+                          }
+                          placeholder="Values separated by commas (e.g. S, M, L)"
+                        />
                         <Button
                           type="button"
                           variant="outline"
                           size="icon"
                           className="h-9 w-9 text-red-600"
-                          title="Remove variant"
-                          aria-label="Remove variant"
+                          title="Remove option"
+                          aria-label="Remove option"
                           onClick={() =>
-                            setProductVariantDrafts((currentVariants) =>
-                              currentVariants.filter((_, variantIndex) => variantIndex !== index),
+                            setProductOptionGroups((current) =>
+                              current.filter((entry) => entry.id !== group.id),
                             )
                           }
                         >
                           <Trash2 className="h-4 w-4" />
                         </Button>
                       </div>
-                      </div>
-                      <div className="space-y-2">
-                        <div className="flex flex-wrap items-center gap-2">
-                          {variant.images.map((image) => (
-                            <div key={image.id} className="group relative h-14 w-14 shrink-0">
-                              <img
-                                src={image.thumbnailUrl || image.url}
-                                alt={`Variant ${index + 1} photo`}
-                                loading="lazy"
-                                decoding="async"
-                                className="h-full w-full rounded-md border object-cover"
-                              />
-                              <button
-                                type="button"
-                                className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full border bg-white text-red-600 shadow-sm"
-                                title="Remove photo"
-                                aria-label="Remove photo"
-                                onClick={() => void handleDeleteVariantImage(index, image.id)}
-                              >
-                                <Trash2 className="h-3 w-3" />
-                              </button>
-                            </div>
-                          ))}
-                          {variant.pendingImagePreviews.map((previewUrl, previewIndex) => (
-                            <div key={previewUrl} className="group relative h-14 w-14 shrink-0">
-                              <img
-                                src={previewUrl}
-                                alt={`Variant ${index + 1} pending photo`}
-                                loading="lazy"
-                                decoding="async"
-                                className="h-full w-full rounded-md border-2 border-dashed object-cover opacity-80"
-                              />
-                              <button
-                                type="button"
-                                className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full border bg-white text-red-600 shadow-sm"
-                                title="Remove photo"
-                                aria-label="Remove photo"
-                                onClick={() => {
-                                  URL.revokeObjectURL(previewUrl);
-                                  updateProductVariantDraft(index, {
-                                    pendingImageFiles: variant.pendingImageFiles.filter(
-                                      (_, fileIndex) => fileIndex !== previewIndex,
-                                    ),
-                                    pendingImagePreviews: variant.pendingImagePreviews.filter(
-                                      (_, fileIndex) => fileIndex !== previewIndex,
-                                    ),
-                                  });
-                                }}
-                              >
-                                <Trash2 className="h-3 w-3" />
-                              </button>
-                            </div>
-                          ))}
-                          <label className="flex h-14 w-14 shrink-0 cursor-pointer flex-col items-center justify-center gap-1 rounded-md border border-dashed text-gray-500 hover:bg-gray-50">
-                            <Plus className="h-4 w-4" />
-                            <input
-                              type="file"
-                              accept="image/*"
-                              multiple
-                              className="hidden"
-                              onChange={(event) => {
-                                const files = Array.from(event.target.files ?? []);
-                                event.target.value = "";
-                                if (files.length === 0) return;
-                                updateProductVariantDraft(index, {
-                                  pendingImageFiles: [...variant.pendingImageFiles, ...files],
-                                  pendingImagePreviews: [
-                                    ...variant.pendingImagePreviews,
-                                    ...files.map((file) => URL.createObjectURL(file)),
-                                  ],
-                                });
-                              }}
+                    ))}
+
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() =>
+                        setProductOptionGroups((current) => [
+                          ...current,
+                          {
+                            id: `option-${Date.now()}-${current.length}`,
+                            name: "",
+                            values: "",
+                          },
+                        ])
+                      }
+                    >
+                      <Plus className="mr-2 h-4 w-4" />
+                      Add option
+                    </Button>
+                  </div>
+
+                  {productVariantCombinations.length === 0 ? (
+                    <p className="text-xs text-gray-500">
+                      Add at least one option value to generate the combinations
+                      customers can choose from.
+                    </p>
+                  ) : (
+                    <div className="space-y-3">
+                      <p className="text-xs text-gray-500">
+                        {productVariantCombinations.length} combination
+                        {productVariantCombinations.length === 1 ? "" : "s"} will be
+                        saved. Set stock, price, SKU, and photos per combination.
+                      </p>
+
+                      {productVariantRows.map(({ combination, draft }) => (
+                        <div
+                          key={combination.key}
+                          className="space-y-2 rounded-md border bg-white p-3"
+                        >
+                          <div className="flex flex-wrap items-center gap-2">
+                            {Object.entries(combination.options).map(([label, value]) => (
+                              <Badge key={label} variant="secondary">
+                                {label}: {value}
+                              </Badge>
+                            ))}
+                          </div>
+
+                          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-[0.8fr_0.9fr_1fr_auto]">
+                            <Input
+                              aria-label={`${combination.key} SKU`}
+                              value={draft.sku}
+                              onChange={(event) =>
+                                updateVariantDraft(combination.key, {
+                                  sku: event.target.value,
+                                })
+                              }
+                              placeholder="SKU"
                             />
-                          </label>
+                            <div className="space-y-1">
+                              <label className="flex items-center gap-1 text-xs text-gray-600">
+                                <input
+                                  type="checkbox"
+                                  checked={draft.limitQuantity}
+                                  onChange={(event) =>
+                                    updateVariantDraft(combination.key, {
+                                      limitQuantity: event.target.checked,
+                                    })
+                                  }
+                                />
+                                Limit quantity
+                              </label>
+                              {draft.limitQuantity ? (
+                                <Input
+                                  aria-label={`${combination.key} quantity limit`}
+                                  type="number"
+                                  min="1"
+                                  step="1"
+                                  value={draft.stockQuantity}
+                                  onChange={(event) =>
+                                    updateVariantDraft(combination.key, {
+                                      stockQuantity: event.target.value,
+                                    })
+                                  }
+                                  placeholder="Max per order"
+                                />
+                              ) : null}
+                            </div>
+                            <Input
+                              aria-label={`${combination.key} price override in Naira`}
+                              type="number"
+                              min="0"
+                              value={draft.priceOverride}
+                              onChange={(event) =>
+                                updateVariantDraft(combination.key, {
+                                  priceOverride: event.target.value,
+                                })
+                              }
+                              placeholder="Price override (NGN)"
+                            />
+                            <label className="flex items-center gap-1 text-xs text-gray-600">
+                              <input
+                                type="checkbox"
+                                checked={draft.inStock}
+                                onChange={(event) =>
+                                  updateVariantDraft(combination.key, {
+                                    inStock: event.target.checked,
+                                  })
+                                }
+                              />
+                              In stock
+                            </label>
+                          </div>
+
+                          <div className="space-y-2">
+                            <div className="flex flex-wrap items-center gap-2">
+                              {draft.images.map((image) => (
+                                <div
+                                  key={image.id}
+                                  className="group relative h-14 w-14 shrink-0"
+                                >
+                                  <img
+                                    src={image.thumbnailUrl || image.url}
+                                    alt={`${combination.key} photo`}
+                                    loading="lazy"
+                                    decoding="async"
+                                    className="h-full w-full rounded-md border object-cover"
+                                  />
+                                  <button
+                                    type="button"
+                                    className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full border bg-white text-red-600 shadow-sm"
+                                    title="Remove photo"
+                                    aria-label="Remove photo"
+                                    onClick={() =>
+                                      void handleDeleteVariantImage(
+                                        combination.key,
+                                        image.id,
+                                      )
+                                    }
+                                  >
+                                    <Trash2 className="h-3 w-3" />
+                                  </button>
+                                </div>
+                              ))}
+                              {draft.pendingImagePreviews.map((previewUrl, previewIndex) => (
+                                <div
+                                  key={previewUrl}
+                                  className="group relative h-14 w-14 shrink-0"
+                                >
+                                  <img
+                                    src={previewUrl}
+                                    alt={`${combination.key} pending photo`}
+                                    loading="lazy"
+                                    decoding="async"
+                                    className="h-full w-full rounded-md border-2 border-dashed object-cover opacity-80"
+                                  />
+                                  <button
+                                    type="button"
+                                    className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full border bg-white text-red-600 shadow-sm"
+                                    title="Remove photo"
+                                    aria-label="Remove photo"
+                                    onClick={() => {
+                                      URL.revokeObjectURL(previewUrl);
+                                      updateVariantDraft(combination.key, {
+                                        pendingImageFiles: draft.pendingImageFiles.filter(
+                                          (_, fileIndex) => fileIndex !== previewIndex,
+                                        ),
+                                        pendingImagePreviews:
+                                          draft.pendingImagePreviews.filter(
+                                            (_, fileIndex) => fileIndex !== previewIndex,
+                                          ),
+                                      });
+                                    }}
+                                  >
+                                    <Trash2 className="h-3 w-3" />
+                                  </button>
+                                </div>
+                              ))}
+                              <label className="flex h-14 w-14 shrink-0 cursor-pointer flex-col items-center justify-center gap-1 rounded-md border border-dashed text-gray-500 hover:bg-gray-50">
+                                <Plus className="h-4 w-4" />
+                                <input
+                                  type="file"
+                                  accept="image/*"
+                                  multiple
+                                  className="hidden"
+                                  onChange={(event) => {
+                                    const files = Array.from(event.target.files ?? []);
+                                    event.target.value = "";
+                                    if (files.length === 0) return;
+                                    updateVariantDraft(combination.key, {
+                                      pendingImageFiles: [
+                                        ...draft.pendingImageFiles,
+                                        ...files,
+                                      ],
+                                      pendingImagePreviews: [
+                                        ...draft.pendingImagePreviews,
+                                        ...files.map((file) => URL.createObjectURL(file)),
+                                      ],
+                                    });
+                                  }}
+                                />
+                              </label>
+                            </div>
+                            <p className="text-xs text-gray-500">
+                              Add one or more photos for this combination.
+                            </p>
+                          </div>
                         </div>
-                        <p className="text-xs text-gray-500">
-                          Add one or more photos for a variant gallery.
-                        </p>
-                      </div>
+                      ))}
                     </div>
-                    );
-                  })}
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() =>
-                      setProductVariantDrafts((currentVariants) => [
-                        ...currentVariants,
-                        {
-                          color: "",
-                          options: "",
-                          images: [],
-                          pendingImageFiles: [],
-                          pendingImagePreviews: [],
-                          inStock: true,
-                          priceOverride: "",
-                          size: "",
-                          sku: "",
-                          stockQuantity: "0",
-                        },
-                      ])
-                    }
-                  >
-                    <Plus className="mr-2 h-4 w-4" />
-                    Add Variant
-                  </Button>
+                  )}
                 </div>
               ) : null}
             </div>
@@ -5854,21 +6287,10 @@ useEffect(() => {
             <DialogTitle>{editingDeal ? "Edit Deal" : "Add Deal"}</DialogTitle>
           </DialogHeader>
           <form onSubmit={handleSaveDeal} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="deal-product">Linked Product</Label>
-              <Select value={dealProductId} onValueChange={setDealProductId}>
-                <SelectTrigger id="deal-product">
-                  <SelectValue placeholder="Choose a product" />
-                </SelectTrigger>
-                <SelectContent>
-                  {allProductOptions.map((product) => (
-                    <SelectItem key={product.id} value={String(product.id)}>
-                      {product.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+            <p className="text-xs text-gray-500">
+              Each deal is created as its own product, with its own price,
+              images, and optional quantity limit.
+            </p>
 
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <div className="space-y-2">
@@ -5925,22 +6347,83 @@ useEffect(() => {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="deal-image">Deal Image Upload</Label>
+              <Label htmlFor="deal-image">Deal Images</Label>
               <Input
                 id="deal-image"
                 type="file"
                 accept="image/*"
-                required={!editingDeal && !dealImage}
-                onChange={(event) => setDealImageFile(event.target.files?.[0] ?? null)}
+                multiple
+                required={!editingDeal && dealImages.length === 0 && dealImageFiles.length === 0}
+                onChange={(event) =>
+                  setDealImageFiles(Array.from(event.target.files ?? []))
+                }
               />
               <p className="text-xs text-gray-500">
-                Upload an image file up to 500KB. URLs are no longer supported.
+                Upload one or more images up to 500KB each.
               </p>
-              {dealImage ? (
+              {dealImages.length > 0 ? (
+                <div className="space-y-2 pt-1">
+                  <p className="text-xs text-gray-500">
+                    {dealImages.length} saved image{dealImages.length === 1 ? "" : "s"}.
+                    Remove any you no longer want.
+                  </p>
+                  <div className="flex flex-wrap gap-3">
+                    {dealImages.map((image, index) => (
+                      <div key={`${image}-${index}`} className="relative h-20 w-20">
+                        <img
+                          src={image}
+                          alt={`Deal image ${index + 1}`}
+                          className="h-full w-full rounded-md border bg-white object-contain"
+                        />
+                        <button
+                          type="button"
+                          aria-label="Remove deal image"
+                          className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full border bg-white text-red-600 shadow-sm"
+                          onClick={() =>
+                            setDealImages((current) =>
+                              current.filter((_, imageIndex) => imageIndex !== index),
+                            )
+                          }
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+              {dealImageFiles.length > 0 ? (
                 <p className="text-xs text-gray-500">
-                  Existing image will stay in place unless you upload a new one.
+                  {dealImageFiles.length} new image{dealImageFiles.length === 1 ? "" : "s"} will be added when you save.
                 </p>
               ) : null}
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="deal-limit-quantity">Quantity limit (optional)</Label>
+              <label className="flex items-center gap-2 text-sm text-gray-700">
+                <input
+                  id="deal-limit-quantity"
+                  type="checkbox"
+                  checked={dealQuantityLimited}
+                  onChange={(event) => setDealQuantityLimited(event.target.checked)}
+                />
+                Limit how many customers can buy
+              </label>
+              {dealQuantityLimited ? (
+                <Input
+                  aria-label="Maximum quantity per customer"
+                  type="number"
+                  min="1"
+                  step="1"
+                  value={dealStockLimit}
+                  onChange={(event) => setDealStockLimit(event.target.value)}
+                  placeholder="e.g. 10"
+                />
+              ) : null}
+              <p className="text-xs text-gray-500">
+                Leave unticked to sell without a limit.
+              </p>
             </div>
 
             <div className="space-y-4">
@@ -5950,7 +6433,7 @@ useEffect(() => {
                 value={dealStartsAt}
                 onChange={setDealStartsAt}
                 defaultTime="09:00"
-                description="Choose the start date in DD/MM/YYYY format and keep the exact time you want the deal to begin."
+                description="Start date and time"
               />
               <AdminDateTimeField
                 id="deal-ends"
@@ -5958,7 +6441,7 @@ useEffect(() => {
                 value={dealEndsAt}
                 onChange={setDealEndsAt}
                 defaultTime="23:59"
-                description="Choose the end date in DD/MM/YYYY format and keep the exact time you want the deal to stop."
+                description="End date and time."
               />
             </div>
 
@@ -5976,11 +6459,6 @@ useEffect(() => {
                 </p>
               </div>
             </div>
-
-            <p className="text-xs text-gray-500">
-              Homepage deals only show when the deal is active and the current date falls within
-              the selected start and end window.
-            </p>
 
             <label className="flex items-center gap-2 text-sm text-gray-700">
               <input

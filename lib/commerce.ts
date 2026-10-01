@@ -18,6 +18,8 @@ export interface StoreProduct {
   image: string;
   description: string;
   inStock: boolean;
+  /** Total units available when tracked; 0 means stock is not tracked. */
+  stockQuantity?: number;
   isFeatured: boolean;
   featuredSortOrder: number;
 }
@@ -81,6 +83,7 @@ export interface ProductRecord {
   image?: string | null;
   description: string;
   in_stock: boolean;
+  stock_quantity?: number | null;
   is_featured?: boolean | null;
   featured_sort_order?: number | null;
   product_images?: ProductImageRecord[] | null;
@@ -90,7 +93,7 @@ export interface ProductRecord {
 
 /** Fields required by product cards, deals, registries, and cart summaries. */
 export const PRODUCT_LIST_SELECT =
-  "id,name,slug,price,cost_price,selling_price,category,image,description,in_stock,is_featured,featured_sort_order,created_at,has_variants";
+  "id,name,slug,price,cost_price,selling_price,category,image,description,in_stock,stock_quantity,is_featured,featured_sort_order,created_at,has_variants";
   
 export const SEED_PRODUCTS: StoreProduct[] = [
   {
@@ -390,10 +393,24 @@ export function mapProductRecord(record: ProductRecord): StoreProduct {
       : image,
     description: record.description,
     inStock: Boolean(record.in_stock),
+    stockQuantity: Math.max(0, Math.floor(Number(record.stock_quantity ?? 0))),
     isFeatured: Boolean(record.is_featured),
     featuredSortOrder: Number(record.featured_sort_order ?? 0),
     variants,
   };
+}
+
+/**
+ * Older admin input sometimes stored the label inside the value, e.g. the
+ * "Size" option holding "Size=M". Strip that redundant prefix so variants just
+ * read "M" instead of "Size=M".
+ */
+export function cleanVariantOptionValue(label: string, value: string) {
+  const cleanLabel = label.trim();
+  const cleanValue = value.trim();
+  if (!cleanLabel) return cleanValue;
+  const prefix = new RegExp(`^${cleanLabel.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*=\\s*`, "i");
+  return cleanValue.replace(prefix, "").trim();
 }
 
 /** Converts the stored flexible options and legacy size/color fields into one safe display map. */
@@ -406,12 +423,17 @@ export function normalizeVariantOptions(
   if (options && typeof options === "object" && !Array.isArray(options)) {
     for (const [label, value] of Object.entries(options as Record<string, unknown>)) {
       const cleanLabel = label.trim();
-      const cleanValue = typeof value === "string" ? value.trim() : "";
+      const cleanValue =
+        typeof value === "string" ? cleanVariantOptionValue(cleanLabel, value) : "";
       if (cleanLabel && cleanValue) normalized[cleanLabel] = cleanValue;
     }
   }
-  if (legacySize?.trim() && !normalized.Size) normalized.Size = legacySize.trim();
-  if (legacyColor?.trim() && !normalized.Colour && !normalized.Color) normalized.Colour = legacyColor.trim();
+  if (legacySize?.trim() && !normalized.Size) {
+    normalized.Size = cleanVariantOptionValue("Size", legacySize);
+  }
+  if (legacyColor?.trim() && !normalized.Colour && !normalized.Color) {
+    normalized.Colour = cleanVariantOptionValue("Colour", legacyColor);
+  }
   return Object.keys(normalized).length > 0 ? normalized : undefined;
 }
 

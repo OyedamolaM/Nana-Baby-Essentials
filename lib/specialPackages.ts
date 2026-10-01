@@ -12,6 +12,7 @@ export interface SpecialPackageRecord {
   id: string;
   is_active: boolean;
   override_image?: string | null;
+  override_images?: string[] | null;
   package_type: SpecialPackageType;
   product_id: number;
   products?: ProductRecord | ProductRecord[] | null;
@@ -28,6 +29,7 @@ export interface SpecialPackage {
   externalVideoUrl?: string | null;
   id: string;
   image: string;
+  images: string[];
   isActive: boolean;
   packageType: SpecialPackageType;
   product: StoreProduct;
@@ -79,6 +81,12 @@ export function mapSpecialPackageRecord(
   }
 
   const product = mapProductRecord(productRecord);
+  const galleryImages = Array.isArray(record.override_images)
+    ? record.override_images
+        .map((url) => url?.trim())
+        .filter((url): url is string => Boolean(url))
+    : [];
+  const primaryImage = galleryImages[0] ?? (record.override_image?.trim() || product.image);
 
   return {
     badgeText:
@@ -87,7 +95,8 @@ export function mapSpecialPackageRecord(
     details: record.details?.trim() || product.description,
     externalVideoUrl: normalizeExternalVideoUrl(record.external_video_url),
     id: record.id,
-    image: record.override_image?.trim() || product.image,
+    image: primaryImage,
+    images: galleryImages.length > 0 ? galleryImages : [primaryImage],
     isActive: Boolean(record.is_active),
     packageType: record.package_type,
     product,

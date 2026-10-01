@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Clock, ShoppingCart, Zap } from "lucide-react";
 import { Product } from "./ProductCard";
-import { ImageWithFallback } from "./figma/ImageWithFallback";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { Card } from "./ui/card";
@@ -39,6 +38,45 @@ function getTimeLeft(targetTime: number, now: number) {
   const seconds = totalSeconds % 60;
 
   return { days, hours, minutes, seconds };
+}
+
+function DealGallery({ images, title }: { images: string[]; title: string }) {
+  const galleryImages = images.length > 0 ? images : [""];
+  const [activeIndex, setActiveIndex] = useState(0);
+  const safeIndex = Math.min(activeIndex, galleryImages.length - 1);
+  const activeImage = galleryImages[safeIndex] ?? "";
+
+  return (
+    <div className="space-y-2">
+      <img
+        src={getFullProductImageUrl(activeImage)}
+        alt={title}
+        decoding="async"
+        className="h-48 w-full rounded-lg bg-white object-contain sm:h-80"
+      />
+      {galleryImages.length > 1 ? (
+        <div className="flex gap-2 overflow-x-auto pb-1">
+          {galleryImages.map((image, index) => (
+            <button
+              key={`${image}-${index}`}
+              type="button"
+              aria-label={`Show deal image ${index + 1}`}
+              onClick={() => setActiveIndex(index)}
+              className={`h-12 w-12 shrink-0 overflow-hidden rounded-md border-2 bg-white ${
+                index === safeIndex ? "border-orange-500" : "border-transparent"
+              }`}
+            >
+              <img
+                src={getFullProductImageUrl(image)}
+                alt=""
+                className="h-full w-full object-contain"
+              />
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
 }
 
 export function DealOfTheWeek({
@@ -112,6 +150,11 @@ export function DealOfTheWeek({
                   price: deal.salePrice,
                 };
 
+                const availableStock = Math.max(
+                  0,
+                  Math.floor(Number(deal.product.stockQuantity ?? 0)),
+                );
+
                 const compareAtPrice = Math.max(
                   deal.compareAtPrice,
                   deal.salePrice
@@ -144,11 +187,9 @@ export function DealOfTheWeek({
                           <Badge className="absolute left-3 top-3 z-10 px-3 py-1 text-sm text-white">
                             {deal.badgeText}
                           </Badge>
-                          <ImageWithFallback
-                            src={getFullProductImageUrl(deal.image)}
-                            alt={deal.title}
-                            className="h-48 w-full rounded-lg object-cover sm:h-full"
-                            decoding="async"
+                          <DealGallery
+                            images={deal.images ?? [deal.image]}
+                            title={deal.title}
                           />
                         </div>
 
@@ -236,7 +277,9 @@ export function DealOfTheWeek({
                           </div>
 
                           <p className="text-center text-[10px] text-gray-500">
-                            Limited stock
+                            {availableStock > 0
+                              ? `Only ${availableStock} left`
+                              : "Limited stock"}
                           </p>
                         </div>
                       </div>

@@ -29,6 +29,18 @@ export function SpecialPackageDetailModal({
   pkg,
 }: SpecialPackageDetailModalProps) {
   const [quantity, setQuantity] = useState(1);
+  const [activeImageIndex, setActiveImageIndex] = useState(0);
+
+  const galleryImages =
+    pkg?.images && pkg.images.length > 0 ? pkg.images : pkg ? [pkg.image] : [];
+  const safeImageIndex = Math.min(
+    activeImageIndex,
+    Math.max(galleryImages.length - 1, 0),
+  );
+  const availableStock = Math.max(
+    0,
+    Math.floor(Number(pkg?.product.stockQuantity ?? 0)),
+  );
 
   const detailItems = useMemo(() => splitPackageDetails(pkg?.details), [pkg?.details]);
 
@@ -46,10 +58,27 @@ export function SpecialPackageDetailModal({
         <div className="grid gap-8 lg:grid-cols-[minmax(0,1.08fr)_minmax(0,0.92fr)]">
           <div className="min-w-0 space-y-4">
             <img
-              src={pkg.image}
+              src={galleryImages[safeImageIndex] ?? pkg.image}
               alt={pkg.title}
-              className="aspect-[4/4.2] w-full rounded-3xl object-cover"
+              className="aspect-[4/4.2] w-full rounded-3xl bg-gray-50 object-contain"
             />
+            {galleryImages.length > 1 ? (
+              <div className="flex gap-2 overflow-x-auto pb-1">
+                {galleryImages.map((image, index) => (
+                  <button
+                    key={`${image}-${index}`}
+                    type="button"
+                    aria-label={`Show package image ${index + 1}`}
+                    onClick={() => setActiveImageIndex(index)}
+                    className={`h-16 w-16 shrink-0 overflow-hidden rounded-xl border-2 bg-white ${
+                      index === safeImageIndex ? "border-pink-500" : "border-transparent"
+                    }`}
+                  >
+                    <img src={image} alt="" className="h-full w-full object-contain" />
+                  </button>
+                ))}
+              </div>
+            ) : null}
           </div>
 
           <div className="min-w-0 space-y-6">
@@ -101,11 +130,18 @@ export function SpecialPackageDetailModal({
                     variant="outline"
                     size="sm"
                     onClick={() => setQuantity((current) => current + 1)}
+                    disabled={availableStock > 0 && quantity >= availableStock}
                   >
                     +
                   </Button>
                 </div>
               </div>
+
+              {availableStock > 0 ? (
+                <p className="text-sm font-medium text-pink-700">
+                  Only {availableStock} left
+                </p>
+              ) : null}
 
               <div className="flex flex-col gap-2 sm:flex-row">
                 <Button type="button" className="flex-1" onClick={() => onAction(pkg, quantity)}>

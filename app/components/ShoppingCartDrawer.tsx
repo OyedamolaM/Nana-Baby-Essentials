@@ -66,6 +66,10 @@ export function ShoppingCartDrawer({
             <div className="space-y-4">
               {cartItems.map((item) => {
                 const itemKey = getStoreCartItemKey(item);
+                const stockCap = Math.max(
+                  0,
+                  Math.floor(Number(item.stockQuantity ?? 0)),
+                );
                 const optionLabel = item.variantOptions
                   ? Object.entries(item.variantOptions).map(([label, value]) => `${label}: ${value}`).join(" · ")
                   : [item.size, item.color].filter(Boolean).join(" / ");
@@ -90,6 +94,11 @@ export function ShoppingCartDrawer({
                     </p>
                     {optionLabel ? (
                       <p className="mt-0.5 text-xs text-gray-500">{optionLabel}</p>
+                    ) : null}
+                    {stockCap > 0 ? (
+                      <p className="mt-0.5 text-xs font-medium text-pink-700">
+                        Only {stockCap} left
+                      </p>
                     ) : null}
                     <div className="mt-3 flex items-center gap-2">
                       <Button
@@ -126,6 +135,7 @@ export function ShoppingCartDrawer({
                         size="sm"
                         type="button"
                         onClick={() => onUpdateQuantity(itemKey, item.quantity + 1)}
+                        disabled={stockCap > 0 && item.quantity >= stockCap}
                         className="h-7 w-7 p-0"
                       >
                         +
