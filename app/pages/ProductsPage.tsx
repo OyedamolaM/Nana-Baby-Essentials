@@ -126,7 +126,7 @@ export function ProductsPage({
     totalPages,
   } = usePaginatedProducts({
     featuredOnly: initialFeaturedOnly,
-    pageSize: 12,
+    pageSize: 20,
     initialProducts,
     initialSearchQuery,
     initialSelectedCategory,

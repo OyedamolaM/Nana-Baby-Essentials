@@ -29,7 +29,7 @@ export default async function Page() {
   ] = await Promise.all([
     getPublicProductCatalogPage({
       page: 1,
-      pageSize: 12,
+      pageSize: 20,
       onlyInStock: false,
       selectedCategory: "All",
       searchQuery: "",

@@ -100,7 +100,7 @@ export function FeaturedCategoryTabs({
     initialProducts,
     initialTotalCount,
     onlyInStock: false,
-    pageSize: 12,
+    pageSize: 20,
   });
   const paginationItems = useMemo(
     () => buildPagination(page, totalPages),

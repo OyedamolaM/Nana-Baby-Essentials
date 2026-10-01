@@ -202,7 +202,7 @@ export function RegistryLandingPage({
     totalPages,
   } = usePaginatedProducts({
     onlyInStock: false,
-    pageSize: 10,
+    pageSize: 20,
     initialProducts,
     initialTotalCount,
   });
