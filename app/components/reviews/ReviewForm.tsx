@@ -3,7 +3,6 @@
 import { useEffect, useRef, useState } from "react";
 import { CheckCircle2, Loader2, Star } from "lucide-react";
 import { toast } from "sonner";
-
 import { useAuth } from "../../contexts/AuthContext";
 import { supabase } from "../../lib/supabase";
 import { Button } from "../ui/button";
@@ -35,8 +34,9 @@ export function ReviewForm({
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
 
-  const nameFromProfile = profile?.full_name?.trim() ?? "";
-  const name = nameInput ?? nameFromProfile;
+  // Automatically fall back to email prefix or 'Verified User' if profile name is missing
+  const nameFromProfile = profile?.full_name?.trim() || user?.email?.split("@")[0] || "Verified User";
+  const name = user ? nameFromProfile : (nameInput ?? "");
 
   useEffect(() => {
     startedAtRef.current = Date.now();
@@ -44,8 +44,7 @@ export function ReviewForm({
 
   const activeRating = hoverRating ?? rating;
   const trimmedReview = reviewText.trim();
-  const canSubmit =
-    !submitting && Boolean(name.trim()) && trimmedReview.length >= MIN_REVIEW_LENGTH;
+  const canSubmit = !submitting && Boolean(name.trim()) && trimmedReview.length >= MIN_REVIEW_LENGTH;
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -61,12 +60,16 @@ export function ReviewForm({
     }
 
     setSubmitting(true);
+
     try {
       const {
         data: { session },
       } = await supabase.auth.getSession();
 
-      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+      };
+
       if (session?.access_token) {
         headers.Authorization = `Bearer ${session.access_token}`;
       }
@@ -87,9 +90,7 @@ export function ReviewForm({
         }),
       });
 
-      const payload = (await response.json().catch(() => null)) as
-        | { message?: string }
-        | null;
+      const payload = (await response.json().catch(() => null)) as { message?: string } | null;
 
       if (!response.ok) {
         toast.error(payload?.message ?? "Could not send your review right now.");
@@ -113,8 +114,7 @@ export function ReviewForm({
           Thank you for your review
         </h2>
         <p className="mt-2 text-sm text-gray-600">
-          We have received your feedback. Our team may feature it in our reviews
-          section.
+          We have received your feedback. Our team may feature it in our reviews section.
         </p>
         {onDone ? (
           <Button className="mt-6" onClick={onDone}>
@@ -164,44 +164,45 @@ export function ReviewForm({
         />
       </div>
 
-      <div className="space-y-2">
-        <Label htmlFor="review-name">Your name</Label>
-        <Input
-          id="review-name"
-          value={name}
-          onChange={(event) => setNameInput(event.target.value)}
-          maxLength={80}
-          placeholder="e.g. Amaka O. or your initials"
-          required
-        />
-      </div>
+      {/* If logged in, hide name, email, and phone input details completely */}
+      {!user && (
+        <>
+          <div className="space-y-2">
+            <Label htmlFor="review-name">Your name</Label>
+            <Input
+              id="review-name"
+              value={name}
+              onChange={(event) => setNameInput(event.target.value)}
+              maxLength={80}
+              placeholder="e.g. Amaka O. or your initials"
+              required
+            />
+          </div>
 
-      {user ? (
-        <></>
-      ) : (
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div className="space-y-2">
-            <Label htmlFor="review-email">Email (optional)</Label>
-            <Input
-              id="review-email"
-              type="email"
-              value={email}
-              onChange={(event) => setEmail(event.target.value)}
-              maxLength={160}
-              placeholder="you@example.com"
-            />
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="review-email">Email (optional)</Label>
+              <Input
+                id="review-email"
+                type="email"
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                maxLength={160}
+                placeholder="you@example.com"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="review-phone">Phone (optional)</Label>
+              <Input
+                id="review-phone"
+                value={phone}
+                onChange={(event) => setPhone(event.target.value)}
+                maxLength={160}
+                placeholder="e.g. 0801 234 5678"
+              />
+            </div>
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="review-phone">Phone (optional)</Label>
-            <Input
-              id="review-phone"
-              value={phone}
-              onChange={(event) => setPhone(event.target.value)}
-              maxLength={160}
-              placeholder="e.g. 0801 234 5678"
-            />
-          </div>
-        </div>
+        </>
       )}
 
       <input
@@ -215,8 +216,8 @@ export function ReviewForm({
         className="hidden"
       />
 
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <Button type="submit" disabled={!canSubmit} className="sm:min-w-36">
+      <div className="flex justify-center pt-2">
+        <Button type="submit" disabled={!canSubmit} className="min-w-full sm:min-w-36">
           {submitting ? (
             <>
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
