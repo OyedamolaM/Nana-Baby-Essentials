@@ -3,6 +3,7 @@
 import { Toaster } from "./components/ui/sonner";
 import { StoreCartProvider } from "./contexts/StoreCartContext";
 import { AuthProvider } from "./contexts/AuthContext";
+import { ReviewModalProvider } from "./components/reviews/ReviewModal";
 import { ProfileCompletionGate } from "./components/auth/ProfileCompletionGate";
 import {
   AnalyticsBridge,
@@ -23,13 +24,15 @@ export function Providers({
     <CookieConsentProvider initialConsent={initialCookieConsent}>
       <AuthProvider>
         <ProfileCompletionGate />
-        <StoreCartProvider>
-          {children}
-          <NewsletterPopup />
-          <CookieConsentBanner />
-          <AnalyticsBridge />
-          <Toaster />
-        </StoreCartProvider>
+        <ReviewModalProvider>
+          <StoreCartProvider>
+            {children}
+            <NewsletterPopup />
+            <CookieConsentBanner />
+            <AnalyticsBridge />
+            <Toaster />
+          </StoreCartProvider>
+        </ReviewModalProvider>
       </AuthProvider>
     </CookieConsentProvider>
   );

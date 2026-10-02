@@ -10,6 +10,7 @@ import { loadPaystackScript } from "../../lib/loadPaystack";
 import { formatNairaAmount, toNairaAmount } from "../../../lib/commerce";
 import { normalizeShippingAddress } from "../../../lib/userProfile";
 import { Button } from "../ui/button";
+import { useReviewModal } from "../reviews/ReviewModal";
 import {
   Dialog,
   DialogContent,
@@ -56,6 +57,7 @@ export function CheckoutModal({
   onCheckoutComplete,
 }: CheckoutModalProps) {
   const { profile, refreshProfile, session, user } = useAuth();
+  const { openReviewModal } = useReviewModal();
   const [loading, setLoading] = useState(false);
   const [paystackLoaded, setPaystackLoaded] = useState(false);
   const [paystackActive, setPaystackActive] = useState(false);
@@ -407,6 +409,7 @@ export function CheckoutModal({
         toast.success(successMessage);
         onCheckoutComplete();
         onClose();
+        window.setTimeout(() => openReviewModal(), 600);
       };
 
       const handler = window.PaystackPop.setup({
