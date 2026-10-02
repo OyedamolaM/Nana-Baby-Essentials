@@ -150,11 +150,11 @@ export async function requireRouteUser(
     };
   }
 
-  return {
-    accessToken,
-    profile: await loadServerUserProfile(user.id, accessToken),
-    user,
-  };
+  const profile = await loadServerUserProfile(user.id, accessToken);
+  if (!profile || profile.deleted_at || profile.account_status === "disabled") {
+    return { response: NextResponse.json({ message: "Account unavailable." }, { status: 403 }) };
+  }
+  return { accessToken, profile, user };
 }
 
 export async function requireAdminRoute(

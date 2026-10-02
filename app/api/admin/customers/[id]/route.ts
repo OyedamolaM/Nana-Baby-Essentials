@@ -54,7 +54,6 @@ export async function PATCH(request: Request, context: RouteContext<"/api/admin/
 
   const { error: authError } = await serviceRoleClient.auth.admin.updateUserById(id, {
     email,
-    ban_duration: "none",
     user_metadata: {
       full_name: fullName,
       phone,
@@ -79,8 +78,6 @@ export async function PATCH(request: Request, context: RouteContext<"/api/admin/
     .from("user_profiles")
     .update({
       ...baseProfileUpdate,
-      account_status: "active",
-      deleted_at: null,
     })
     .eq("id", id);
 
@@ -133,37 +130,19 @@ export async function DELETE(request: Request, context: RouteContext<"/api/admin
     );
   }
 
-  const { error: authError } = await serviceRoleClient.auth.admin.updateUserById(id, {
-    ban_duration: "876000h",
+  const { error } = await serviceRoleClient.rpc("change_customer_account", {
+    p_customer_id: id, p_action: "delete", p_actor_id: admin.user.id,
   });
-
-  if (authError) {
-    return NextResponse.json(
-      { message: authError.message || "Could not disable the customer login." },
-      { status: 400 },
-    );
-  }
-
-  let { error: profileError } = await serviceRoleClient
-    .from("user_profiles")
-    .update({
-      account_status: "disabled",
-      deleted_at: new Date().toISOString(),
-    })
-    .eq("id", id);
-
-  if (profileError && isMissingUserProfileColumnError(profileError)) {
-    profileError = null;
-  }
-
-  if (profileError) {
-    return NextResponse.json(
-      { message: profileError.message || "Could not soft-delete the customer profile." },
-      { status: 400 },
-    );
-  }
-
-  return NextResponse.json({
-    message: "Customer disabled successfully.",
-  });
+  return NextResponse.json({ message: error?.message ?? "Customer deletion scheduled." }, { status: error ? 400 : 200 });
+}
+export async function POST(request: Request, context: RouteContext<"/api/admin/customers/[id]">) {
+  const admin = await requireAdminRoute(request);
+  if (admin.response) return admin.response;
+  const { id } = await context.params;
+  const payload = await request.json().catch(() => null);
+  if (!["disable", "restore"].includes(payload?.action)) return NextResponse.json({ message: "Invalid account action." }, { status: 400 });
+  const client = createSupabaseServiceRoleClient();
+  if (!client) return NextResponse.json({ message: "Service credentials unavailable." }, { status: 500 });
+  const { error } = await client.rpc("change_customer_account", { p_customer_id: id, p_action: payload.action, p_actor_id: admin.user.id });
+  return NextResponse.json({ message: error?.message ?? (payload.action === "restore" ? "Customer restored." : "Customer disabled.") }, { status: error ? 400 : 200 });
 }

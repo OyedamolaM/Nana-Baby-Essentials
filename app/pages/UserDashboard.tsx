@@ -950,7 +950,7 @@ export function UserDashboard({
   const handleDeleteAccount = async () => {
     if (
       !window.confirm(
-        "Are you sure you want to delete your account? This action cannot be undone.",
+        "Delete your account? An admin can restore it within 3 months. Your history will be retained.",
       )
     ) {
       return;

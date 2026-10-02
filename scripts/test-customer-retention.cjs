@@ -1,0 +1,48 @@
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const { PGlite } = require('../.tmp/variant-validation/node_modules/@electric-sql/pglite');
+(async () => {
+ const db = new PGlite();
+ try {
+ await db.exec(`create role anon; create role authenticated; create role service_role;
+ create schema auth;
+ create function auth.uid() returns uuid language sql as $$ select '00000000-0000-4000-8000-000000000001'::uuid $$;
+ create function auth.role() returns text language sql as $$ select current_setting('test.role',true) $$;
+ create table auth.users(id uuid primary key,banned_until timestamptz);
+ create table auth.sessions(id uuid primary key,user_id uuid references auth.users on delete cascade);
+ create table public.user_profiles(id uuid primary key references auth.users on delete cascade,account_status text default 'active',deleted_at timestamptz,is_admin boolean default false);
+ create table public.orders(id integer primary key,user_id uuid references auth.users on delete cascade,total numeric);
+ create table public.registries(id integer primary key,user_id uuid references public.user_profiles on delete cascade);
+ create table public.payments(id integer primary key,registry_id integer references public.registries on delete cascade,amount numeric);
+ insert into auth.users(id) values(auth.uid()); insert into public.user_profiles(id) values(auth.uid());
+ insert into orders values(1,auth.uid(),500000); insert into registries values(1,auth.uid()); insert into payments values(1,1,250000);
+ set test.role='authenticated';`);
+ const migration=fs.readFileSync('supabase/migrations/20261015_customer_account_retention.sql','utf8');
+ await db.exec(migration);
+ await db.exec('grant select, update on user_profiles to authenticated; set role authenticated;');
+ await assert.rejects(db.exec("update user_profiles set is_admin=true"), /only be changed by an administrator/);
+ await db.exec('reset role;');
+ await assert.rejects(db.exec("select change_customer_account(auth.uid(),'disable',auth.uid())"), /Admin access/);
+ await db.exec('select delete_user()');
+ let profile=(await db.query('select * from user_profiles')).rows[0];
+ assert.equal(profile.account_status,'disabled'); assert.ok(profile.deleted_at);
+ assert.equal((await db.query('select customer_account_is_active() as active')).rows[0].active,false);
+ await db.exec(`set test.role='service_role'; select change_customer_account(auth.uid(),'restore',auth.uid());`);
+ assert.equal((await db.query('select customer_account_is_active() as active')).rows[0].active,true);
+ await db.exec(`select change_customer_account(auth.uid(),'disable',auth.uid());`);
+ assert.equal((await db.query('select deleted_at from user_profiles')).rows[0].deleted_at,null);
+ assert.equal((await db.query('select purge_deleted_customer_logins() as n')).rows[0].n,0);
+ await db.exec(`select change_customer_account(auth.uid(),'delete',auth.uid());`);
+ assert.equal((await db.query('select purge_deleted_customer_logins() as n')).rows[0].n,0);
+ await db.exec(`update user_profiles set deleted_at=now()-interval '3 months 1 day';`);
+ await assert.rejects(db.exec(`select change_customer_account(auth.uid(),'restore',auth.uid())`),/restoration period/);
+ assert.equal((await db.query('select purge_deleted_customer_logins() as n')).rows[0].n,1);
+ assert.equal((await db.query('select count(*)::int as n from auth.users')).rows[0].n,0);
+ for(const table of ['user_profiles','orders','registries','payments']) assert.equal((await db.query('select count(*)::int as n from '+table)).rows[0].n,1);
+ await assert.rejects(db.exec('delete from user_profiles'),/history must be retained/);
+ await assert.rejects(db.exec(`select change_customer_account(auth.uid(),'restore',auth.uid())`),/permanently deleted/);
+ assert.equal((await db.query('select purge_deleted_customer_logins() as n')).rows[0].n,0);
+ await db.exec(migration);
+ console.log('Customer retention: soft delete, restore, disable, expiry, preserved history, repeat migration passed.');
+ } finally { await db.close(); }
+})().catch(error => { console.error(error); process.exitCode=1; });

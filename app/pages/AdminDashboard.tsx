@@ -368,6 +368,7 @@ type Customer = {
   campaign_opt_out?: boolean | null;
   full_name?: string | null;
   deleted_at?: string | null;
+  permanently_deleted_at?: string | null;
   email?: string | null;
   phone?: string | null;
   shipping_address?: {
@@ -902,7 +903,7 @@ export function AdminDashboard({ registryAccountId, initialSection = "overview" 
 
       let query = supabase
         .from("user_profiles")
-        .select("id, full_name, email, phone, shipping_address, account_status, campaign_opt_out, deleted_at, created_at")
+        .select("id, full_name, email, phone, shipping_address, account_status, campaign_opt_out, deleted_at, permanently_deleted_at, created_at")
         .or("is_admin.eq.false,is_admin.is.null")
         .order("created_at", { ascending: false })
         .range(from, to);
@@ -1948,8 +1949,8 @@ useEffect(() => {
     }
   };
 
-  const handleDeleteCustomer = async (customerId: string) => {
-    if (!window.confirm("Disable this customer account? Their order history will remain available.")) {
+  const handleDeleteCustomer = async (customerId: string, action: "delete" | "disable" | "restore" = "delete") => {
+    if (!window.confirm(action === "delete" ? "Delete this account? Admins can restore it within 3 months. History is retained." : action === "restore" ? "Restore this account?" : "Disable this account?")) {
       return;
     }
 
@@ -1961,9 +1962,11 @@ useEffect(() => {
 
     try {
       const response = await fetch(`/api/admin/customers/${customerId}`, {
-        method: "DELETE",
+        method: action === "delete" ? "DELETE" : "POST",
+        body: action === "delete" ? undefined : JSON.stringify({ action }),
         headers: {
           Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
         },
       });
 
@@ -1972,7 +1975,7 @@ useEffect(() => {
         | null;
 
       if (!response.ok) {
-        toast.error(result?.message ?? "Could not disable the customer.");
+        toast.error(result?.message ?? "Could not update the customer.");
         return;
       }
 
@@ -1980,7 +1983,7 @@ useEffect(() => {
       void Promise.all([fetchCustomersPage(true), fetchDashboardCounts()]);
     } catch (error) {
       console.error("Failed to disable customer.", error);
-      toast.error("Could not disable the customer.");
+      toast.error("Could not update the customer.");
     }
   };
 
@@ -3936,7 +3939,7 @@ useEffect(() => {
                       </TableCell>
                       <TableCell>
                         {customer.account_status === "disabled" || customer.deleted_at
-                          ? "Disabled"
+                          ? customer.permanently_deleted_at ? "Permanently deleted" : customer.deleted_at ? "Deleted" : "Disabled"
                           : "Active"}
                       </TableCell>
                       <TableCell>{formatDate(customer.created_at)}</TableCell>
@@ -3952,16 +3955,8 @@ useEffect(() => {
                           >
                             <Edit className="h-4 w-4" />
                           </Button>
-                          <Button
-                            variant="destructive"
-                            size="sm"
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              handleDeleteCustomer(customer.id);
-                            }}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
+                          <Button variant="outline" size="sm" disabled={Boolean(customer.permanently_deleted_at)} onClick={(event) => { event.stopPropagation(); void handleDeleteCustomer(customer.id, customer.account_status === "disabled" || customer.deleted_at ? "restore" : "disable"); }}>{customer.account_status === "disabled" || customer.deleted_at ? "Restore" : "Disable"}</Button>
+                          {!customer.deleted_at ? <Button variant="destructive" size="sm" onClick={(event) => { event.stopPropagation(); void handleDeleteCustomer(customer.id); }}>Delete</Button> : null}
                         </div>
                       </TableCell>
                     </TableRow>

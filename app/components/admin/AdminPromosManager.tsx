@@ -19,6 +19,8 @@ function localDate(value: string | null) {
 }
 
 export function AdminPromosManager({ getAdminAccessToken }: { getAdminAccessToken: () => Promise<string | null> }) {
+  const [loading, setLoading] = useState(true);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [promos, setPromos] = useState<Promo[]>([]);
   const [editing, setEditing] = useState<string | null>(null);
   const [editorOpen, setEditorOpen] = useState(false);
@@ -53,6 +55,7 @@ export function AdminPromosManager({ getAdminAccessToken }: { getAdminAccessToke
         if (!response.ok) throw new Error(data.message);
         if (mounted) { setPromos(data.promos); setError(""); }
       } catch (error) { if (mounted) setError(error instanceof Error ? error.message : "Could not load promos."); }
+      finally { if (mounted) setLoading(false); }
     })();
     return () => { mounted = false; };
   }, [getAdminAccessToken]);
@@ -109,13 +112,13 @@ export function AdminPromosManager({ getAdminAccessToken }: { getAdminAccessToke
     </form>
       </DialogContent>
     </Dialog>
-    <div className="space-y-2">{promos.length === 0 && !error ? <p>No promo codes yet.</p> : promos.map(promo => <div key={promo.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-white p-4">
+    <div className="space-y-2">{loading ? <div role="status" className="animate-pulse py-8 text-center text-gray-500">Loading promos...</div> : promos.length === 0 && !error ? <p>No promo codes yet.</p> : promos.map(promo => <div key={promo.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-white p-4">
       <div><p className="font-semibold">{promo.code}</p><p className="text-sm text-gray-600">{!promo.is_active ? "Disabled" : promo.starts_at && now !== null && Date.parse(promo.starts_at) > now ? "Scheduled" : promo.ends_at && now !== null && Date.parse(promo.ends_at) <= now ? "Expired" : "Active"}</p><p className="text-xs text-gray-500">{promo.starts_at ? new Date(promo.starts_at).toLocaleString() : "Starts immediately"} → {promo.ends_at ? new Date(promo.ends_at).toLocaleString() : "No expiry"}</p></div>
       <div className="text-sm text-gray-600">{Number(promo.minimum_purchase_amount ?? 0) > 0 ? `Minimum purchase: NGN ${Number(promo.minimum_purchase_amount).toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (excluding delivery)` : "No minimum purchase amount"}</div>
       <div className="space-y-1 text-sm text-gray-600"><p>{promo.promo_type === "free_delivery" ? "Delivery fee waiver" : promo.promo_type === "delivery_discount" ? `${promo.percentage}% off delivery` : `${promo.percentage}% off products`}</p><p>{promo.maximum_discount_amount ? `Maximum discount: ${formatNairaAmount(Number(promo.maximum_discount_amount))}` : "No discount cap"}</p><p>{[promo.applies_to_store !== false ? "Store" : "", promo.applies_to_registry ? promo.promo_type && promo.promo_type !== "products" ? "Registry delivery" : "Registry products" : ""].filter(Boolean).join(" / ")}</p></div>
       <div className="flex flex-wrap gap-2"><Button type="button" variant="outline" disabled={saving} onClick={() => { setCanCombine(promo.can_combine === true); setEditing(promo.id); setEditorOpen(true); setCode(promo.code); setPercentage(String(promo.percentage)); setPromoType(promo.promo_type ?? "products"); setMaximumDiscountAmount(promo.maximum_discount_amount ? String(promo.maximum_discount_amount) : ""); setAppliesToStore(promo.applies_to_store !== false); setAppliesToRegistry(promo.applies_to_registry === true); setMinimumPurchaseAmount(Number(promo.minimum_purchase_amount ?? 0) > 0 ? String(promo.minimum_purchase_amount) : ""); setStartsAt(localDate(promo.starts_at)); setEndsAt(localDate(promo.ends_at)); setActive(promo.is_active); }}>Edit</Button><Button type="button" variant="destructive" disabled={saving} onClick={async () => {
         if (!window.confirm(`Delete promo ${promo.code}? Existing orders will keep their saved discounts.`)) return;
-        setSaving(true);
+        setSaving(true); setDeletingId(promo.id);
         try {
           const token = await getAdminAccessToken();
           if (!token) throw new Error("Sign in again to manage promos.");
@@ -126,8 +129,8 @@ export function AdminPromosManager({ getAdminAccessToken }: { getAdminAccessToke
           if (editing === promo.id) reset();
           toast.success("Promo deleted.");
         } catch (error) { toast.error(error instanceof Error ? error.message : "Could not delete promo."); }
-        finally { setSaving(false); }
-      }}>Delete</Button></div>
+        finally { setSaving(false); setDeletingId(null); }
+      }}>{deletingId === promo.id ? "Deleting..." : "Delete"}</Button></div>
     </div>)}</div>
   </div>;
 }
