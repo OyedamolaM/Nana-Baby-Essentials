@@ -15,6 +15,9 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
   const { error } = await client.rpc("delete_unfunded_registry", { p_registry_id: id });
   if (error) {
     console.error("Registry deletion failed.", error);
+    if (error.code === "42P01") {
+      return NextResponse.json({ message: "Registry deletion needs a database repair. Apply 20261011_registry_delete_optional_tables.sql." }, { status: 503 });
+    }
     return NextResponse.json({ message: error.code === "P0001" ? error.message : error.code === "PGRST202" || error.code === "42883" ? "Registry deletion is not set up yet. Apply the registry deletion migrations." : "Could not delete the registry." }, { status: 409 });
   }
   revalidateTag("registries", "max");

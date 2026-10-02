@@ -174,6 +174,20 @@ async function main() {
     assert.equal((await promo("WELCOME10")).percentage, 10);
     await assert.rejects(promo("BIGSHOP", 499999.99), /requires at least/);
     await require('./test-registry-total-promo.cjs')(db);
+    // Production can have delivery/promos without the optional cash ledger.
+    await db.exec(fs.readFileSync(path.join(__dirname,'../supabase/migrations/20261011_registry_delete_optional_tables.sql'),'utf8'));
+    await db.exec('drop table registry_cash_allocations');
+    const missingLedgerRegistry='09090909-0909-4909-8909-090909090909';
+    await db.query("insert into registries(id,user_id,status) values($1,auth.uid(),'active')",[missingLedgerRegistry]);
+    await db.query('select delete_unfunded_registry($1)',[missingLedgerRegistry]);
+    assert.equal((await db.query('select count(*) as count from registries where id=$1',[missingLedgerRegistry])).rows[0].count,0);
+    const fundedNoLedger='10101010-1010-4010-8010-101010101010';
+    await db.query("insert into registries(id,user_id,status) values($1,auth.uid(),'active')",[fundedNoLedger]);
+    await db.query("insert into registry_items(id,registry_id,product_id,requested_quantity,unit_price_snapshot,funded_amount,purchased_quantity) values('11112222-3333-4444-8555-666677778888',$1,1,1,10,10000,1)",[fundedNoLedger]);
+    await db.query('select delete_unfunded_registry($1)',[fundedNoLedger]);
+    assert.equal((await db.query('select count(*) as count from registry_items where registry_id=$1',[fundedNoLedger])).rows[0].count,0);
+    await db.exec(fs.readFileSync(path.join(__dirname,'../supabase/migrations/20261011_registry_delete_optional_tables.sql'),'utf8'));
+    console.log('Registry deletion with a missing cash-allocation table passed for empty and funded registries.');
     console.log("Promo minimums, caps, delivery discounts, registry funding, deletion snapshots, trusted totals, payment completion, dates, access control and package purchase limits passed.");
   } finally { await db.close(); }
 }
