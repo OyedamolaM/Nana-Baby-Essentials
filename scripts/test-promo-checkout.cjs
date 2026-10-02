@@ -188,6 +188,7 @@ async function main() {
     assert.equal((await db.query('select count(*) as count from registry_items where registry_id=$1',[fundedNoLedger])).rows[0].count,0);
     await db.exec(fs.readFileSync(path.join(__dirname,'../supabase/migrations/20261011_registry_delete_optional_tables.sql'),'utf8'));
     console.log('Registry deletion with a missing cash-allocation table passed for empty and funded registries.');
+    await require('./test-delivery-funding-and-promo-rules.cjs')(db);
     console.log("Promo minimums, caps, delivery discounts, registry funding, deletion snapshots, trusted totals, payment completion, dates, access control and package purchase limits passed.");
   } finally { await db.close(); }
 }

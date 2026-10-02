@@ -110,7 +110,7 @@ export async function PATCH(request: Request, context: RouteContext<"/api/admin/
   }
 
   const { data: existingOrder } = await serviceRoleClient.from("orders")
-    .select("items,total,promo_code,discount_percentage,discount_amount,shipping_tier,promo_type,maximum_discount_amount")
+    .select("items,total,promo_code,discount_percentage,discount_amount,shipping_tier,promo_type,maximum_discount_amount,promo_details")
     .eq("id", id).maybeSingle();
   if (!existingOrder) return NextResponse.json({ message: "Order not found." }, { status: 404 });
   const shippingCode = payload?.shippingTier?.trim() || existingOrder.shipping_tier;
@@ -123,7 +123,7 @@ export async function PATCH(request: Request, context: RouteContext<"/api/admin/
     const shippingFee = shippingCode !== existingOrder.shipping_tier && tier
       ? Number(tier.fee)
       : Math.max(0, Number(existingOrder.total) + Number(existingOrder.discount_amount ?? 0) - originalSubtotal);
-    const discount = calculatePromoDiscount({ promoType: existingOrder.promo_type ?? "products", percentage: Number(existingOrder.discount_percentage ?? 0), maximumDiscountAmount: existingOrder.maximum_discount_amount === null ? null : Number(existingOrder.maximum_discount_amount) }, subtotal, shippingFee);
+    const discount = calculatePromoDiscount({ details: existingOrder.promo_details, promoType: existingOrder.promo_type ?? "products", percentage: Number(existingOrder.discount_percentage ?? 0), maximumDiscountAmount: existingOrder.maximum_discount_amount === null ? null : Number(existingOrder.maximum_discount_amount) }, subtotal, shippingFee);
     updatePayload.discount_amount = discount;
     updatePayload.shipping_discount_amount = existingOrder.promo_type && existingOrder.promo_type !== "products" ? discount : 0;
     updatePayload.total = Math.round((subtotal - discount + shippingFee) * 100) / 100;

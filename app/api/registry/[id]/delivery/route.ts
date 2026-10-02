@@ -12,12 +12,14 @@ export async function GET(request: Request, context: RouteContext<"/api/registry
   const {id}=await context.params;
   const access=await client.rpc("get_registry_cash_balance",{p_registry_id:id,p_actor_id:actor.user.id});
   if(access.error) return NextResponse.json({message:"You cannot access this registry."},{status:403});
-  const [tiers,delivery]=await Promise.all([
+  const [tiers,delivery,funding,registry]=await Promise.all([
     client.from("shipping_tiers").select("code,label,fee").eq("is_active",true).eq("fulfillment_type","delivery").order("sort_order"),
     client.from("registry_delivery_orders").select("*").eq("registry_id",id).in("status",["paid","awaiting_payment"]).maybeSingle(),
+    client.rpc("get_registry_delivery_funding",{p_registry_id:id}),
+    client.from("registries").select("user_id").eq("id",id).single(),
   ]);
-  if(tiers.error||delivery.error) return NextResponse.json({message:"Could not load delivery details."},{status:500});
-  return NextResponse.json({tiers:tiers.data,delivery:delivery.data});
+  if(tiers.error||delivery.error||funding.error||registry.error) return NextResponse.json({message:"Could not load delivery details."},{status:500});
+  return NextResponse.json({tiers:tiers.data,delivery:delivery.data,funding:funding.data,isOwner:registry.data?.user_id===actor.user.id});
 }
 
 export async function POST(request: Request, context: RouteContext<"/api/registry/[id]/delivery">) {
@@ -30,6 +32,13 @@ export async function POST(request: Request, context: RouteContext<"/api/registr
   const access=await client.rpc("get_registry_cash_balance",{p_registry_id:id,p_actor_id:actor.user.id});
   if(access.error) return NextResponse.json({message:"You cannot access this registry."},{status:403});
   try {
+    if(body?.action==="configure-funding") {
+      if(typeof body.enabled!=="boolean") throw new Error("Choose a valid delivery funding setting.");
+      const result=await client.rpc("configure_registry_delivery_funding",{p_registry_id:id,p_actor_id:actor.user.id,p_enabled:body.enabled,p_tier:typeof body.shippingTier==="string"?body.shippingTier:null});
+      if(result.error) throw result.error;
+      revalidateTag("registries","max");
+      return NextResponse.json({saved:true});
+    }
     if(body?.action==="verify") {
       if(typeof body.reference!=="string") throw new Error("Delivery reference is required.");
       const {data:order,error}=await client.from("registry_delivery_orders").select("*").eq("registry_id",id).eq("payment_reference",body.reference).maybeSingle();

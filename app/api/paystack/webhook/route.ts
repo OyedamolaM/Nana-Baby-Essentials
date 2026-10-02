@@ -1,3 +1,4 @@
+import { completeVerifiedRegistryDeliveryGift } from "@/lib/registryDeliveryGifts";
 import { NextResponse } from "next/server";
 
 import { notifyOrderSupport } from "@/lib/orderSupportNotification";
@@ -61,6 +62,11 @@ export async function POST(request: Request) {
     return new NextResponse("Payment verification failed", { status: 502 });
   }
 
+  if (getPaystackMetadataValue(payment.metadata, "registry_delivery_gift_id")) {
+    if (payment.reference !== reference) return new NextResponse("Payment reference mismatch", { status: 400 });
+    try { await completeVerifiedRegistryDeliveryGift(payment); return NextResponse.json({ received: true }); }
+    catch (error) { console.error("Delivery gift webhook failed.", error); return new NextResponse("Delivery gift verification failed", { status: 400 }); }
+  }
   const deliveryId = getPaystackMetadataValue(payment.metadata, "registry_delivery_id");
   if (deliveryId) {
     if (payment.reference !== reference || payment.status !== "success" || payment.currency !== "NGN") return NextResponse.json({ received: true });

@@ -41,9 +41,9 @@ export function RegistryProductPromo({ registryId, onUpdated, disabled }: { regi
     finally { setBusy(false); }
   };
   return <div className="space-y-3 rounded-xl border p-4">
-    <Label htmlFor="registry-product-promo">Registry promo code</Label>
+    <Label htmlFor="registry-product-promo">Registry promo codes</Label>
     <div className="flex flex-wrap gap-2">
-      <Input id="registry-product-promo" className="min-w-0 flex-1" maxLength={40} value={code} disabled={!promo || busy || disabled || promo.locked} onChange={event => setCode(event.target.value.toUpperCase())} />
+      <Input id="registry-product-promo" className="min-w-0 flex-1" maxLength={204} placeholder="CODE1, CODE2" value={code} disabled={!promo || busy || disabled || promo.locked} onChange={event => setCode(event.target.value.toUpperCase())} />
       <Button disabled={!promo || busy || disabled || promo.locked || !code.trim()} onClick={() => void save(code)}>Apply</Button>
       {promo?.code ? <Button variant="outline" disabled={busy || disabled || promo.locked} onClick={() => void save("")}>Remove</Button> : null}
     </div>

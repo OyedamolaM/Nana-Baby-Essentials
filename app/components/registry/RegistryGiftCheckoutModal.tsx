@@ -30,7 +30,7 @@ type PaystackHandler = {
 
 type RegistryCheckoutSession = {
   amountKobo: number;
-  checkoutType: "item" | "cash";
+  checkoutType: "item" | "cash" | "delivery";
   currency: string;
   metadata: Record<string, unknown>;
   reference: string;
@@ -42,6 +42,7 @@ export interface RegistryGiftSelection {
 }
 
 interface RegistryGiftCheckoutModalProps {
+  purpose?: "products" | "delivery";
   open: boolean;
   onClose: () => void;
   registry: RegistryRecord;
@@ -51,6 +52,7 @@ interface RegistryGiftCheckoutModalProps {
 }
 
 export function RegistryGiftCheckoutModal({
+  purpose = "products",
   open,
   onClose,
   registry,
@@ -73,7 +75,7 @@ export function RegistryGiftCheckoutModal({
     payload: Record<string, unknown>,
     fallbackMessage: string,
   ) => {
-    const response = await fetch("/api/registry/checkout", {
+    const response = await fetch(purpose === "delivery" ? "/api/registry/delivery-gifts" : "/api/registry/checkout", {
       body: JSON.stringify(payload),
       headers: {
         "Content-Type": "application/json",
@@ -245,13 +247,20 @@ export function RegistryGiftCheckoutModal({
 
           void (async () => {
             try {
-              await postRegistryCheckout(
+              const cancelled = await postRegistryCheckout<{ paid?: boolean }>(
                 {
                   action: "cancel",
                   reference,
                 },
                 "Failed to cancel registry checkout.",
               );
+              if (purpose === "delivery" && cancelled.paid) {
+                completedRef.current = true;
+                activeReferenceRef.current = null;
+                setPaystackActive(false);setLoading(false);
+                toast.success("Payment successful. Thank you for gifting!");
+                onCheckoutComplete();onClose();return;
+              }
             } catch (error) {
               console.error("Failed to cancel registry checkout", error);
             }

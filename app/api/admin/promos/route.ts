@@ -45,7 +45,7 @@ export async function POST(request: Request) {
   if (!/^[A-Z0-9_-]{2,40}$/.test(code) || !Number.isFinite(percentage) || percentage <= 0 || percentage >= 100 || startsAt === undefined || endsAt === undefined || (startsAt && endsAt && startsAt >= endsAt)) {
     return NextResponse.json({ message: "Enter a code of 2–40 letters, numbers, dashes or underscores, a percentage above 0 and below 100, and an expiry after the start." }, { status: 400 });
   }
-  const payload = { code, percentage: Math.round(percentage * 100) / 100, promo_type: promoType, maximum_discount_amount: maximumDiscountAmount === null ? null : Math.round(maximumDiscountAmount * 100) / 100, applies_to_store: appliesToStore, applies_to_registry: appliesToRegistry, minimum_purchase_amount: Math.round(minimumPurchaseAmount * 100) / 100, starts_at: startsAt, ends_at: endsAt, is_active: body?.isActive === true };
+  const payload = { can_combine: body?.canCombine === true, code, percentage: Math.round(percentage * 100) / 100, promo_type: promoType, maximum_discount_amount: maximumDiscountAmount === null ? null : Math.round(maximumDiscountAmount * 100) / 100, applies_to_store: appliesToStore, applies_to_registry: appliesToRegistry, minimum_purchase_amount: Math.round(minimumPurchaseAmount * 100) / 100, starts_at: startsAt, ends_at: endsAt, is_active: body?.isActive === true };
   const result = body?.id
     ? await client.from("store_promos").update(payload).eq("id", body.id).select("id").single()
     : await client.from("store_promos").insert(payload).select("id").single();

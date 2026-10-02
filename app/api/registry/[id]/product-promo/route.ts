@@ -22,7 +22,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   if (actor.response) return actor.response;
   const { id } = await params;
   const body = await request.json().catch(() => null);
-  if (typeof body?.code !== "string" || body.code.length > 40) return NextResponse.json({ message: "Enter a valid promo code." }, { status: 400 });
+  if (typeof body?.code !== "string" || body.code.length > 204) return NextResponse.json({ message: "Enter a valid promo code." }, { status: 400 });
   const client = createSupabaseServiceRoleClient();
   if (!client) return NextResponse.json({ message: "Promo codes are unavailable." }, { status: 503 });
   const { data, error } = await client.rpc("set_registry_product_promo", { p_registry_id: id, p_actor_id: actor.user.id, p_code: body.code });

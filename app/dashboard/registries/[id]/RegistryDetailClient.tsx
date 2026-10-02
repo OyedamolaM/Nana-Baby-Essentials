@@ -151,7 +151,7 @@ export function RegistryDetailClient({ registryId }: { registryId: string }) {
   );
   const initialRegistryLoadKeyRef = useRef<string | null>(null);
 
-  const [loading, setLoading] = useState(Boolean(user && hasSupabaseEnv && !cachedEntry));
+  const [loading, setLoading] = useState(Boolean(hasSupabaseEnv && !cachedEntry));
   const [registry, setRegistry] = useState<RegistryRecord | null>(cachedEntry?.registry ?? null);
   const [registryItems, setRegistryItems] = useState<RegistryItem[]>(cachedEntry?.registryItems ?? []);
   const [payments, setPayments] = useState<RegistryPaymentActivity[]>(cachedEntry?.payments ?? []);

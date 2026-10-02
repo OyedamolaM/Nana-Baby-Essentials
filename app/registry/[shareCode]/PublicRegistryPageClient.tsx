@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
+import { RegistryDeliveryGiftFunding } from "../../components/registry/RegistryDeliveryGiftFunding";
 import { Footer } from "../../components/Footer";
 import { ImageWithFallback } from "../../components/figma/ImageWithFallback";
 import {
@@ -774,6 +775,7 @@ export function PublicRegistryPageClient({
         </div>
       </main>
 
+      {registry ? <RegistryDeliveryGiftFunding registry={registry} /> : null}
       {registry ? (
         <RegistryGiftCheckoutModal
           open={giftModalOpen}

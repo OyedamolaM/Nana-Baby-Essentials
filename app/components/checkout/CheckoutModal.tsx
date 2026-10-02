@@ -553,9 +553,9 @@ export function CheckoutModal({
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="checkout-promo">Promo code (optional)</Label>
+            <Label htmlFor="checkout-promo">Promo codes (optional)</Label>
             <div className="flex gap-2">
-              <Input id="checkout-promo" value={promoInput} maxLength={40} placeholder="Enter promo code" disabled={loading || paystackActive} onChange={event => { ++promoRequestRef.current; setApplyingPromo(false); setPromoInput(event.target.value.toUpperCase()); setAppliedPromo(null); setPromoError(""); }} />
+              <Input id="checkout-promo" value={promoInput} maxLength={204} placeholder="CODE1, CODE2" disabled={loading || paystackActive} onChange={event => { ++promoRequestRef.current; setApplyingPromo(false); setPromoInput(event.target.value.toUpperCase()); setAppliedPromo(null); setPromoError(""); }} />
               <Button type="button" variant="outline" disabled={loading || paystackActive || applyingPromo} onClick={() => void applyPromo()}>{applyingPromo ? "Applying..." : "Apply"}</Button>
               {appliedPromo ? <Button type="button" variant="ghost" disabled={loading || paystackActive} onClick={() => { ++promoRequestRef.current; setPromoInput(""); setAppliedPromo(null); setPromoError(""); }}>Remove</Button> : null}
             </div>

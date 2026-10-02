@@ -679,6 +679,8 @@ export function AdminDashboard({ registryAccountId, initialSection = "overview" 
   const loadedCustomerQueryRef = useRef<string | null>(null);
   const customersSentinelRef = useRef<HTMLDivElement | null>(null);
   const [specialPackages, setSpecialPackages] = useState<SpecialPackageRecord[]>([]);
+  const [registriesLoading, setRegistriesLoading] = useState(true);
+  const [registriesError, setRegistriesError] = useState("");
   const [registries, setRegistries] = useState<RegistryRecord[]>([]);
   const [registryItemsByRegistry, setRegistryItemsByRegistry] = useState<
     Record<string, RegistryItem[]>
@@ -1053,12 +1055,16 @@ const fetchOrdersPage = useCallback(
     if (!userId || (!force && loadedAdminTabsRef.current.has(tab))) return;
 
     if (tab === "registries") {
+      setRegistriesLoading(true);
+      setRegistriesError("");
+      try {
       const [registriesResult, itemsResult, ordersResult, contributionsResult] = await Promise.all([
         supabase.from("registries").select("id, user_id, name, due_month, baby_gender, share_code, status, fulfillment_status, ready_for_shipping_at, shipped_at, completed_at, created_at").order("created_at", { ascending: false }),
         supabase.from("registry_items").select(`id, registry_id, product_id, product_name_snapshot, product_image_snapshot, product_description_snapshot, requested_quantity, purchased_quantity, funded_amount, unit_price_snapshot, note, created_at, products(${PRODUCT_LIST_SELECT})`).order("created_at", { ascending: false }),
         supabase.from("registry_orders").select("id, registry_id, buyer_name, buyer_email, buyer_phone, buyer_message, total_amount, promo_code, discount_percentage, discount_amount, maximum_discount_amount, contribution_type, status, paystack_reference, shipping_address, paid_at, created_at").order("created_at", { ascending: false }),
         supabase.from("registry_contributions").select("id, registry_id, buyer_name, buyer_email, buyer_phone, buyer_message, amount, status, paystack_reference, paid_at, created_at").order("created_at", { ascending: false }),
       ]);
+      if (registriesResult.error || itemsResult.error || ordersResult.error || contributionsResult.error) throw new Error("Could not load registries.");
       const nextRegistries = ((registriesResult.error ? [] : registriesResult.data) ?? []) as RegistryRecord[];
       const ownerProfilesResult = nextRegistries.length
         ? await supabase
@@ -1099,6 +1105,7 @@ const fetchOrdersPage = useCallback(
         });
         return result;
       }, {}));
+      } catch { setRegistriesError("Could not load registries."); } finally { setRegistriesLoading(false); }
     } else if (tab === "newsletter") {
       const [subscribers, campaigns] = await Promise.all([
         supabase.from("newsletter_subscribers").select("id, email, source, is_active, created_at, last_sent_at").order("created_at", { ascending: false }),
@@ -3666,7 +3673,7 @@ useEffect(() => {
   if (registryAccountId) {
     return <div className="mx-auto max-w-6xl space-y-4 px-4 py-6">
       <Button variant="outline" asChild><Link href="/admin?section=registries">Back to registries</Link></Button>
-      {registries.some(registry => registry.user_id === registryAccountId) ? <AdminRegistryAccountsManager
+      {registriesLoading ? <p role="status">Loading registries...</p> : registriesError ? <div><p role="alert">{registriesError}</p><Button onClick={() => void loadAdminTabData("registries", true)}>Retry</Button></div> : registries.some(registry => registry.user_id === registryAccountId) ? <AdminRegistryAccountsManager
         customers={customers} detailAccountId={registryAccountId}
         registries={registries.filter(registry => registry.user_id === registryAccountId)}
         registryItemsByRegistry={registryItemsByRegistry} registryPaymentActivities={registryPaymentActivities}
@@ -3867,14 +3874,14 @@ useEffect(() => {
         </TabsContent>
 
         <TabsContent value="registries">
-          <AdminRegistryAccountsManager
+          {registriesLoading ? <p role="status">Loading registries...</p> : registriesError ? <div><p role="alert">{registriesError}</p><Button onClick={() => void loadAdminTabData("registries", true)}>Retry</Button></div> : <AdminRegistryAccountsManager
             onReload={() => loadAdminTabData("registries", true)}
             customers={customers}
             registries={registries}
             registryItemsByRegistry={registryItemsByRegistry}
             registryPaymentActivities={registryPaymentActivities}
             registrySummaries={registrySummaries}
-          />
+          />}
         </TabsContent>
 
         <TabsContent value="customers">

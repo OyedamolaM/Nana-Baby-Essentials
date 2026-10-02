@@ -10,7 +10,7 @@ import { AdminDateTimeField } from "./AdminDateTimeField";
 import { formatNairaAmount } from "../../../lib/commerce";
 import type { PromoType } from "../../../lib/promos";
 
-type Promo = { id: string; code: string; percentage: number; promo_type?: PromoType; minimum_purchase_amount?: number; maximum_discount_amount?: number | null; applies_to_store?: boolean; applies_to_registry?: boolean; is_active: boolean; starts_at: string | null; ends_at: string | null };
+type Promo = { can_combine?: boolean; id: string; code: string; percentage: number; promo_type?: PromoType; minimum_purchase_amount?: number; maximum_discount_amount?: number | null; applies_to_store?: boolean; applies_to_registry?: boolean; is_active: boolean; starts_at: string | null; ends_at: string | null };
 function localDate(value: string | null) {
   if (!value) return "";
   const date = new Date(value);
@@ -31,6 +31,7 @@ export function AdminPromosManager({ getAdminAccessToken }: { getAdminAccessToke
   const [appliesToRegistry, setAppliesToRegistry] = useState(false);
   const [startsAt, setStartsAt] = useState("");
   const [endsAt, setEndsAt] = useState("");
+  const [canCombine, setCanCombine] = useState(false);
   const [active, setActive] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -55,7 +56,7 @@ export function AdminPromosManager({ getAdminAccessToken }: { getAdminAccessToke
     })();
     return () => { mounted = false; };
   }, [getAdminAccessToken]);
-  const reset = () => { setEditing(null); setCode(""); setPercentage("10"); setMinimumPurchaseAmount(""); setMaximumDiscountAmount(""); setPromoType("products"); setAppliesToStore(true); setAppliesToRegistry(false); setStartsAt(""); setEndsAt(""); setActive(true); };
+  const reset = () => { setCanCombine(false); setEditing(null); setCode(""); setPercentage("10"); setMinimumPurchaseAmount(""); setMaximumDiscountAmount(""); setPromoType("products"); setAppliesToStore(true); setAppliesToRegistry(false); setStartsAt(""); setEndsAt(""); setActive(true); };
   return <div className="space-y-5">
     <div className="flex flex-wrap items-center justify-between gap-3"><h2 className="text-2xl font-semibold">Discounts & Promos</h2><Button type="button" disabled={saving} onClick={() => { reset(); setEditorOpen(true); }}>Add promo</Button></div>
    {error ? <p role="alert" className="text-red-600">{error}</p> : null}
@@ -71,7 +72,7 @@ export function AdminPromosManager({ getAdminAccessToken }: { getAdminAccessToke
         const token = await getAdminAccessToken();
         if (!token) throw new Error("Sign in again to manage promos.");
         if (startsAt && endsAt && new Date(endsAt) <= new Date(startsAt)) throw new Error("Expiry must be after the start.");
-        const response = await fetch("/api/admin/promos", { method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify({ id: editing, code, percentage: promoType === "free_delivery" ? 10 : Number(percentage), promoType, maximumDiscountAmount: maximumDiscountAmount === "" ? null : Number(maximumDiscountAmount), appliesToStore, appliesToRegistry, minimumPurchaseAmount: minimumPurchaseAmount === "" ? 0 : Number(minimumPurchaseAmount), isActive: active, startsAt: startsAt ? new Date(startsAt).toISOString() : null, endsAt: endsAt ? new Date(endsAt).toISOString() : null }) });
+        const response = await fetch("/api/admin/promos", { method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify({ canCombine, id: editing, code, percentage: promoType === "free_delivery" ? 10 : Number(percentage), promoType, maximumDiscountAmount: maximumDiscountAmount === "" ? null : Number(maximumDiscountAmount), appliesToStore, appliesToRegistry, minimumPurchaseAmount: minimumPurchaseAmount === "" ? 0 : Number(minimumPurchaseAmount), isActive: active, startsAt: startsAt ? new Date(startsAt).toISOString() : null, endsAt: endsAt ? new Date(endsAt).toISOString() : null }) });
         const data = await response.json(); if (!response.ok) throw new Error(data.message);
         const refreshed = await fetch("/api/admin/promos", { headers: { Authorization: `Bearer ${token}` } });
         const refreshedData = await refreshed.json(); if (!refreshed.ok) throw new Error(refreshedData.message);
@@ -100,6 +101,7 @@ export function AdminPromosManager({ getAdminAccessToken }: { getAdminAccessToke
         <AdminDateTimeField id="promo-end" label="Expires at (optional)" value={endsAt} onChange={setEndsAt} />
       </div>
       </section>
+      <label className="flex min-h-10 items-center gap-3 text-sm"><input type="checkbox" checked={canCombine} onChange={event => setCanCombine(event.target.checked)} /> Can combine with other promos</label>
       <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={active} onChange={event => setActive(event.target.checked)} /> Enable promo code</label>
       <fieldset className="space-y-3 rounded-xl border p-4"><legend className="px-1 text-sm font-semibold">Where customers can use this code</legend><label className="flex min-h-10 items-center gap-3 text-sm"><input type="checkbox" checked={appliesToStore} onChange={event => setAppliesToStore(event.target.checked)} /> Store checkout</label><label className="flex min-h-10 items-center gap-3 text-sm"><input type="checkbox" checked={appliesToRegistry} onChange={event => setAppliesToRegistry(event.target.checked)} /> {promoType === "products" ? "Registry products" : "Registry delivery"}</label></fieldset>
       </div>
@@ -111,7 +113,7 @@ export function AdminPromosManager({ getAdminAccessToken }: { getAdminAccessToke
       <div><p className="font-semibold">{promo.code}</p><p className="text-sm text-gray-600">{!promo.is_active ? "Disabled" : promo.starts_at && now !== null && Date.parse(promo.starts_at) > now ? "Scheduled" : promo.ends_at && now !== null && Date.parse(promo.ends_at) <= now ? "Expired" : "Active"}</p><p className="text-xs text-gray-500">{promo.starts_at ? new Date(promo.starts_at).toLocaleString() : "Starts immediately"} → {promo.ends_at ? new Date(promo.ends_at).toLocaleString() : "No expiry"}</p></div>
       <div className="text-sm text-gray-600">{Number(promo.minimum_purchase_amount ?? 0) > 0 ? `Minimum purchase: NGN ${Number(promo.minimum_purchase_amount).toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (excluding delivery)` : "No minimum purchase amount"}</div>
       <div className="space-y-1 text-sm text-gray-600"><p>{promo.promo_type === "free_delivery" ? "Delivery fee waiver" : promo.promo_type === "delivery_discount" ? `${promo.percentage}% off delivery` : `${promo.percentage}% off products`}</p><p>{promo.maximum_discount_amount ? `Maximum discount: ${formatNairaAmount(Number(promo.maximum_discount_amount))}` : "No discount cap"}</p><p>{[promo.applies_to_store !== false ? "Store" : "", promo.applies_to_registry ? promo.promo_type && promo.promo_type !== "products" ? "Registry delivery" : "Registry products" : ""].filter(Boolean).join(" / ")}</p></div>
-      <div className="flex flex-wrap gap-2"><Button type="button" variant="outline" disabled={saving} onClick={() => { setEditing(promo.id); setEditorOpen(true); setCode(promo.code); setPercentage(String(promo.percentage)); setPromoType(promo.promo_type ?? "products"); setMaximumDiscountAmount(promo.maximum_discount_amount ? String(promo.maximum_discount_amount) : ""); setAppliesToStore(promo.applies_to_store !== false); setAppliesToRegistry(promo.applies_to_registry === true); setMinimumPurchaseAmount(Number(promo.minimum_purchase_amount ?? 0) > 0 ? String(promo.minimum_purchase_amount) : ""); setStartsAt(localDate(promo.starts_at)); setEndsAt(localDate(promo.ends_at)); setActive(promo.is_active); }}>Edit</Button><Button type="button" variant="destructive" disabled={saving} onClick={async () => {
+      <div className="flex flex-wrap gap-2"><Button type="button" variant="outline" disabled={saving} onClick={() => { setCanCombine(promo.can_combine === true); setEditing(promo.id); setEditorOpen(true); setCode(promo.code); setPercentage(String(promo.percentage)); setPromoType(promo.promo_type ?? "products"); setMaximumDiscountAmount(promo.maximum_discount_amount ? String(promo.maximum_discount_amount) : ""); setAppliesToStore(promo.applies_to_store !== false); setAppliesToRegistry(promo.applies_to_registry === true); setMinimumPurchaseAmount(Number(promo.minimum_purchase_amount ?? 0) > 0 ? String(promo.minimum_purchase_amount) : ""); setStartsAt(localDate(promo.starts_at)); setEndsAt(localDate(promo.ends_at)); setActive(promo.is_active); }}>Edit</Button><Button type="button" variant="destructive" disabled={saving} onClick={async () => {
         if (!window.confirm(`Delete promo ${promo.code}? Existing orders will keep their saved discounts.`)) return;
         setSaving(true);
         try {

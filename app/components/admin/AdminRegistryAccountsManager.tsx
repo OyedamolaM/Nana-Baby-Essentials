@@ -146,7 +146,7 @@ export function AdminRegistryAccountsManager({
   }, [customerLookup, registries]);
 
   const deleteRegistry = async (registry: RegistryRecord) => {
-    if (!window.confirm('Permanently delete "' + registry.name + '" and all its gifts, payments and delivery records? This cannot be undone.')) return;
+    if (!window.confirm('Delete "' + registry.name + '"?')) return;
     setDeletingId(registry.id);
     try {
       const { data: { session } } = await supabase.auth.getSession();
