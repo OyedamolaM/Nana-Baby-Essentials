@@ -114,7 +114,7 @@ export function ReviewForm({
           Thank you for your review
         </h2>
         <p className="mt-2 text-sm text-gray-600">
-          We have received your feedback. Our team may feature it in our reviews section.
+          We have received your feedback.
         </p>
         {onDone ? (
           <Button className="mt-6" onClick={onDone}>
