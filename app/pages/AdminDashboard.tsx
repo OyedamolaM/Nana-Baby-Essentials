@@ -5358,7 +5358,7 @@ useEffect(() => {
               <Label htmlFor="package-purchase-limit">Purchase limit (optional)</Label>
               <label className="flex items-center gap-2 text-sm"><input id="package-purchase-limit" type="checkbox" checked={packagePurchaseLimited} onChange={event => setPackagePurchaseLimited(event.target.checked)} />Use purchase limit</label>
               {packagePurchaseLimited ? <Input type="number" min="0" step="1" required aria-label="Remaining package purchases" value={packageRemainingQuantity} onChange={event => setPackageRemainingQuantity(event.target.value)} /> : null}
-              <p className="text-xs text-gray-500">When enabled, each purchased package or bundle reduces the remaining quantity. Zero means sold out. Leave disabled to use availability only.</p>
+              <p className="text-xs text-gray-500">Zero means sold out.</p>
             </div>
             <div className="space-y-2">
               <Label htmlFor="package-image">Package Images</Label>
