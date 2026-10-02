@@ -176,12 +176,7 @@ export function ReviewForm({
         />
       </div>
 
-      {user ? (
-        <p className="rounded-2xl bg-rose-50 px-4 py-3 text-sm text-gray-600">
-          Signed in as {profile?.email ?? user.email}. We&apos;ll link this review to
-          your account, so you don&apos;t need to enter your email.
-        </p>
-      ) : (
+      {user && (
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-2">
             <Label htmlFor="review-email">Email (optional)</Label>
@@ -219,9 +214,6 @@ export function ReviewForm({
       />
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <p className="text-xs text-gray-500">
-          We never show your email or phone. Our team may feature your review.
-        </p>
         <Button type="submit" disabled={!canSubmit} className="sm:min-w-36">
           {submitting ? (
             <>
