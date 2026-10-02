@@ -41,6 +41,7 @@ import { AuthModal } from "../../../components/auth/AuthModal";
 import { RegistryCartModal } from "../../../components/registry/RegistryCartModal";
 import { RegistryCreateModal } from "../../../components/registry/RegistryCreateModal";
 import { RegistryHeader } from "../../../components/registry/RegistryHeader";
+import { RegistryProductPromo } from "../../../components/registry/RegistryProductPromo";
 import { RegistryGiftBalance } from "../../../components/registry/RegistryGiftBalance";
 import { RegistryDeliveryCheckout } from "../../../components/registry/RegistryDeliveryCheckout";
 import { Button } from "../../../components/ui/button";
@@ -747,6 +748,7 @@ export function RegistryDetailClient({ registryId }: { registryId: string }) {
               </Card>
             </div>
 
+            <RegistryProductPromo registryId={registry.id} onUpdated={loadRegistry} disabled={registryIsClosed} />
             <RegistryGiftBalance registryId={registry.id} items={registryItems} onUpdated={loadRegistry} disabled={registryIsClosed} />
             <RegistryDeliveryCheckout registryId={registry.id} onUpdated={loadRegistry} />
             <Tabs defaultValue="items" className="space-y-4">

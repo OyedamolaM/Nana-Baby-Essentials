@@ -187,8 +187,8 @@ export function mapRegistryItemRecord(record: RegistryItemRecord): RegistryItem 
           featuredSortOrder: 0,
         }
       : null;
-  const targetAmount = toNairaAmount(unitPriceSnapshot) * requestedQuantity;
-  const fundedFallback = toNairaAmount(unitPriceSnapshot) * purchasedQuantity;
+  const targetAmount = Math.round(unitPriceSnapshot * 100000) / 100 * requestedQuantity;
+  const fundedFallback = Math.round(unitPriceSnapshot * 100000) / 100 * purchasedQuantity;
   const fundedAmount = Math.min(
     targetAmount,
     Math.max(0, Number(record.funded_amount ?? fundedFallback)),
@@ -209,7 +209,7 @@ export function mapRegistryItemRecord(record: RegistryItemRecord): RegistryItem 
 }
 
 export function getRegistryItemUnitAmount(item: RegistryItem) {
-  return Math.max(0, toNairaAmount(item.unitPriceSnapshot));
+  return Math.max(0, Math.round(item.unitPriceSnapshot * 100000) / 100);
 }
 
 export function getRegistryItemTargetAmount(item: RegistryItem) {

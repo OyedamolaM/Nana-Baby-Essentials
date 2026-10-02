@@ -28,6 +28,7 @@ type CustomerRecord = {
 };
 
 type RegistryRecord = {
+  status?: string | null;
   baby_gender?: string | null;
   created_at: string;
   due_month?: string | null;
@@ -145,7 +146,7 @@ export function AdminRegistryAccountsManager({
   }, [customerLookup, registries]);
 
   const deleteRegistry = async (registry: RegistryRecord) => {
-    if (!window.confirm('Delete "' + registry.name + '"?')) return;
+    if (!window.confirm('Permanently delete "' + registry.name + '" and all its gifts, payments and delivery records? This cannot be undone.')) return;
     setDeletingId(registry.id);
     try {
       const { data: { session } } = await supabase.auth.getSession();
@@ -199,6 +200,7 @@ export function AdminRegistryAccountsManager({
                     <span className="rounded-full bg-gray-50 px-3 py-2">
                       Requested: {totalRequested}
                     </span>
+                    {account.registries.some(registry => registry.status === "closed") ? <span className="rounded-full bg-gray-100 px-3 py-2">Closed: {account.registries.filter(registry => registry.status === "closed").length}</span> : null}
                     {!isExpanded ? <Link href={`/admin/registry-accounts/${account.userId}`} className="inline-flex items-center gap-2 rounded-full bg-pink-50 px-3 py-2 font-medium text-pink-700">View details</Link> : null}
                   </div>
                 </div>
@@ -224,6 +226,7 @@ export function AdminRegistryAccountsManager({
                               <p className="text-lg font-semibold text-gray-900">
                                 {registry.name?.trim() || "Unnamed registry"}
                               </p>
+                              <span className="inline-block rounded-full bg-gray-100 px-3 py-1 text-xs font-medium capitalize">{registry.status || "active"}</span>
                               <p className="text-sm text-gray-500">
                                 Due: {formatDueMonth(registry.due_month)} / {formatBabyGender(registry.baby_gender)}
                               </p>

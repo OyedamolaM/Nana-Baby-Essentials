@@ -173,6 +173,7 @@ async function main() {
     await db.exec(fs.readFileSync(path.join(__dirname, "../supabase/migrations/20261007_registry_delivery_checkout.sql"), "utf8"));
     assert.equal((await promo("WELCOME10")).percentage, 10);
     await assert.rejects(promo("BIGSHOP", 499999.99), /requires at least/);
+    await require('./test-registry-total-promo.cjs')(db);
     console.log("Promo minimums, caps, delivery discounts, registry funding, deletion snapshots, trusted totals, payment completion, dates, access control and package purchase limits passed.");
   } finally { await db.close(); }
 }

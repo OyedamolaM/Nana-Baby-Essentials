@@ -106,5 +106,11 @@ module.exports=async function testRegistryBalanceDelivery(db){
   assert.equal((await db.query('select count(*) as count from registries where id=$1',[emptyRegistry])).rows[0].count,0);
   assert.equal((await db.query('select count(*) as count from registry_items where registry_id=$1',[emptyRegistry])).rows[0].count,0);
   await assert.rejects(db.query('select delete_unfunded_registry($1)',[emptyRegistry]),/not found/);
+  await db.exec(require('node:fs').readFileSync(require('node:path').join(__dirname,'../supabase/migrations/20261009_admin_registry_hard_delete.sql'),'utf8'));
+  await db.query('select delete_unfunded_registry($1)',[registry]);
+  for (const table of ['registry_items','registry_orders','registry_contributions','registry_cash_allocations','registry_delivery_orders']) {
+    assert.equal((await db.query('select count(*) as count from '+table+' where registry_id=$1',[registry])).rows[0].count,0);
+  }
+  assert.equal((await db.query('select count(*) as count from registries where id=$1',[registry])).rows[0].count,0);
   console.log('Registry balance allocation, retries, access, funding totals, delivery fees, promos, cancellation, snapshots and payment verification passed.');
 };
