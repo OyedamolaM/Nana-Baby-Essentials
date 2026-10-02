@@ -96,6 +96,10 @@ import {
   type StoreLocationRecord,
 } from "../../lib/storeLocations";
 import {
+  CUSTOMER_REVIEW_SELECT,
+  type CustomerReviewRecord,
+} from "../../lib/customerReviews";
+import {
   AdminCampaignManager,
   type CampaignContactRecord,
 } from "../components/admin/AdminCampaignManager";
@@ -103,6 +107,7 @@ import {
   AdminAbandonedCartsManager,
   type AdminAbandonedCart,
 } from "../components/admin/AdminAbandonedCartsManager";
+import { AdminCustomerReviewsManager } from "../components/admin/AdminCustomerReviewsManager";
 import { AdminOrdersManager, type AdminOrderRecord } from "../components/admin/AdminOrdersManager";
 import { AdminProductCategoriesManager } from "../components/admin/AdminProductCategoriesManager";
 import { AdminRegistryAccountsManager } from "../components/admin/AdminRegistryAccountsManager";
@@ -172,6 +177,7 @@ type AdminSectionId =
   | "campaigns"
   | "newsletter"
   | "reviews"
+  | "customer-reviews"
   | "blogs"
   | "content"
   | "shipping";
@@ -279,6 +285,12 @@ const ADMIN_NAVIGATION_GROUPS: AdminNavigationGroup[] = [
         label: "Reviews",
         description: "Homepage and registry reviews",
         icon: MessageSquareQuote,
+      },
+      {
+        id: "customer-reviews",
+        label: "Customer Reviews",
+        description: "Add submissions to your reviews and print QR codes",
+        icon: Star,
       },
       {
         id: "blogs",
@@ -711,6 +723,8 @@ export function AdminDashboard({ registryAccountId, initialSection = "overview" 
   const [siteContentSettings, setSiteContentSettings] = useState<SiteContentSettingRecord[]>([]);
   const [storeLocations, setStoreLocations] = useState<StoreLocationRecord[]>([]);
   const [homepageReviews, setHomepageReviews] = useState<HomepageReviewRecord[]>([]);
+  const [customerReviews, setCustomerReviews] = useState<CustomerReviewRecord[]>([]);
+  const [customerReviewsLoading, setCustomerReviewsLoading] = useState(false);
   const [registryReviews, setRegistryReviews] = useState<HomepageReviewRecord[]>([]);
   const homepageSiteContent = useMemo<HomepageSiteContent>(() => {
     return buildHomepageSiteContent(siteContentSettings);
@@ -1155,6 +1169,20 @@ const fetchOrdersPage = useCallback(
       ]);
       setHomepageReviews(((homepage.error ? [] : homepage.data) ?? []) as HomepageReviewRecord[]);
       setRegistryReviews(((registry.error ? [] : registry.data) ?? []) as HomepageReviewRecord[]);
+    } else if (tab === "customer-reviews") {
+      setCustomerReviewsLoading(true);
+      try {
+        const [reviewsResult, locationsResult] = await Promise.all([
+          supabase.from("customer_reviews").select(CUSTOMER_REVIEW_SELECT).order("created_at", { ascending: false }),
+          supabase.from("store_locations").select("id, name, slug, address, description, contact_phone, whatsapp_phone, contact_email, opening_hours, hero_image, is_active, sort_order, created_at, updated_at").order("sort_order", { ascending: true }),
+        ]);
+        setCustomerReviews(((reviewsResult.error ? [] : reviewsResult.data) ?? []) as CustomerReviewRecord[]);
+        if (!locationsResult.error && locationsResult.data) {
+          setStoreLocations(locationsResult.data as StoreLocationRecord[]);
+        }
+      } finally {
+        setCustomerReviewsLoading(false);
+      }
     } else if (tab === "orders" || tab === "shipping") {
       const result = await supabase.from("shipping_tiers").select("id, code, label, fee, eta, description, fulfillment_type, is_active, sort_order, created_at").order("sort_order", { ascending: true });
       setShippingTiers(((result.error ? [] : result.data) ?? []) as ShippingTier[]);
@@ -4883,6 +4911,15 @@ useEffect(() => {
               </CardContent>
             </Card>
           </div>
+        </TabsContent>
+
+        <TabsContent value="customer-reviews">
+          <AdminCustomerReviewsManager
+            loading={customerReviewsLoading}
+            onRefresh={() => loadAdminTabData("customer-reviews", true)}
+            reviews={customerReviews}
+            storeLocations={storeLocations}
+          />
         </TabsContent>
 
         <TabsContent value="shipping">

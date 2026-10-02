@@ -24,7 +24,7 @@ const nextConfig: NextConfig = {
   turbopack: {
     root: process.cwd(),
   },
-  serverExternalPackages: ["sharp"],
+  serverExternalPackages: ["qrcode", "sharp"],
 };
 
 export default nextConfig;
