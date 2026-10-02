@@ -66,7 +66,7 @@ export async function GET(request: Request) {
   ).toISOString();
   const { data: cartData, error: cartError } = await client
     .from("shopping_carts")
-    .select("id, user_id, created_at, updated_at")
+    .select("id, user_id, created_at, updated_at, shopping_cart_items!inner(id)")
     .lte("updated_at", cutoff)
     .order("updated_at", { ascending: false })
     .limit(ABANDONED_CART_LIMIT);
@@ -99,7 +99,11 @@ export async function GET(request: Request) {
       client
         .from("user_profiles")
         .select("id, full_name, email, phone")
-        .in("id", userIds),
+        .in("id", userIds)
+        // Retention keeps carts after an account is deleted, so only surface
+        // customers who can actually still be contacted.
+        .eq("account_status", "active")
+        .is("deleted_at", null),
     ]);
 
   if (itemError || profileError) {
@@ -131,13 +135,17 @@ export async function GET(request: Request) {
     }
 
     const profile = profiles[cart.user_id];
+    if (!profile) {
+      return [];
+    }
+
     return [
       {
         createdAt: cart.created_at,
         customer: {
-          email: profile?.email ?? null,
-          name: profile?.full_name ?? null,
-          phone: profile?.phone ?? null,
+          email: profile.email ?? null,
+          name: profile.full_name ?? null,
+          phone: profile.phone ?? null,
         },
         id: cart.id,
         items: cartItems.map((item) => {

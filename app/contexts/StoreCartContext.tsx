@@ -385,6 +385,20 @@ async function persistRemoteCart(
 ) {
   const resolvedCartId = cartId ?? (await ensureRemoteCart(userId)).id;
 
+  // Loading the storefront must not count as a change to the cart.
+  const { data: savedItems, error: readError } = await supabase
+    .from("shopping_cart_items")
+    .select("product_id, quantity, variant_id")
+    .eq("cart_id", resolvedCartId);
+  if (readError) throw readError;
+  const savedKeys = (savedItems ?? []).map((item) =>
+    `${item.product_id}:${item.variant_id ?? ""}:${item.quantity}`,
+  ).sort();
+  const nextKeys = items.map((item) =>
+    `${item.id}:${item.variantId ?? ""}:${item.quantity}`,
+  ).sort();
+  if (JSON.stringify(savedKeys) === JSON.stringify(nextKeys)) return resolvedCartId;
+
   const { error: deleteError } = await supabase
     .from("shopping_cart_items")
     .delete()

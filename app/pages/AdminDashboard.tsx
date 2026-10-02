@@ -1417,6 +1417,19 @@ useEffect(() => {
     loadAbandonedCarts,
   ]);
 
+  useEffect(() => {
+    if (activeAdminTab !== "abandoned-carts" || adminAccessStatus !== "allowed") return;
+    const refresh = () => {
+      if (document.visibilityState === "visible") void loadAbandonedCarts();
+    };
+    const timer = window.setInterval(refresh, 60000);
+    document.addEventListener("visibilitychange", refresh);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", refresh);
+    };
+  }, [activeAdminTab, adminAccessStatus, loadAbandonedCarts]);
+
   const verifyAdminAccess = useCallback(async () => {
     if (!userId || !hasSupabaseEnv) {
       setAdminAccessStatus("denied");
