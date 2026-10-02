@@ -5,6 +5,8 @@ const PRODUCT_DETAIL_RETURN_KEY = "nbe:product-detail-return";
 export type ProductDetailReturnContext = {
   originPath: string;
   product: StoreProduct;
+  scrollY?: number;
+  catalogState?: { page: number; category: string; search: string };
 };
 
 export function getCurrentProductReturnPath() {
@@ -38,7 +40,12 @@ export function persistProductDetailReturnContext(context: ProductDetailReturnCo
   }
 
   try {
-    window.sessionStorage.setItem(PRODUCT_DETAIL_RETURN_KEY, JSON.stringify(context));
+    const catalog = document.querySelector<HTMLElement>("[data-product-catalog]");
+    window.sessionStorage.setItem(PRODUCT_DETAIL_RETURN_KEY, JSON.stringify({
+      ...context,
+      scrollY: window.scrollY,
+      catalogState: catalog ? { page: Number(catalog.dataset.catalogPage ?? 1), category: catalog.dataset.catalogCategory ?? "All", search: catalog.dataset.catalogSearch ?? "" } : undefined,
+    }));
   } catch {
     // Ignore storage failures and keep navigation working.
   }

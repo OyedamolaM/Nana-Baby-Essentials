@@ -1,4 +1,5 @@
 "use client";
+import { getCurrentProductReturnPath, readProductDetailReturnContext } from "../../lib/productDetailReturn";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -284,6 +285,16 @@ export function usePaginatedProducts({
     initialSelectedCategory,
   );
   const [searchQuery, setSearchQueryState] = useState(initialSearchQuery);
+  useEffect(() => {
+    const context = readProductDetailReturnContext();
+    if (!context?.catalogState || context.originPath !== getCurrentProductReturnPath()) return;
+    const catalog = context.catalogState;
+    queueMicrotask(() => {
+      setPage(catalog.page);
+      setSelectedCategoryState(catalog.category);
+      setSearchQueryState(catalog.search);
+    });
+  }, []);
   const requestIdRef = useRef(0);
   const initialCachePersistedRef = useRef(false);
   const skipInitialFetchRef = useRef(

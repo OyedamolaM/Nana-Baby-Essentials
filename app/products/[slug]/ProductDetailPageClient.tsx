@@ -204,7 +204,7 @@ export function ProductDetailPageClient({
 
   const handleBackToPreviousProductView = () => {
     const reopenContext = readProductDetailReturnContext();
-    router.push(reopenContext?.originPath || "/products");
+    router.push(reopenContext?.originPath || "/products", { scroll: !reopenContext });
   };
 
   const availabilityLabel = selectedVariant

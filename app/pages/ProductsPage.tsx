@@ -1,4 +1,5 @@
 "use client";
+import { useProductSectionPagination, useRestoreProductScroll } from "../hooks/useProductSectionNavigation";
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -111,7 +112,7 @@ export function ProductsPage({
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const productsSectionRef = useRef<HTMLElement | null>(null);
-  const paginationFrameRef = useRef<number | null>(null);
+  useRestoreProductScroll();
   const {
     loading,
     page,
@@ -143,32 +144,7 @@ export function ProductsPage({
     rangeSuffix,
   );
 
-  const changePage = (nextPage: number) => {
-    if (nextPage === page || nextPage < 1 || nextPage > totalPages) {
-      return;
-    }
-
-    const productsSection = productsSectionRef.current;
-    if (!productsSection) {
-      setPage(nextPage);
-      return;
-    }
-
-    if (paginationFrameRef.current !== null) {
-      window.cancelAnimationFrame(paginationFrameRef.current);
-    }
-
-    const headerHeight = document.querySelector("header")?.getBoundingClientRect().height ?? 82;
-    const sectionTop = productsSection.getBoundingClientRect().top + window.scrollY - headerHeight;
-    window.scrollTo({ behavior: "auto", top: Math.max(0, sectionTop) });
-
-    paginationFrameRef.current = window.requestAnimationFrame(() => {
-      paginationFrameRef.current = window.requestAnimationFrame(() => {
-        paginationFrameRef.current = null;
-        setPage(nextPage);
-      });
-    });
-  };
+  const changePage = useProductSectionPagination(productsSectionRef, setPage, page, loading);
 
   useEffect(() => {
     const reopenContext = readProductDetailReturnContext();
@@ -188,7 +164,7 @@ export function ProductsPage({
   }, []);
 
   useEffect(() => {
-    if (!initialFocusSearch) {
+    if (!initialFocusSearch || readProductDetailReturnContext()?.originPath === getCurrentProductReturnPath()) {
       return;
     }
 
@@ -357,6 +333,7 @@ export function ProductsPage({
       <main>
         <section
           ref={productsSectionRef}
+          data-product-catalog data-catalog-page={page} data-catalog-category={selectedCategory} data-catalog-search={searchQuery}
           className="bg-gradient-to-b from-white to-gray-50 py-16 sm:py-20"
         >
           <div className="container mx-auto px-4">

@@ -1,4 +1,5 @@
 "use client";
+import { useRestoreProductScroll } from "../hooks/useProductSectionNavigation";
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -72,6 +73,7 @@ export function HomePage({
   const [cartOpen, setCartOpen] = useState(false);
   const [authOpen, setAuthOpen] = useState(false);
   const [authDefaultTab, setAuthDefaultTab] = useState<AuthTab>("login");
+  useRestoreProductScroll();
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [productDetailOpen, setProductDetailOpen] = useState(false);
   const [productModalMode, setProductModalMode] = useState<"details" | "quick-add">("details");

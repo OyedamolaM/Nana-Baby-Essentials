@@ -1,4 +1,5 @@
 "use client";
+import { useProductSectionPagination, useRestoreProductScroll } from "../hooks/useProductSectionNavigation";
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -187,6 +188,8 @@ export function RegistryLandingPage({
   const [myRegistries, setMyRegistries] = useState<RegistryRecord[]>(
     cachedRegistryLandingEntry?.registries ?? [],
   );
+  useRestoreProductScroll();
+  const productsSectionRef = useRef<HTMLElement | null>(null);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const {
     loading: productsLoading,
@@ -207,6 +210,7 @@ export function RegistryLandingPage({
     initialTotalCount,
   });
 
+  const changePage = useProductSectionPagination(productsSectionRef, setPage, page, productsLoading);
   const paginationItems = useMemo(
     () => buildPagination(page, totalPages),
     [page, totalPages],
@@ -692,7 +696,7 @@ export function RegistryLandingPage({
           />
         ) : null}
 
-        <section className="bg-white py-20">
+        <section ref={productsSectionRef} data-product-catalog data-catalog-page={page} data-catalog-category={selectedCategory} data-catalog-search={searchQuery} className="bg-white py-20">
           <div className="container mx-auto px-4">
             <div className="mb-10 flex flex-col items-center text-center">
               <div className="mx-auto max-w-3xl">
@@ -777,7 +781,7 @@ export function RegistryLandingPage({
                         onClick={(event) => {
                           event.preventDefault();
                           if (page > 1) {
-                            setPage(page - 1);
+                            changePage(page - 1);
                           }
                         }}
                         aria-disabled={page === 1}
@@ -795,7 +799,7 @@ export function RegistryLandingPage({
                             isActive={item === page}
                             onClick={(event) => {
                               event.preventDefault();
-                              setPage(Number(item));
+                              changePage(Number(item));
                             }}
                           >
                             {item}
@@ -810,7 +814,7 @@ export function RegistryLandingPage({
                         onClick={(event) => {
                           event.preventDefault();
                           if (page < totalPages) {
-                            setPage(page + 1);
+                            changePage(page + 1);
                           }
                         }}
                         aria-disabled={page === totalPages}

@@ -166,7 +166,7 @@ export function AdminRegistryAccountsManager({
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Registry Accounts</CardTitle>
+        <CardTitle>Registry Accounts ({groupedAccounts.length})</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
         {groupedAccounts.length === 0 ? (

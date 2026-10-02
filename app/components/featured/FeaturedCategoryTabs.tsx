@@ -1,4 +1,5 @@
 "use client";
+import { useProductSectionPagination } from "../../hooks/useProductSectionNavigation";
 
 import { ArrowRight, Search } from "lucide-react";
 import { useMemo, useRef } from "react";
@@ -83,6 +84,7 @@ export function FeaturedCategoryTabs({
   sectionTitle = "Products",
   sectionSubtitle = "Browse the full product catalog by category, search what you need, and move through the catalog 12 items at a time.",
 }: FeaturedCategoryTabsProps) {
+  const sectionRef = useRef<HTMLElement | null>(null);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const {
     loading,
@@ -102,6 +104,7 @@ export function FeaturedCategoryTabs({
     onlyInStock: false,
     pageSize: 20,
   });
+  const changePage = useProductSectionPagination(sectionRef, setPage, page, loading);
   const paginationItems = useMemo(
     () => buildPagination(page, totalPages),
     [page, totalPages],
@@ -126,7 +129,7 @@ export function FeaturedCategoryTabs({
   );
 
   return (
-    <section id={sectionId} className="section-spacing bg-white">
+    <section ref={sectionRef} data-product-catalog data-catalog-page={page} data-catalog-category={selectedCategory} data-catalog-search={searchQuery} id={sectionId} className="section-spacing bg-white">
       <div className="container mx-auto px-4">
         <div className="mb-10 flex flex-col items-center gap-4 text-center">
           <div className="max-w-3xl">
@@ -233,7 +236,7 @@ export function FeaturedCategoryTabs({
                     onClick={(event) => {
                       event.preventDefault();
                       if (page > 1) {
-                        setPage(page - 1);
+                        changePage(page - 1);
                       }
                     }}
                     aria-disabled={page === 1}
@@ -251,7 +254,7 @@ export function FeaturedCategoryTabs({
                         isActive={item === page}
                         onClick={(event) => {
                           event.preventDefault();
-                          setPage(Number(item));
+                          changePage(Number(item));
                         }}
                       >
                         {item}
@@ -266,7 +269,7 @@ export function FeaturedCategoryTabs({
                     onClick={(event) => {
                       event.preventDefault();
                       if (page < totalPages) {
-                        setPage(page + 1);
+                        changePage(page + 1);
                       }
                     }}
                     aria-disabled={page === totalPages}
