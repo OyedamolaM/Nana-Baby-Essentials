@@ -106,6 +106,7 @@ import {
 import { AdminOrdersManager, type AdminOrderRecord } from "../components/admin/AdminOrdersManager";
 import { AdminProductCategoriesManager } from "../components/admin/AdminProductCategoriesManager";
 import { AdminRegistryAccountsManager } from "../components/admin/AdminRegistryAccountsManager";
+import { AdminDeletedCustomers } from "../components/admin/AdminDeletedCustomers";
 import { AdminDateTimeField } from "../components/admin/AdminDateTimeField";
 import { useAuth } from "../contexts/AuthContext";
 import { hasSupabaseEnv, supabase } from "../lib/supabase";
@@ -660,6 +661,7 @@ export function AdminDashboard({ registryAccountId, initialSection = "overview" 
   const [abandonedCartsLoading, setAbandonedCartsLoading] = useState(false);
   const [abandonedCartsLoaded, setAbandonedCartsLoaded] = useState(false);
 
+  const [deletedCustomersOpen, setDeletedCustomersOpen] = useState(false);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const PRODUCTS_PAGE_SIZE = 200;
   const [products, setProducts] = useState<ProductRecord[]>([]);
@@ -905,6 +907,7 @@ export function AdminDashboard({ registryAccountId, initialSection = "overview" 
         .from("user_profiles")
         .select("id, full_name, email, phone, shipping_address, account_status, campaign_opt_out, deleted_at, permanently_deleted_at, created_at")
         .or("is_admin.eq.false,is_admin.is.null")
+        .is("deleted_at", null)
         .order("created_at", { ascending: false })
         .range(from, to);
 
@@ -1070,7 +1073,7 @@ const fetchOrdersPage = useCallback(
       const ownerProfilesResult = nextRegistries.length
         ? await supabase
             .from("user_profiles")
-            .select("id, full_name, email, phone, shipping_address")
+            .select("id, full_name, email, phone, shipping_address, account_status, deleted_at, permanently_deleted_at")
             .in("id", Array.from(new Set(nextRegistries.map((registry) => registry.user_id))))
         : { data: [], error: null };
       const ownerProfiles =
@@ -1979,7 +1982,8 @@ useEffect(() => {
         return;
       }
 
-      toast.success(result?.message ?? "Customer disabled.");
+      if (action === "delete") setCustomers((current) => current.filter((customer) => customer.id !== customerId));
+      toast.success(result?.message ?? "Customer updated.");
       void Promise.all([fetchCustomersPage(true), fetchDashboardCounts()]);
     } catch (error) {
       console.error("Failed to disable customer.", error);
@@ -3888,10 +3892,12 @@ useEffect(() => {
         </TabsContent>
 
         <TabsContent value="customers">
+          {deletedCustomersOpen ? <AdminDeletedCustomers onClose={() => setDeletedCustomersOpen(false)} getAdminAccessToken={getAdminAccessToken} onRestored={() => { void fetchCustomersPage(true); void fetchDashboardCounts(); }} /> : null}
           <Card>
             <CardHeader className="space-y-4">
-              <div className="space-y-1 flex items-center justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-3">
                 <CardTitle>Customers</CardTitle>
+                <Button variant="outline" onClick={() => setDeletedCustomersOpen(true)}>Deleted customers</Button>
                 <Button
                   onClick={() => {
                     resetCustomerForm();
@@ -3923,7 +3929,7 @@ useEffect(() => {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {customers.map((customer) => (
+                  {customers.filter((customer) => !customer.deleted_at && !customer.permanently_deleted_at).map((customer) => (
                     <TableRow
                       key={customer.id}
                       className="cursor-pointer hover:bg-gray-50"
