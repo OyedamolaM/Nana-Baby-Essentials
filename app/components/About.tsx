@@ -44,13 +44,13 @@ export function About({ images = DEFAULT_ABOUT_IMAGES }: AboutProps) {
               </span>
             </h2>
             <p className="section-copy-lg mx-auto mb-6 md:mx-0">
-              At Nana's Baby Essentials, we believe every parenting journey deserves a trusted companion. With over a decade of experience serving families, we've built our reputation by providing genuine, carefully selected baby and maternity products that parents can shop with confidence. Our commitment has always been to make every stage of pregnancy, infancy, and early childhood safer, easier, and more enjoyable.
+              At Nana&apos;s Baby Essentials, we believe every parenting journey deserves a trusted companion. With over a decade of experience serving families, we&apos;ve built our reputation by providing genuine, carefully selected baby and maternity products that parents can shop with confidence. Our commitment has always been to make every stage of pregnancy, infancy, and early childhood safer, easier, and more enjoyable.
             </p>
             <p className="section-copy-lg mx-auto mb-8 md:mx-0">
               From newborn essentials and nursery collections to feeding accessories, toys, fashion, and everyday parenting needs, every product we offer is chosen for its quality, safety, comfort, and value. We partner with trusted local and international brands so families can always access products they can rely on.
             </p>
             <p className="section-copy-lg mx-auto mb-8 md:mx-0">
-              More than a baby store, Nana's Baby Essentials is a brand built on trust, care, and lasting relationships with generations of parents. As we continue to grow, we remain committed to delivering exceptional service, innovative shopping experiences, and dependable support—helping families celebrate every milestone with confidence.
+              More than a baby store, Nana&apos;s Baby Essentials is a brand built on trust, care, and lasting relationships with generations of parents. As we continue to grow, we remain committed to delivering exceptional service, innovative shopping experiences, and dependable support—helping families celebrate every milestone with confidence.
             </p>
             <div className="grid gap-6 text-left sm:grid-cols-2">
               {values.map((value, index) => (
