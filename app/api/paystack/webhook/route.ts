@@ -1,7 +1,9 @@
 import { completeVerifiedRegistryDeliveryGift } from "@/lib/registryDeliveryGifts";
 import { NextResponse } from "next/server";
+import { revalidateTag } from "next/cache";
 
 import { notifyOrderSupport } from "@/lib/orderSupportNotification";
+import { completeVerifiedRegistryCheckout } from "@/lib/registryPayments";
 import {
   getPaystackMetadataValue,
   hasPaystackServerEnv,
@@ -78,6 +80,22 @@ export async function POST(request: Request) {
     const completed = await client.rpc("complete_registry_delivery_payment", { p_reference: reference, p_paid_amount_kobo: Math.round(Number(delivery.total) * 100) });
     if (completed.error) return new NextResponse("Delivery confirmation failed", { status: 500 });
     return NextResponse.json({ received: true });
+  }
+  // Registry gifts do not belong to the store orders table. Confirm them even
+  // when the customer's browser never calls the checkout verification endpoint.
+  if (getPaystackMetadataValue(payment.metadata, "registry_id")) {
+    if (payment.reference !== reference) {
+      return new NextResponse("Payment reference mismatch", { status: 400 });
+    }
+    try {
+      await completeVerifiedRegistryCheckout(payment);
+      revalidateTag("registries", { expire: 0 });
+      return NextResponse.json({ received: true });
+    } catch (error) {
+      console.error("Webhook registry payment completion failed.", error);
+      // Do not acknowledge a payment that we failed to record; Paystack retries.
+      return new NextResponse("Registry payment completion failed", { status: 500 });
+    }
   }
   const orderId = getPaystackMetadataValue(payment.metadata, "order_id");
   if (

@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { revalidateTag } from "next/cache";
 
 import { toNairaAmount } from "@/lib/commerce";
+import { getCheckoutEmailError, getCheckoutPhoneError, normalizeCheckoutPhone } from "@/lib/checkoutContact";
+import { completeVerifiedRegistryCheckout } from "@/lib/registryPayments";
 import {
   createSupabaseServiceRoleClient,
   hasSupabaseServiceRoleEnv,
@@ -276,8 +278,8 @@ async function handleInitiateCheckout(
 
   const registryId = payload.registryId?.trim() ?? "";
   const buyerName = payload.buyerName?.trim() ?? "";
-  const buyerEmail = payload.buyerEmail?.trim() ?? "";
-  const buyerPhone = payload.buyerPhone?.trim() ?? "";
+  const buyerEmail = typeof payload.buyerEmail === "string" ? payload.buyerEmail.trim() : "";
+  const buyerPhone = typeof payload.buyerPhone === "string" ? payload.buyerPhone.trim() : "";
   const buyerMessage = payload.buyerMessage?.trim() ?? "";
   const selectedItems = normalizeSelectedItems(payload.selectedItems);
   const paymentAmount = normalizePaymentAmount(payload.paymentAmount);
@@ -293,13 +295,8 @@ async function handleInitiateCheckout(
     return jsonError("Buyer name is required.", 400);
   }
 
-  if (!buyerEmail) {
-    return jsonError("Buyer email is required.", 400);
-  }
-
-  if (!buyerPhone) {
-    return jsonError("Buyer phone number is required.", 400);
-  }
+  const contactError = getCheckoutPhoneError(buyerPhone) || getCheckoutEmailError(buyerEmail);
+  if (contactError) return jsonError(contactError, 400);
 
   if (selectedItems.length === 0 && paymentAmount <= 0) {
     return jsonError("Select registry items or enter a payment amount.", 400);
@@ -409,7 +406,7 @@ async function handleInitiateCheckout(
     p_buyer_email: buyerEmail,
     p_buyer_message: buyerMessage || null,
     p_buyer_name: buyerName,
-    p_buyer_phone: buyerPhone || null,
+    p_buyer_phone: normalizeCheckoutPhone(buyerPhone),
     p_paystack_reference: reference,
     p_registry_id: registryId,
     p_selected_items: selectedItems,
@@ -435,7 +432,7 @@ async function handleInitiateCheckout(
           p_buyer_email: buyerEmail,
           p_buyer_message: buyerMessage || null,
           p_buyer_name: buyerName,
-          p_buyer_phone: buyerPhone || null,
+          p_buyer_phone: normalizeCheckoutPhone(buyerPhone),
           p_contribution_type: contributionType,
           p_registry_id: registryId,
           p_selected_items: selectedItems,
@@ -513,14 +510,6 @@ async function handleVerifyCheckout(
     );
   }
 
-  const adminClient = createSupabaseServiceRoleClient();
-  if (!adminClient) {
-    return jsonError(
-      "Add SUPABASE_SERVICE_ROLE_KEY before verifying registry checkout.",
-      500,
-    );
-  }
-
   let verifiedPayment;
   try {
     verifiedPayment = await verifyPaystackTransaction(reference);
@@ -543,97 +532,10 @@ async function handleVerifyCheckout(
     return jsonError("This registry checkout expects an NGN payment.", 400);
   }
 
-  const metadataRegistryId = String(verifiedPayment.metadata.registry_id ?? "").trim();
-  const metadataType = String(verifiedPayment.metadata.type ?? "").trim();
-
-  if (!metadataRegistryId) {
-    return jsonError("This Paystack payment is missing the registry id metadata.", 400);
-  }
-
-  if (metadataType !== "item" && metadataType !== "cash") {
-    return jsonError("This Paystack payment is missing the checkout type metadata.", 400);
-  }
-
-  const { data, error } = await adminClient.rpc(
-    "complete_registry_checkout_payment",
-    {
-      p_paid_amount_kobo: verifiedPayment.amount,
-      p_paystack_reference: reference,
-      p_paystack_transaction_id: verifiedPayment.id,
-    },
-  );
-
-  if (error) {
-    if (shouldFallbackRegistryCheckoutRpc(error, "complete_registry_checkout_payment")) {
-      const { data: fallbackOrder, error: fallbackOrderError } = await adminClient
-        .from("registry_orders")
-        .select("id, registry_id, contribution_type, status, paystack_reference")
-        .eq("paystack_reference", reference)
-        .maybeSingle();
-
-      if (fallbackOrderError || !fallbackOrder) {
-        return jsonError(
-          getErrorMessage(fallbackOrderError, "Registry checkout could not be finalized."),
-          400,
-        );
-      }
-
-      if (fallbackOrder.status !== "paid") {
-        const { error: completeOrderError } = await adminClient.rpc(
-          "complete_registry_order_payment",
-          {
-            p_order_id: fallbackOrder.id,
-            p_paystack_reference: reference,
-          },
-        );
-
-        if (completeOrderError) {
-          return jsonError(
-            getErrorMessage(completeOrderError, "Registry checkout could not be finalized."),
-            400,
-          );
-        }
-      }
-
-      revalidateTag("registries", "max");
-
-      return NextResponse.json({
-        checkout: {
-          checkout_type:
-            fallbackOrder.contribution_type === "cash" ? "cash" : "item",
-          paystack_reference: reference,
-          registry_contribution_id: null,
-          registry_id: fallbackOrder.registry_id,
-          registry_order_id: fallbackOrder.id,
-          status: "paid",
-        },
-        message: "Registry checkout verified successfully.",
-        payment: {
-          amountKobo: verifiedPayment.amount,
-          paidAt: verifiedPayment.paid_at ?? null,
-          reference: verifiedPayment.reference,
-          type: metadataType,
-        },
-      });
-    }
-
-    return jsonError(
-      getErrorMessage(error, "Registry checkout could not be finalized."),
-      400,
-    );
-  }
-
   try {
+    const data = await completeVerifiedRegistryCheckout(verifiedPayment);
     const checkout = parseRegistryCheckoutCompletion(data);
-    if (checkout.registry_id !== metadataRegistryId) {
-      return jsonError("Verified payment metadata does not match this registry checkout.", 400);
-    }
-
-    if (checkout.checkout_type !== metadataType) {
-      return jsonError("Verified payment metadata does not match this checkout type.", 400);
-    }
-
-    revalidateTag("registries", "max");
+    revalidateTag("registries", { expire: 0 });
 
     return NextResponse.json({
       checkout,
@@ -642,13 +544,13 @@ async function handleVerifyCheckout(
         amountKobo: verifiedPayment.amount,
         paidAt: verifiedPayment.paid_at ?? null,
         reference: verifiedPayment.reference,
-        type: metadataType,
+        type: checkout.checkout_type,
       },
     });
   } catch (error) {
     return jsonError(
       getErrorMessage(error, "Registry checkout could not be finalized."),
-      500,
+      400,
     );
   }
 }

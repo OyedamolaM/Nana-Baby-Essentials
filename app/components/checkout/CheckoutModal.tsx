@@ -9,6 +9,8 @@ import type { PromoType } from "../../../lib/promos";
 import { loadPaystackScript } from "../../lib/loadPaystack";
 import { formatNairaAmount, toNairaAmount } from "../../../lib/commerce";
 import { normalizeShippingAddress } from "../../../lib/userProfile";
+import { getCheckoutEmailError, getCheckoutPhoneError, normalizeCheckoutPhone } from "../../../lib/checkoutContact";
+import { useDebouncedValue } from "../../hooks/useDebounceValue";
 import { Button } from "../ui/button";
 import { useReviewModal } from "../reviews/ReviewModal";
 import {
@@ -82,6 +84,9 @@ export function CheckoutModal({
 
   const [shippingName, setShippingName] = useState("");
   const [shippingPhone, setShippingPhone] = useState("");
+  const debouncedPhone = useDebouncedValue(shippingPhone, 3000);
+  const phoneError = open && shippingPhone && shippingPhone === debouncedPhone
+    ? getCheckoutPhoneError(debouncedPhone) : "";
   const [shippingAddress, setShippingAddress] = useState("");
   const [shippingCity, setShippingCity] = useState("");
   const [shippingState, setShippingState] = useState("");
@@ -246,8 +251,14 @@ export function CheckoutModal({
       return;
     }
 
-    if (!user) {
+    if (!user || !session?.access_token) {
       toast.error("Please sign in to checkout.");
+      return;
+    }
+
+    const contactError = getCheckoutPhoneError(shippingPhone) || getCheckoutEmailError(user.email ?? "");
+    if (contactError) {
+      toast.error(contactError);
       return;
     }
 
@@ -286,7 +297,7 @@ export function CheckoutModal({
     try {
       const shippingAddressData = {
         name: shippingName,
-        phone: shippingPhone,
+        phone: normalizeCheckoutPhone(shippingPhone),
         address: shippingAddress,
         city: shippingCity,
         state: shippingState,
@@ -315,19 +326,24 @@ export function CheckoutModal({
         );
       }
 
-      const { data: orderId, error } = await supabase.rpc(
-        "create_store_order",
-        {
-          p_shipping_address: shippingAddressData,
-          p_billing_address: shippingAddressData,
-          p_items: orderItems,
-          p_shipping_tier: shippingTier,
-          p_promo_code: appliedPromo?.code ?? null,
+      const checkoutResponse = await fetch("/api/orders/checkout", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+          "Content-Type": "application/json",
         },
-      );
-
-      if (error || !orderId) {
-        throw error ?? new Error("Failed to start checkout.");
+        body: JSON.stringify({
+          shippingAddress: shippingAddressData,
+          billingAddress: shippingAddressData,
+          items: orderItems,
+          shippingTier,
+          promoCode: appliedPromo?.code ?? null,
+        }),
+      });
+      const checkout = await checkoutResponse.json().catch(() => null) as { orderId?: string; message?: string } | null;
+      const orderId = checkout?.orderId;
+      if (!checkoutResponse.ok || !orderId) {
+        throw new Error(checkout?.message || "Failed to start checkout.");
       }
 
       activeOrderIdRef.current = orderId;
@@ -632,10 +648,15 @@ export function CheckoutModal({
                 <Input
                   id="shipping-phone"
                   type="tel"
+                  inputMode="tel"
+                  autoComplete="tel"
                   value={shippingPhone}
                   onChange={(event) => setShippingPhone(event.target.value)}
+                  aria-invalid={Boolean(phoneError)}
+                  aria-describedby={phoneError ? "shipping-phone-error" : undefined}
                   required
                 />
+                {phoneError ? <p id="shipping-phone-error" role="alert" className="text-sm text-red-600">{phoneError}</p> : null}
                 {/* {!profile?.phone?.trim() ? (
                   <p className="text-xs text-gray-500">
                     We&apos;ll save this number to your account when you continue with checkout.

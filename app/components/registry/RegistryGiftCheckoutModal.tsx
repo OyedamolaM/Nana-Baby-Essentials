@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { loadPaystackScript } from "../../lib/loadPaystack";
+import { useDebouncedValue } from "../../hooks/useDebounceValue";
+import { getCheckoutEmailError, getCheckoutPhoneError, normalizeCheckoutPhone } from "../../../lib/checkoutContact";
 import { hasSupabaseEnv } from "../../lib/supabase";
 import { Button } from "../ui/button";
 import {
@@ -66,6 +68,12 @@ export function RegistryGiftCheckoutModal({
   const [buyerName, setBuyerName] = useState("");
   const [buyerEmail, setBuyerEmail] = useState("");
   const [buyerPhone, setBuyerPhone] = useState("");
+  const debouncedEmail = useDebouncedValue(buyerEmail, 3000);
+  const debouncedPhone = useDebouncedValue(buyerPhone, 3000);
+  const emailError = open && buyerEmail && buyerEmail === debouncedEmail
+    ? getCheckoutEmailError(debouncedEmail) : "";
+  const phoneError = open && buyerPhone && buyerPhone === debouncedPhone
+    ? getCheckoutPhoneError(debouncedPhone) : "";
   const [buyerMessage, setBuyerMessage] = useState("");
   const activeReferenceRef = useRef<string | null>(null);
   const completedRef = useRef(false);
@@ -143,6 +151,11 @@ export function RegistryGiftCheckoutModal({
 
   const handleCheckout = async (event: React.FormEvent) => {
     event.preventDefault();
+    const contactError = getCheckoutPhoneError(buyerPhone) || getCheckoutEmailError(buyerEmail);
+    if (contactError) {
+      toast.error(contactError);
+      return;
+    }
     if (totalAmount <= 0) {
       toast.error("Select registry items or enter a contribution amount.");
       return;
@@ -183,10 +196,10 @@ export function RegistryGiftCheckoutModal({
       const session = await postRegistryCheckout<RegistryCheckoutSession>(
         {
           action: "initiate",
-          buyerEmail,
+          buyerEmail: buyerEmail.trim(),
           buyerMessage,
           buyerName,
-          buyerPhone,
+          buyerPhone: normalizeCheckoutPhone(buyerPhone),
           paymentAmount,
           registryId: registry.id,
           selectedItems: checkoutItems.map((item) => ({
@@ -217,7 +230,7 @@ export function RegistryGiftCheckoutModal({
 
       const handler = window.PaystackPop.setup({
         key: paystackKey,
-        email: buyerEmail,
+        email: buyerEmail.trim(),
         amount: session.amountKobo,
         currency: session.currency,
         ref: session.reference,
@@ -399,10 +412,14 @@ export function RegistryGiftCheckoutModal({
               <Input
                 id="buyer-email"
                 type="email"
+                autoComplete="email"
                 value={buyerEmail}
                 onChange={(event) => setBuyerEmail(event.target.value)}
+                aria-invalid={Boolean(emailError)}
+                aria-describedby={emailError ? "buyer-email-error" : undefined}
                 required
               />
+              {emailError ? <p id="buyer-email-error" role="alert" className="text-sm text-red-600">{emailError}</p> : null}
             </div>
 
             <div className="space-y-2">
@@ -410,10 +427,15 @@ export function RegistryGiftCheckoutModal({
               <Input
                 id="buyer-phone"
                 type="tel"
+                inputMode="tel"
+                autoComplete="tel"
                 value={buyerPhone}
                 onChange={(event) => setBuyerPhone(event.target.value)}
+                aria-invalid={Boolean(phoneError)}
+                aria-describedby={phoneError ? "buyer-phone-error" : undefined}
                 required
               />
+              {phoneError ? <p id="buyer-phone-error" role="alert" className="text-sm text-red-600">{phoneError}</p> : null}
             </div>
 
             <div className="space-y-2">

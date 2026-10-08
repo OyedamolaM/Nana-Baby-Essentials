@@ -3,6 +3,7 @@ import { revalidateTag } from "next/cache";
 import { createSupabaseServiceRoleClient } from "@/lib/supabaseServer";
 import { hasPaystackServerEnv, verifyPaystackTransaction } from "@/lib/paystackServer";
 import { completeVerifiedRegistryDeliveryGift } from "@/lib/registryDeliveryGifts";
+import { getCheckoutEmailError, getCheckoutPhoneError, normalizeCheckoutPhone } from "@/lib/checkoutContact";
 
 export async function GET(request: Request) {
   const id = new URL(request.url).searchParams.get("registryId");
@@ -20,8 +21,10 @@ export async function POST(request: Request) {
   if (!client || !hasPaystackServerEnv) return NextResponse.json({ message: "Delivery gifts are unavailable." }, { status: 503 });
   try {
     if (body?.action === "initiate") {
+      const contactError = getCheckoutPhoneError(typeof body.buyerPhone === "string" ? body.buyerPhone : "") || getCheckoutEmailError(typeof body.buyerEmail === "string" ? body.buyerEmail : "");
+      if (contactError) throw new Error(contactError);
       if (typeof body.registryId !== "string" || !/^[0-9a-f-]{36}$/i.test(body.registryId) || typeof body.buyerName !== "string" || body.buyerName.length > 120 || typeof body.buyerEmail !== "string" || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(body.buyerEmail) || body.buyerEmail.length > 254 || typeof body.buyerPhone !== "string" || body.buyerPhone.length > 50 || typeof body.paymentAmount !== "number" || !Number.isFinite(body.paymentAmount)) throw new Error("Enter valid gift details.");
-      const { data, error } = await client.rpc("create_registry_delivery_gift", { p_registry_id: body.registryId, p_name: body.buyerName, p_email: body.buyerEmail, p_phone: body.buyerPhone, p_message: typeof body.buyerMessage === "string" ? body.buyerMessage.slice(0, 1000) : null, p_amount: body.paymentAmount, p_reference: `NBE-REG-DEL-GIFT-${crypto.randomUUID()}` });
+      const { data, error } = await client.rpc("create_registry_delivery_gift", { p_registry_id: body.registryId, p_name: body.buyerName, p_email: body.buyerEmail.trim(), p_phone: normalizeCheckoutPhone(body.buyerPhone), p_message: typeof body.buyerMessage === "string" ? body.buyerMessage.slice(0, 1000) : null, p_amount: body.paymentAmount, p_reference: `NBE-REG-DEL-GIFT-${crypto.randomUUID()}` });
       if (error) throw new Error(error.code === "P0001" ? error.message : "Could not start the delivery gift.");
       return NextResponse.json(data);
     }
