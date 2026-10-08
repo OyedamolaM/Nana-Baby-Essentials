@@ -386,43 +386,9 @@ export function CheckoutModal({
           );
         }
 
-        let successMessage = "Payment successful. Your order has been placed.";
-
-        if (!session?.access_token) {
-          successMessage =
-            "Payment successful. Your order has been placed, but we could not open an authenticated session to send your confirmation email.";
-        } else {
-          const emailResponse = await fetch("/api/orders/confirmation", {
-            body: JSON.stringify({ orderId }),
-            headers: {
-              Authorization: `Bearer ${session.access_token}`,
-              "Content-Type": "application/json",
-            },
-            method: "POST",
-          });
-
-          if (emailResponse.ok) {
-            const payload = (await emailResponse.json().catch(() => null)) as
-              | { sandbox?: boolean }
-              | null;
-
-            successMessage = payload?.sandbox
-              ? "Payment successful. Your order has been placed. You can view it in your account; a confirmation email has not been delivered."
-              : "Payment successful. Your order has been placed and your confirmation email is on the way.";
-          } else {
-            const payload = (await emailResponse.json().catch(() => null)) as
-              | { message?: string }
-              | null;
-
-            successMessage =
-              payload?.message?.trim() ||
-              "Payment successful. Your order has been placed, but the confirmation email could not be sent yet.";
-          }
-        }
-
         activeOrderIdRef.current = null;
         setPaystackActive(false);
-        toast.success(successMessage);
+        toast.success("Payment successful. Your order has been placed.");
         onCheckoutComplete();
         onClose();
         window.setTimeout(() => openReviewModal(), 600);

@@ -1,16 +1,14 @@
 import "server-only";
 
 import {
-  createBrevoIdempotencyKey,
   getBrevoOrderSupportRecipient,
-  hasBrevoEnv,
   hasBrevoOrderSupportRecipient,
-  sendBrevoEmail,
+  type BrevoSingleEmailPayload,
 } from "@/lib/brevo";
 import { renderOrderSupportEmail } from "@/lib/emailTemplates";
 import { createOrderReceiptAttachment } from "@/lib/orderReceipt";
 
-type OrderSupportNotification = {
+export type OrderSupportNotification = {
   createdAt?: string | null;
   customerEmail?: string | null;
   customerName?: string | null;
@@ -42,7 +40,7 @@ type StoreOrderAddress = {
   state?: string;
 };
 
-function normalizeItems(value: unknown) {
+export function normalizeOrderEmailItems(value: unknown) {
   if (!Array.isArray(value)) return [] as StoreOrderItem[];
 
   return value
@@ -57,7 +55,7 @@ function normalizeItems(value: unknown) {
     }));
 }
 
-function normalizeAddress(value: unknown) {
+export function normalizeOrderEmailAddress(value: unknown) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return null;
   }
@@ -72,11 +70,11 @@ function normalizeAddress(value: unknown) {
   } satisfies StoreOrderAddress;
 }
 
-export async function notifyOrderSupport(order: OrderSupportNotification) {
-  if (!hasBrevoEnv || !hasBrevoOrderSupportRecipient) return false;
+export function buildOrderSupportEmail(order: OrderSupportNotification): BrevoSingleEmailPayload {
+  if (!hasBrevoOrderSupportRecipient) throw new Error("BREVO_ORDER_SUPPORT_EMAIL is not configured.");
 
-  const items = normalizeItems(order.items);
-  const shippingAddress = normalizeAddress(order.shippingAddress);
+  const items = normalizeOrderEmailItems(order.items);
+  const shippingAddress = normalizeOrderEmailAddress(order.shippingAddress);
   const total = Number(order.total ?? 0);
   const customerEmail = order.customerEmail?.trim() || "Not provided";
   const email = renderOrderSupportEmail({
@@ -95,7 +93,7 @@ export async function notifyOrderSupport(order: OrderSupportNotification) {
     totalAmount: total,
   });
 
-  await sendBrevoEmail({
+  return {
     attachments: [
       createOrderReceiptAttachment({
         createdAt: order.createdAt ?? null,
@@ -116,15 +114,10 @@ export async function notifyOrderSupport(order: OrderSupportNotification) {
       }),
     ],
     htmlContent: email.html,
-    idempotencyKey: createBrevoIdempotencyKey(
-      `order-support:${order.id}:${order.paymentReference ?? "paid"}`,
-    ),
     senderProfile: "order",
     subject: email.subject,
     tags: ["order-support-notification"],
     textContent: email.text,
     to: [{ email: getBrevoOrderSupportRecipient(), name: "Order Support" }],
-  });
-
-  return true;
+  };
 }

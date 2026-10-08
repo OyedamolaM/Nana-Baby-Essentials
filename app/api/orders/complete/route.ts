@@ -7,7 +7,7 @@ import {
   matchesPaystackOrderAmount,
   verifyPaystackTransaction,
 } from "@/lib/paystackServer";
-import { notifyOrderSupport } from "@/lib/orderSupportNotification";
+import { schedulePaymentEmails } from "@/lib/paymentEmails";
 import {
   createSupabaseServiceRoleClient,
   hasSupabaseServiceRoleEnv,
@@ -102,6 +102,7 @@ export async function POST(request: Request) {
       );
     }
 
+    schedulePaymentEmails(paystackReference);
     return NextResponse.json({ orderId: order.id, status: "paid" });
   }
 
@@ -179,27 +180,7 @@ export async function POST(request: Request) {
     );
   }
 
-  await notifyOrderSupport({
-    createdAt: order.created_at,
-    customerEmail: order.customer_email,
-    customerName: order.customer_name,
-    customerPhone: order.customer_phone,
-    id: order.id,
-    items: order.items,
-    paymentMethod: order.payment_method,
-    paymentReference: paystackReference,
-    pickupCode:
-      order.pickup_code ??
-      order.customer_pickup_code ??
-      order.rider_pickup_code ??
-      null,
-    shippingAddress: order.shipping_address,
-    shippingTier: order.shipping_label,
-    promoCode: order.promo_code,
-    discountAmount: order.discount_amount,
-    status: "paid",
-    total: order.total,
-  }).catch((error) => console.error("Failed to notify order support.", error));
+  schedulePaymentEmails(paystackReference);
 
   return NextResponse.json({ orderId: order.id, status: "paid" });
 }

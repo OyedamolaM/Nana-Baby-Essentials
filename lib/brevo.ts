@@ -60,7 +60,7 @@ type BrevoTemplatePayload = BrevoBasePayload & {
   textContent?: never;
 };
 
-type BrevoSingleEmailPayload = (BrevoHtmlPayload | BrevoTemplatePayload) & {
+export type BrevoSingleEmailPayload = (BrevoHtmlPayload | BrevoTemplatePayload) & {
   idempotencyKey?: string;
   to: BrevoRecipient[];
 };
@@ -82,6 +82,13 @@ type BrevoApiResponse = {
   messageId?: string;
   messageIds?: string[];
 };
+
+export class BrevoEmailError extends Error {
+  constructor(message: string, public readonly definitive: boolean, public readonly retryable: boolean) {
+    super(message);
+    this.name = "BrevoEmailError";
+  }
+}
 
 function normalizeHeaders(idempotencyKey?: string) {
   const headers: Record<string, string> = {};
@@ -177,15 +184,22 @@ async function sendBrevoRequest(
       "content-type": "application/json",
     },
     method: "POST",
+    signal: AbortSignal.timeout(15000),
   });
 
   const result = (await response.json().catch(() => null)) as BrevoApiResponse | null;
 
   if (!response.ok) {
-    throw new Error(
+    // The same notification was already accepted inside Brevo's dedupe window.
+    if (payload.idempotencyKey && result?.code === "duplicate_parameter" && /idempoten/i.test(result.message ?? "")) {
+      return { messageIds: [], sandbox: brevoSandboxMode };
+    }
+    throw new BrevoEmailError(
       result?.message?.trim() ||
         result?.code?.trim() ||
         "Brevo could not send this email.",
+      response.status < 500,
+      response.status === 429 || response.status >= 500,
     );
   }
 

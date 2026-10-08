@@ -15,6 +15,7 @@
 /coverage
 
 *.md
+!/docs/payment-emails.md
 
 # next.js
 /.next/

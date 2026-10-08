@@ -2,7 +2,7 @@ import { completeVerifiedRegistryDeliveryGift } from "@/lib/registryDeliveryGift
 import { NextResponse } from "next/server";
 import { revalidateTag } from "next/cache";
 
-import { notifyOrderSupport } from "@/lib/orderSupportNotification";
+import { schedulePaymentEmails } from "@/lib/paymentEmails";
 import { completeVerifiedRegistryCheckout } from "@/lib/registryPayments";
 import {
   getPaystackMetadataValue,
@@ -79,6 +79,7 @@ export async function POST(request: Request) {
     if (!delivery || !matchesPaystackOrderAmount(payment, delivery.total) || getPaystackMetadataValue(payment.metadata, "registry_id") !== delivery.registry_id) return NextResponse.json({ received: true });
     const completed = await client.rpc("complete_registry_delivery_payment", { p_reference: reference, p_paid_amount_kobo: Math.round(Number(delivery.total) * 100) });
     if (completed.error) return new NextResponse("Delivery confirmation failed", { status: 500 });
+    schedulePaymentEmails(reference);
     return NextResponse.json({ received: true });
   }
   // Registry gifts do not belong to the store orders table. Confirm them even
@@ -146,30 +147,7 @@ export async function POST(request: Request) {
     console.error("Webhook payment completion failed.", completionError);
     return new NextResponse("Payment completion failed", { status: 500 });
   }
-
-  await notifyOrderSupport({
-    createdAt: order.created_at,
-    customerEmail: order.customer_email,
-    customerName: order.customer_name,
-    customerPhone: order.customer_phone,
-    id: order.id,
-    items: order.items,
-    paymentMethod: order.payment_method,
-    paymentReference: reference,
-    pickupCode:
-      order.pickup_code ??
-      order.customer_pickup_code ??
-      order.rider_pickup_code ??
-      null,
-    shippingAddress: order.shipping_address,
-    shippingTier: order.shipping_label,
-    promoCode: order.promo_code,
-    discountAmount: order.discount_amount,
-    status: "paid",
-    total: order.total,
-  }).catch((notificationError) => {
-    console.error("Failed to notify order support.", notificationError);
-  });
+  schedulePaymentEmails(reference);
 
   return NextResponse.json({ received: true });
 }

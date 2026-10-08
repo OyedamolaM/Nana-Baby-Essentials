@@ -67,6 +67,33 @@ function escapeHtml(value: string) {
     .replaceAll("'", "&#39;");
 }
 
+export function renderRegistryPaymentEmail(options: {
+  registryName: string;
+  buyerName: string;
+  amount: number;
+  reference: string;
+  owner: boolean;
+  delivery: boolean;
+}) {
+  const amount = formatNairaAmount(options.amount);
+  const purpose = options.delivery ? "delivery gift" : "gift";
+  const subject = options.owner ? `New ${purpose} for ${options.registryName}` : `Your ${purpose} payment is confirmed`;
+  const body = options.owner
+    ? `${options.buyerName} contributed ${amount} to ${options.registryName}${options.delivery ? " for delivery" : ""}.`
+    : `Thank you, ${options.buyerName}. Your ${amount} ${purpose} for ${options.registryName} has been recorded.`;
+  return {
+    subject,
+    text: `${body}\nPayment reference: ${options.reference}`,
+    html: renderEmailShell({
+      eyebrow: "Registry payment",
+      title: "Payment confirmed",
+      subtitle: options.registryName,
+      bodyHtml: `<p>${escapeHtml(body)}</p><p>Payment reference: ${escapeHtml(options.reference)}</p>`,
+      footerText: "Nana's Baby Essentials",
+    }),
+  };
+}
+
 function renderParagraphs(body: string) {
   return body
     .trim()

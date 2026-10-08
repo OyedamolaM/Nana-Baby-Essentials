@@ -4,6 +4,8 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
 import { Button } from "../ui/button";
+import { Input } from "../ui/input";
+import { Label } from "../ui/label";
 import { supabase } from "../../lib/supabase";
 import { Trash2 } from "lucide-react";
 
@@ -104,6 +106,8 @@ export function AdminRegistryAccountsManager({
   registrySummaries: Record<string, RegistrySummary>;
 }) {
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [checkingPaymentId, setCheckingPaymentId] = useState<string | null>(null);
+  const [paymentReferences, setPaymentReferences] = useState<Record<string, string>>({});
 
   const customerLookup = useMemo(() => {
     return Object.fromEntries(customers.map((customer) => [customer.id, customer])) as Record<
@@ -161,6 +165,28 @@ export function AdminRegistryAccountsManager({
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not delete the registry.");
     } finally { setDeletingId(null); }
+  };
+
+  const checkPayment = async (registryId: string) => {
+    const reference = paymentReferences[registryId]?.trim() ?? "";
+    if (!reference) { toast.error("Enter the Paystack reference."); return; }
+    setCheckingPaymentId(registryId);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error("Sign in again to check registry payments.");
+      const response = await fetch(`/api/admin/registries/${registryId}/payments/reconcile`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${session.access_token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ reference }),
+      });
+      const result = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(result?.message || "Could not recover the registry payment.");
+      toast.success("Payment verified and recorded.");
+      setPaymentReferences(current => ({ ...current, [registryId]: "" }));
+      await onReload();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not recover the registry payment.");
+    } finally { setCheckingPaymentId(null); }
   };
 
   return (
@@ -238,7 +264,7 @@ export function AdminRegistryAccountsManager({
                               <p className="text-xs font-semibold uppercase tracking-[0.16em] text-gray-500">
                                 Share Code
                               </p>
-                              <Button variant="destructive" size="sm" disabled={deletingId !== null} onClick={() => void deleteRegistry(registry)}><Trash2 className="mr-2 h-4 w-4" />Delete registry</Button>
+                              <Button variant="destructive" size="sm" disabled={deletingId !== null || checkingPaymentId !== null} onClick={() => void deleteRegistry(registry)}><Trash2 className="mr-2 h-4 w-4" />Delete registry</Button>
                               <p className="mt-1 font-mono text-lg font-bold text-pink-600">
                                 {registry.share_code}
                               </p>
@@ -302,6 +328,15 @@ export function AdminRegistryAccountsManager({
                             </TabsContent>
 
                             <TabsContent value="payments" className="space-y-3">
+                              <form className="space-y-2 rounded-xl border border-gray-200 p-3" onSubmit={event => { event.preventDefault(); void checkPayment(registry.id); }}>
+                                <Label htmlFor={`payment-reference-${registry.id}`}>Paystack reference</Label>
+                                <div className="flex flex-col gap-2 sm:flex-row">
+                                  <Input id={`payment-reference-${registry.id}`} value={paymentReferences[registry.id] ?? ""} maxLength={100} autoComplete="off" required disabled={checkingPaymentId !== null || deletingId !== null} onChange={event => setPaymentReferences(current => ({ ...current, [registry.id]: event.target.value }))} />
+                                  <Button type="submit" disabled={checkingPaymentId !== null || deletingId !== null}>
+                                    {checkingPaymentId === registry.id ? "Checking..." : "Check payment"}
+                                  </Button>
+                                </div>
+                              </form>
                               {payments.length === 0 ? (
                                 <p className="text-sm text-gray-500">No payments for this registry yet.</p>
                               ) : (

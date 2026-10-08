@@ -1,3 +1,4 @@
+import { schedulePaymentEmails } from "@/lib/paymentEmails";
 import { NextResponse } from "next/server";
 import { revalidateTag } from "next/cache";
 import { requireRouteUser } from "@/lib/authServer";
@@ -48,6 +49,7 @@ export async function POST(request: Request, context: RouteContext<"/api/registr
         ||getPaystackMetadataValue(payment.metadata,"registry_delivery_id")!==order.id||getPaystackMetadataValue(payment.metadata,"registry_id")!==id) throw new Error("This payment does not match the registry delivery.");
       const result=await client.rpc("complete_registry_delivery_payment",{p_reference:body.reference,p_paid_amount_kobo:Math.round(Number(order.total)*100)});
       if(result.error) throw result.error;
+      schedulePaymentEmails(body.reference);
       revalidateTag("registries","max");
       return NextResponse.json({paid:true});
     }
@@ -62,6 +64,7 @@ export async function POST(request: Request, context: RouteContext<"/api/registr
           && getPaystackMetadataValue(payment.metadata,"registry_id")===id) {
           const complete=await client.rpc("complete_registry_delivery_payment",{p_reference:order.payment_reference,p_paid_amount_kobo:Math.round(Number(order.total)*100)});
           if(complete.error) throw complete.error;
+          schedulePaymentEmails(order.payment_reference);
           revalidateTag("registries","max");
           return NextResponse.json({paid:true});
         }
@@ -78,6 +81,7 @@ export async function POST(request: Request, context: RouteContext<"/api/registr
       ...params,...(body.action==="initiate"?{p_reference:`NBE-REG-DEL-${crypto.randomUUID()}`}:{})
     });
     if(result.error) throw result.error;
+    if(body.action==="initiate"&&result.data?.paid&&typeof result.data.reference==="string") schedulePaymentEmails(result.data.reference);
     if(body.action==="initiate") revalidateTag("registries","max");
     return NextResponse.json({checkout:result.data});
   } catch(error) {

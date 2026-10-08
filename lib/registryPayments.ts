@@ -6,9 +6,13 @@ import {
   type PaystackVerifiedTransaction,
 } from "./paystackServer";
 import { createSupabaseServiceRoleClient } from "./supabaseServer";
+import { schedulePaymentEmails } from "./paymentEmails";
 
 // Both the browser callback and the webhook must use the same confirmation path.
-export async function completeVerifiedRegistryCheckout(payment: PaystackVerifiedTransaction) {
+export async function completeVerifiedRegistryCheckout(
+  payment: PaystackVerifiedTransaction,
+  options: { recoverCancelled?: boolean } = {},
+) {
   const registryId = getPaystackMetadataValue(payment.metadata, "registry_id");
   const checkoutType = getPaystackMetadataValue(payment.metadata, "type");
   if (payment.status !== "success" || payment.currency !== "NGN" || !registryId ||
@@ -44,7 +48,9 @@ export async function completeVerifiedRegistryCheckout(payment: PaystackVerified
     throw new Error("Verified payment amount does not match this registry checkout.");
   }
 
-  const { data, error } = await client.rpc("complete_registry_checkout_payment", {
+  const recoverCancelled = options.recoverCancelled &&
+    (order?.status === "cancelled" || contribution?.status === "cancelled");
+  const { data, error } = await client.rpc(recoverCancelled ? "recover_registry_checkout_payment" : "complete_registry_checkout_payment", {
     // Credit the checkout total, excluding any fees added by Paystack.
     p_paid_amount_kobo: Math.round(total * 100),
     p_paystack_reference: payment.reference,
@@ -56,7 +62,15 @@ export async function completeVerifiedRegistryCheckout(payment: PaystackVerified
         data.paystack_reference !== payment.reference || data.checkout_type !== checkoutType) {
       throw new Error("Registry checkout confirmation returned an invalid result.");
     }
+    schedulePaymentEmails(payment.reference);
     return data;
+  }
+
+  if (recoverCancelled) {
+    if (error.code === "PGRST202" || error.message?.includes("function public.recover_registry_checkout_payment")) {
+      throw new Error("Apply 20261017_registry_payment_recovery.sql to recover cancelled payments.");
+    }
+    throw new Error(error.message);
   }
 
   const missingFunction = error.code === "PGRST202" ||
@@ -72,6 +86,7 @@ export async function completeVerifiedRegistryCheckout(payment: PaystackVerified
     });
     if (result.error) throw new Error(result.error.message);
   }
+  schedulePaymentEmails(payment.reference);
   return {
     checkout_type: storedType,
     paystack_reference: payment.reference,
